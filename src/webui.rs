@@ -1,5 +1,5 @@
 use crate::heap::HeapReport;
-use crate::report::html::{CSS, esc, icon};
+use crate::report::html::{CSS, FAVICON, LOGO_SVG, esc, icon};
 use crate::report::{Report, fmt_duration, fmt_num};
 
 pub struct Recent {
@@ -75,7 +75,7 @@ pub fn with_static_actions(html: &str, markdown: &str, home: &str) -> String {
     );
     let md = markdown.replace("</", "<\\/");
     let script = format!(
-        r#"<script type="text/plain" id="mdsrc">{md}</script><script>(function(){{function dl(n,t,c){{var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([c],{{type:t}}));a.download=n;document.body.appendChild(a);a.click();setTimeout(function(){{URL.revokeObjectURL(a.href);a.remove()}},500)}}var h=document.getElementById('dlh'),m=document.getElementById('dlm');if(h)h.addEventListener('click',function(){{dl('sparkscope-report.html','text/html','<!doctype html>'+document.documentElement.outerHTML)}});if(m)m.addEventListener('click',function(){{dl('sparkscope-report.md','text/markdown',document.getElementById('mdsrc').textContent.replace(/<\\\//g,'</'))}})}})();</script></body>"#
+        r#"<script type="text/plain" id="mdsrc">{md}</script><script>(function(){{function dl(n,t,c){{var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([c],{{type:t}}));a.download=n;document.body.appendChild(a);a.click();setTimeout(function(){{URL.revokeObjectURL(a.href);a.remove()}},500)}}var h=document.getElementById('dlh'),m=document.getElementById('dlm');if(h)h.addEventListener('click',function(){{dl('spark-analyzer-report.html','text/html','<!doctype html>'+document.documentElement.outerHTML)}});if(m)m.addEventListener('click',function(){{dl('spark-analyzer-report.md','text/markdown',document.getElementById('mdsrc').textContent.replace(/<\\\//g,'</'))}})}})();</script></body>"#
     );
     html.replacen(r#"<div class="actions">"#, &buttons, 1)
         .replacen("</body>", &script, 1)
@@ -98,11 +98,12 @@ pub fn shell(p: &Page) -> String {
         format!(r#"<script type="module">{}</script>"#, p.module_script)
     };
     format!(
-        r#"<!doctype html><html lang="it" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{}</title><style>{}{}</style></head><body><div class="shell"><aside class="side"><div class="brand"><span class="logo">{}</span><span>sparkscope</span></div><nav><a class="on" href="{}">{}<span>Nuova analisi</span></a></nav>{}<div class="sidefoot"><div class="srv"><b>sparkscope</b><span>v{}</span></div><button id="theme" class="ghost" title="Tema chiaro/scuro">{}</button></div></aside><main class="content">{}<footer><span>sparkscope</span> v{} · {}</footer></main></div><script>{}{}</script>{}</body></html>"#,
+        r#"<!doctype html><html lang="it" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">{}<title>{}</title><style>{}{}</style></head><body><div class="shell"><aside class="side"><div class="brand"><span class="logo">{}</span><span>Spark-Analyzer</span></div><nav><a class="on" href="{}">{}<span>Nuova analisi</span></a></nav>{}<div class="sidefoot"><div class="srv"><b>Spark-Analyzer</b><span>v{}</span></div><button id="theme" class="ghost" title="Tema chiaro/scuro">{}</button></div></aside><main class="content">{}<footer><span>Spark-Analyzer</span> v{} · {}</footer></main></div><script>{}{}</script>{}</body></html>"#,
+        FAVICON,
         esc(p.title),
         CSS,
         EXTRA_CSS,
-        icon("bolt"),
+        LOGO_SVG,
         esc(p.home),
         icon("plus"),
         p.side_extra,
@@ -168,7 +169,7 @@ pub fn local_index(recent: &[Recent]) -> String {
         &panel,
     );
     shell(&Page {
-        title: "sparkscope — nuova analisi",
+        title: "Spark-Analyzer — nuova analisi",
         side_extra: &side,
         main: &main,
         script: LOCAL_JS,
@@ -180,9 +181,9 @@ pub fn local_index(recent: &[Recent]) -> String {
 
 pub fn local_not_found() -> String {
     shell(&Page {
-        title: "sparkscope — non trovato",
+        title: "Spark-Analyzer — non trovato",
         side_extra: "",
-        main: r#"<div class="top"><div><h1>Report non trovato</h1><p class="sub">I report restano disponibili finché sparkscope è aperto. <a href="/">Torna alla pagina iniziale</a>.</p></div></div>"#,
+        main: r#"<div class="top"><div><h1>Report non trovato</h1><p class="sub">I report restano disponibili finché Spark-Analyzer è aperto. <a href="/">Torna alla pagina iniziale</a>.</p></div></div>"#,
         script: "",
         module_script: "",
         home: "/",
@@ -196,7 +197,7 @@ pub fn static_index() -> String {
         "",
     );
     shell(&Page {
-        title: "sparkscope — analisi profili spark",
+        title: "Spark-Analyzer — analisi profili spark",
         side_extra: r#"<div id="recentside"></div>"#,
         main: &main,
         script: "",
@@ -227,8 +228,8 @@ var busy=document.getElementById('busy'),bt=document.getElementById('busytext'),
 function start(t){err.hidden=true;bt.textContent=t;busy.hidden=false}
 function fail(m){busy.hidden=true;err.textContent=m;err.hidden=false}
 function done(r){return r.json().then(function(j){if(j.id){location.href='/r/'+j.id}else{fail(j.error||'Errore sconosciuto')}})}
-document.getElementById('lform').addEventListener('submit',function(e){e.preventDefault();var v=document.getElementById('link').value.trim();if(!v){fail('Incolla prima un link o un codice spark.');return}start('Scarico e analizzo il profilo…');fetch('/api/link',{method:'POST',body:v}).then(done).catch(function(x){fail('Connessione a sparkscope persa: '+x)})});
-function send(f){if(!f)return;start('Analizzo '+f.name+' ('+(f.size/1048576).toFixed(1)+' MB)…');fetch('/api/file?name='+encodeURIComponent(f.name),{method:'POST',body:f}).then(done).catch(function(x){fail('Connessione a sparkscope persa: '+x)})}
+document.getElementById('lform').addEventListener('submit',function(e){e.preventDefault();var v=document.getElementById('link').value.trim();if(!v){fail('Incolla prima un link o un codice spark.');return}start('Scarico e analizzo il profilo…');fetch('/api/link',{method:'POST',body:v}).then(done).catch(function(x){fail('Connessione a Spark-Analyzer persa: '+x)})});
+function send(f){if(!f)return;start('Analizzo '+f.name+' ('+(f.size/1048576).toFixed(1)+' MB)…');fetch('/api/file?name='+encodeURIComponent(f.name),{method:'POST',body:f}).then(done).catch(function(x){fail('Connessione a Spark-Analyzer persa: '+x)})}
 var drop=document.getElementById('drop'),file=document.getElementById('file');
 file.addEventListener('change',function(){send(file.files[0])});
 ['dragenter','dragover'].forEach(function(t){drop.addEventListener(t,function(e){e.preventDefault();drop.classList.add('over')})});

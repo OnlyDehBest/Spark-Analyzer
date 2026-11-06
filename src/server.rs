@@ -53,7 +53,7 @@ pub fn serve(o: ServeOptions) -> Result<()> {
         o.host.as_str()
     };
     let url = format!("http://{shown_host}:{port}/");
-    eprintln!("sparkscope è in esecuzione: apri {url}");
+    eprintln!("Spark-Analyzer è in esecuzione: apri {url}");
     eprintln!("Lascia aperta questa finestra; chiudila (o premi Ctrl+C) per fermarlo.");
     if o.host != "127.0.0.1" && o.host != "localhost" {
         eprintln!(
@@ -178,13 +178,13 @@ fn handle(mut req: Request, st: &State) {
                         .with_header(header("Content-Type", "text/html; charset=utf-8"))
                         .with_header(header(
                             "Content-Disposition",
-                            &format!("attachment; filename=\"sparkscope-{}.html\"", r.id),
+                            &format!("attachment; filename=\"spark-analyzer-{}.html\"", r.id),
                         )),
                     "md" => Response::from_data(r.markdown.clone().into_bytes())
                         .with_header(header("Content-Type", "text/markdown; charset=utf-8"))
                         .with_header(header(
                             "Content-Disposition",
-                            &format!("attachment; filename=\"sparkscope-{}.md\"", r.id),
+                            &format!("attachment; filename=\"spark-analyzer-{}.md\"", r.id),
                         )),
                     _ => html_resp(not_found()).with_status_code(404),
                 },
