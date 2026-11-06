@@ -51,50 +51,89 @@ pub enum Cat {
 impl Cat {
     pub fn label(self) -> &'static str {
         match self {
-            Cat::EntityTick => "Tick entità",
-            Cat::EntityMove => "Movimento entità",
-            Cat::Collisions => "Collisioni / ricerche entità",
-            Cat::MobAi => "AI dei mob (goal/brain)",
-            Cat::Pathfinding => "Pathfinding",
-            Cat::Villagers => "Villager / POI",
-            Cat::ItemsXp => "Item e XP a terra",
-            Cat::BlockEntities => "Block entity (tile)",
-            Cat::Hoppers => "Hopper",
-            Cat::Spawners => "Spawner",
-            Cat::Redstone => "Redstone / aggiornamenti blocchi",
-            Cat::Fluids => "Fluidi",
-            Cat::ChunkTick => "Tick chunk (random tick, meteo)",
-            Cat::MobSpawning => "Spawn naturale dei mob",
-            Cat::ScheduledTicks => "Tick schedulati blocchi/fluidi",
-            Cat::ChunkLoadSync => "Caricamento chunk sul main thread",
-            Cat::ChunkGen => "Generazione chunk",
-            Cat::ChunkSave => "Salvataggio chunk / autosave",
-            Cat::ChunkSystem => "Gestione chunk (ticket, load/unload)",
-            Cat::Lighting => "Motore di luce",
-            Cat::EntityTracking => "Tracking entità (invio pacchetti)",
-            Cat::Players => "Tick giocatori",
-            Cat::Network => "Rete / pacchetti in ingresso",
-            Cat::Commands => "Comandi",
-            Cat::PluginTasks => "Task schedulati (sync)",
-            Cat::PluginEvents => "Eventi Bukkit",
-            Cat::ServerTasks => "Coda task del main thread",
-            Cat::Maps => "Mappe",
-            Cat::Explosions => "Esplosioni",
-            Cat::Scoreboard => "Scoreboard / team",
-            Cat::Logging => "Logging su console",
-            Cat::Exceptions => "Creazione eccezioni",
-            Cat::SyncDatabase => "Database sincrono",
-            Cat::SyncNetworkIo => "Rete sincrona (HTTP/socket)",
-            Cat::SyncFileIo => "I/O su file sincrono",
-            Cat::Blocking => "Attese bloccanti (lock/sleep/future)",
-            Cat::Serialization => "Serializzazione JSON/NBT/YAML",
-            Cat::TextFormatting => "Formattazione testo / placeholder",
-            Cat::Gc => "Garbage collector",
-            Cat::Jit => "Compilatore JIT",
-            Cat::Native => "Codice nativo",
-            Cat::WorldTickOther => "Tick mondo (altro)",
-            Cat::ServerTickOther => "Tick server (altro)",
-            Cat::Other => "Altro",
+            Cat::EntityTick => crate::i18n::t("Tick entità", "Entity ticking"),
+            Cat::EntityMove => crate::i18n::t("Movimento entità", "Entity movement"),
+            Cat::Collisions => crate::i18n::t(
+                "Collisioni / ricerche entità",
+                "Collisions / entity lookups",
+            ),
+            Cat::MobAi => crate::i18n::t("AI dei mob (goal/brain)", "Mob AI (goals/brain)"),
+            Cat::Pathfinding => crate::i18n::t("Pathfinding", "Pathfinding"),
+            Cat::Villagers => crate::i18n::t("Villager / POI", "Villagers / POI"),
+            Cat::ItemsXp => crate::i18n::t("Item e XP a terra", "Dropped items and XP"),
+            Cat::BlockEntities => crate::i18n::t("Block entity (tile)", "Block entities (tiles)"),
+            Cat::Hoppers => crate::i18n::t("Hopper", "Hoppers"),
+            Cat::Spawners => crate::i18n::t("Spawner", "Spawners"),
+            Cat::Redstone => crate::i18n::t(
+                "Redstone / aggiornamenti blocchi",
+                "Redstone / block updates",
+            ),
+            Cat::Fluids => crate::i18n::t("Fluidi", "Fluids"),
+            Cat::ChunkTick => crate::i18n::t(
+                "Tick chunk (random tick, meteo)",
+                "Chunk ticking (random ticks, weather)",
+            ),
+            Cat::MobSpawning => crate::i18n::t("Spawn naturale dei mob", "Natural mob spawning"),
+            Cat::ScheduledTicks => crate::i18n::t(
+                "Tick schedulati blocchi/fluidi",
+                "Scheduled block/fluid ticks",
+            ),
+            Cat::ChunkLoadSync => crate::i18n::t(
+                "Caricamento chunk sul main thread",
+                "Chunk loading on the main thread",
+            ),
+            Cat::ChunkGen => crate::i18n::t("Generazione chunk", "Chunk generation"),
+            Cat::ChunkSave => {
+                crate::i18n::t("Salvataggio chunk / autosave", "Chunk saving / autosave")
+            }
+            Cat::ChunkSystem => crate::i18n::t(
+                "Gestione chunk (ticket, load/unload)",
+                "Chunk management (tickets, load/unload)",
+            ),
+            Cat::Lighting => crate::i18n::t("Motore di luce", "Lighting engine"),
+            Cat::EntityTracking => crate::i18n::t(
+                "Tracking entità (invio pacchetti)",
+                "Entity tracking (packet sending)",
+            ),
+            Cat::Players => crate::i18n::t("Tick giocatori", "Player ticking"),
+            Cat::Network => {
+                crate::i18n::t("Rete / pacchetti in ingresso", "Network / incoming packets")
+            }
+            Cat::Commands => crate::i18n::t("Comandi", "Commands"),
+            Cat::PluginTasks => crate::i18n::t("Task schedulati (sync)", "Scheduled tasks (sync)"),
+            Cat::PluginEvents => crate::i18n::t("Eventi Bukkit", "Bukkit events"),
+            Cat::ServerTasks => {
+                crate::i18n::t("Coda task del main thread", "Main thread task queue")
+            }
+            Cat::Maps => crate::i18n::t("Mappe", "Maps"),
+            Cat::Explosions => crate::i18n::t("Esplosioni", "Explosions"),
+            Cat::Scoreboard => crate::i18n::t("Scoreboard / team", "Scoreboard / teams"),
+            Cat::Logging => crate::i18n::t("Logging su console", "Console logging"),
+            Cat::Exceptions => crate::i18n::t("Creazione eccezioni", "Exception creation"),
+            Cat::SyncDatabase => crate::i18n::t("Database sincrono", "Synchronous database"),
+            Cat::SyncNetworkIo => crate::i18n::t(
+                "Rete sincrona (HTTP/socket)",
+                "Synchronous network (HTTP/socket)",
+            ),
+            Cat::SyncFileIo => crate::i18n::t("I/O su file sincrono", "Synchronous file I/O"),
+            Cat::Blocking => crate::i18n::t(
+                "Attese bloccanti (lock/sleep/future)",
+                "Blocking waits (lock/sleep/future)",
+            ),
+            Cat::Serialization => crate::i18n::t(
+                "Serializzazione JSON/NBT/YAML",
+                "JSON/NBT/YAML serialization",
+            ),
+            Cat::TextFormatting => crate::i18n::t(
+                "Formattazione testo / placeholder",
+                "Text formatting / placeholders",
+            ),
+            Cat::Gc => crate::i18n::t("Garbage collector", "Garbage collector"),
+            Cat::Jit => crate::i18n::t("Compilatore JIT", "JIT compiler"),
+            Cat::Native => crate::i18n::t("Codice nativo", "Native code"),
+            Cat::WorldTickOther => crate::i18n::t("Tick mondo (altro)", "World tick (other)"),
+            Cat::ServerTickOther => crate::i18n::t("Tick server (altro)", "Server tick (other)"),
+            Cat::Other => crate::i18n::t("Altro", "Other"),
         }
     }
 
@@ -1080,7 +1119,7 @@ pub fn block_entity_type(node: &Node) -> Option<String> {
 
 pub fn package_bucket(class: &str) -> &'static str {
     if class.is_empty() {
-        return "Nativo (JVM/OS)";
+        return crate::i18n::t("Nativo (JVM/OS)", "Native (JVM/OS)");
     }
     if class.starts_with("net.minecraft.") || class.starts_with("com.mojang.") {
         "Minecraft"
@@ -1104,7 +1143,10 @@ pub fn package_bucket(class: &str) -> &'static str {
             "dev.folia.",
         ],
     ) {
-        "Server (Paper/Spigot/loader)"
+        crate::i18n::t(
+            "Server (Paper/Spigot/loader)",
+            "Server (Paper/Spigot/loader)",
+        )
     } else if starts_any(class, &["java.", "javax.", "jdk.", "sun.", "com.sun."]) {
         "JDK"
     } else if class.starts_with("io.netty.") {
@@ -1126,8 +1168,8 @@ pub fn package_bucket(class: &str) -> &'static str {
             "me.lucko.spark.",
         ],
     ) {
-        "Librerie"
+        crate::i18n::t("Librerie", "Libraries")
     } else {
-        "Sconosciuto"
+        crate::i18n::t("Sconosciuto", "Unknown")
     }
 }

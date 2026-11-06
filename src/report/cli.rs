@@ -168,7 +168,10 @@ pub fn print(r: &Report, o: &CliOptions) {
     println!("{}", p.h1("■ DIAGNOSI"));
     let mut shown = 0;
     for fnd in &r.findings {
-        if !o.all && fnd.severity == Severity::Info && fnd.area != "Panoramica" {
+        if !o.all
+            && fnd.severity == Severity::Info
+            && fnd.area != crate::i18n::t("Panoramica", "Overview")
+        {
             continue;
         }
         if !o.all && shown >= o.top.max(6) * 2 {
@@ -194,10 +197,10 @@ pub fn print(r: &Report, o: &CliOptions) {
         for e in &fnd.evidence {
             println!("   {} {}", p.dim("•"), e);
         }
-        if !fnd.culprits.is_empty() && fnd.area != "Plugin/Mod" {
+        if !fnd.culprits.is_empty() && fnd.area != crate::i18n::t("Plugin/Mod", "Plugin/Mod") {
             println!("   {} {}", p.bold("Responsabili:"), fnd.culprits.join(", "));
         }
-        if !fnd.explanation.is_empty() && fnd.area != "Panoramica" {
+        if !fnd.explanation.is_empty() && fnd.area != crate::i18n::t("Panoramica", "Overview") {
             println!("   {} {}", p.dim("Perché:"), p.dim(&fnd.explanation));
         }
         if !fnd.solutions.is_empty() {

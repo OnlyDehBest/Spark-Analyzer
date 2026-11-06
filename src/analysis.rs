@@ -401,24 +401,29 @@ pub fn analyze(p: &Profile) -> Analysis {
             if !idle && st.owner != Some(s) {
                 let ctx_label = match ctx {
                     Some(Cat::PluginEvents) => {
-                        let ev = event_name(&node.desc).unwrap_or_else(|| "evento".to_string());
+                        let ev = event_name(&node.desc)
+                            .unwrap_or_else(|| crate::i18n::t("evento", "event").to_string());
                         let caller = event_caller
                             .map(|c| strings.names[c as usize].clone())
                             .unwrap_or_default();
                         let ev_id = strings.id(&ev);
                         *events.entry((s, ev_id)).or_insert(0.0) += node.total;
                         if caller.is_empty() {
-                            format!("Evento {ev}")
+                            tf!("Evento {ev}", "Event {ev}")
                         } else {
-                            format!("Evento {ev} (da {caller})")
+                            tf!("Evento {ev} (da {caller})", "Event {ev} (from {caller})")
                         }
                     }
-                    Some(Cat::PluginTasks) => "Task schedulato".to_string(),
-                    Some(Cat::Commands) => "Comando".to_string(),
-                    Some(Cat::Network) => "Gestione pacchetti".to_string(),
+                    Some(Cat::PluginTasks) => {
+                        crate::i18n::t("Task schedulato", "Scheduled task").to_string()
+                    }
+                    Some(Cat::Commands) => crate::i18n::t("Comando", "Command").to_string(),
+                    Some(Cat::Network) => {
+                        crate::i18n::t("Gestione pacchetti", "Packet handling").to_string()
+                    }
                     _ => match st.owner {
-                        Some(o) => format!("Chiamato da {}", strings.names[o as usize]),
-                        None => "Altro".to_string(),
+                        Some(o) => tf!("Chiamato da {}", "Called by {}", strings.names[o as usize]),
+                        None => crate::i18n::t("Altro", "Other").to_string(),
                     },
                 };
                 let ctx_id = strings.id(&ctx_label);
@@ -698,7 +703,7 @@ pub fn analyze(p: &Profile) -> Analysis {
         .map(|((s, e), t)| EntryStat {
             source: name_of(*s),
             entry: name_of(*e),
-            context: "Evento".into(),
+            context: crate::i18n::t("Evento", "Event").into(),
             time: *t,
             pct: pct(*t),
         })
@@ -820,7 +825,7 @@ fn compress_path(thread: &Thread, id: u32) -> Vec<String> {
     let keep_tail = 14usize;
     let start = labels.len().saturating_sub(keep_tail);
     if start > 0 {
-        out.push(format!("… ({} frame sopra)", start));
+        out.push(tf!("… ({} frame sopra)", "… ({} frames above)", start));
     }
     for i in start..labels.len() {
         if i + 3 < labels.len() && is_noise_frame(&full[i]) {
@@ -911,10 +916,16 @@ fn summarize_threads(p: &Profile, main_idx: usize, main: &MainStats) -> Vec<Thre
 fn thread_plugin_hint(name: &str) -> Option<String> {
     let n = name.to_ascii_lowercase();
     if n.contains("craft scheduler") {
-        return Some("task asincroni di plugin (Bukkit scheduler)".into());
+        return Some(
+            crate::i18n::t(
+                "task asincroni di plugin (Bukkit scheduler)",
+                "plugin async tasks (Bukkit scheduler)",
+            )
+            .into(),
+        );
     }
     if n.contains("netty") || n.contains("epoll") || n.contains("io thread") {
-        return Some("rete (Netty)".into());
+        return Some(crate::i18n::t("rete (Netty)", "network (Netty)").into());
     }
     if n.contains("worker-main")
         || n.contains("worldgen")
@@ -922,7 +933,9 @@ fn thread_plugin_hint(name: &str) -> Option<String> {
         || n.contains("c2me")
         || n.contains("moonrise")
     {
-        return Some("chunk / generazione mondo".into());
+        return Some(
+            crate::i18n::t("chunk / generazione mondo", "chunks / world generation").into(),
+        );
     }
     if n.contains("gc") || n.contains("g1") {
         return Some("garbage collector".into());
@@ -933,7 +946,7 @@ fn thread_plugin_hint(name: &str) -> Option<String> {
         || n.contains("lettuce")
         || n.contains("jedis")
     {
-        return Some("database / cache".into());
+        return Some(crate::i18n::t("database / cache", "database / cache").into());
     }
     None
 }
@@ -1033,14 +1046,19 @@ fn analyze_windows(
         let x = &windows[i];
         let mut r = Vec::new();
         if has_stats && x.mspt_max >= 50.0 {
-            r.push(format!("tick più lento {:.0} ms", x.mspt_max));
+            r.push(tf!(
+                "tick più lento {:.0} ms",
+                "slowest tick {:.0} ms",
+                x.mspt_max
+            ));
         }
         if has_stats && x.tps > 0.0 && x.tps < 19.0 {
-            r.push(format!("TPS {:.1}", x.tps));
+            r.push(tf!("TPS {:.1}", "TPS {:.1}", x.tps));
         }
         if med > 0.0 && per[i] > med * 1.6 && (!has_ticks || per[i] > 20.0) {
-            r.push(format!(
+            r.push(tf!(
                 "carico main thread {:.1}× la mediana",
+                "main thread load {:.1}× the median",
                 per[i] / med
             ));
         }
@@ -1151,8 +1169,9 @@ fn detect_periodic(windows: &[WindowStat]) -> Option<String> {
     }
     let (gap, n) = counts.into_iter().max_by_key(|(_, n)| *n)?;
     if gap >= 2 && n * 3 >= gaps.len() * 2 {
-        Some(format!(
-            "I picchi si ripetono circa ogni {gap} minuti: tipico di autosave, backup o task schedulati a intervalli fissi."
+        Some(tf!(
+            "I picchi si ripetono circa ogni {gap} minuti: tipico di autosave, backup o task schedulati a intervalli fissi.",
+            "Spikes repeat about every {gap} minutes: typical of autosave, backups or tasks scheduled at fixed intervals."
         ))
     } else {
         None
@@ -1231,8 +1250,13 @@ pub fn render_tree(
     let mut out = String::new();
     let _ = writeln!(
         out,
-        "Albero di «{}» — % sul tempo attivo, soglia {}%",
-        t.name, min_pct
+        "{}",
+        tf!(
+            "Albero di «{}» — % sul tempo attivo, soglia {}%",
+            "Tree of “{}” — % of active time, threshold {}%",
+            t.name,
+            min_pct
+        )
     );
     let ticks = a.main.ticks;
     let mut st: Vec<(u32, usize)> = t.roots.iter().rev().map(|r| (*r, 0)).collect();

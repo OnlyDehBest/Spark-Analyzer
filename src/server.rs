@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io::Read;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -5,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use anyhow::{Result, anyhow};
 use tiny_http::{Header, Method, Request, Response, Server};
 
+use crate::i18n::{self, Lang};
 use crate::loader;
 use crate::pipeline;
 use crate::report::html::icon;
@@ -18,8 +20,10 @@ struct Stored {
     title: String,
     detail: String,
     bad: bool,
-    html: String,
-    markdown: String,
+    bytes: Arc<Vec<u8>>,
+    name: String,
+    key: Option<String>,
+    cache: HashMap<Lang, String>,
 }
 
 struct State {
@@ -53,7 +57,7 @@ pub fn serve(o: ServeOptions) -> Result<()> {
         o.host.as_str()
     };
     let url = format!("http://{shown_host}:{port}/");
-    eprintln!("Spark-Analyzer è in esecuzione: apri {url}");
+    eprintln!("Spark-Analyzer è in esecuzione: apri {url}  (running: open {url})");
     eprintln!("Lascia aperta questa finestra; chiudila (o premi Ctrl+C) per fermarlo.");
     if o.host != "127.0.0.1" && o.host != "localhost" {
         eprintln!(
@@ -135,6 +139,8 @@ fn percent_decode(s: &str) -> String {
 
 fn handle(mut req: Request, st: &State) {
     let url = req.url().to_string();
+    let lang = Lang::parse(&query_param(&url, "lang").unwrap_or_default());
+    let _guard = i18n::scoped(lang);
     let path = url.split('?').next().unwrap_or("/").to_string();
     let method = req.method().clone();
     let resp = match (method, path.as_str()) {
@@ -144,56 +150,82 @@ fn handle(mut req: Request, st: &State) {
             let mut body = String::new();
             let _ = req.as_reader().take(8192).read_to_string(&mut body);
             let link = body.trim().to_string();
-            let result = loader::load_link(&link, &st.bytebin).and_then(|l| store(st, l));
+            let result = loader::fetch_link(&link, &st.bytebin)
+                .and_then(|(bytes, key)| store(st, bytes, key.clone(), Some(key)));
             api_result(result)
         }
         (Method::Post, "/api/file") => {
-            let name = query_param(&url, "name").unwrap_or_else(|| "profilo".into());
+            let name = query_param(&url, "name").unwrap_or_else(|| "profile".into());
             let mut bytes = Vec::new();
             let read = req
                 .as_reader()
                 .take(MAX_UPLOAD as u64 + 1)
                 .read_to_end(&mut bytes);
             let result = match read {
-                Err(e) => Err(anyhow!("upload interrotto: {e}")),
-                Ok(_) if bytes.len() > MAX_UPLOAD => {
-                    Err(anyhow!("file troppo grande (massimo 512 MB)"))
-                }
-                Ok(_) if bytes.is_empty() => Err(anyhow!("il file è vuoto")),
-                Ok(_) => loader::load_bytes(&bytes, &name).and_then(|l| store(st, l)),
+                Err(e) => Err(anyhow!(
+                    "{}",
+                    tf!("upload interrotto: {e}", "upload interrupted: {e}")
+                )),
+                Ok(_) if bytes.len() > MAX_UPLOAD => Err(anyhow!(
+                    "{}",
+                    i18n::t(
+                        "file troppo grande (massimo 512 MB)",
+                        "file too large (max 512 MB)"
+                    )
+                )),
+                Ok(_) if bytes.is_empty() => Err(anyhow!(
+                    "{}",
+                    i18n::t("il file è vuoto", "the file is empty")
+                )),
+                Ok(_) => store(st, bytes, name, None),
             };
             api_result(result)
         }
         (Method::Get, p) if p.starts_with("/r/") => {
-            let rest = &p[3..];
-            let (id, kind) = match rest.split_once('/') {
-                Some((i, k)) => (i, k),
-                None => (rest, ""),
-            };
-            let reports = st.reports.lock().unwrap_or_else(|e| e.into_inner());
-            match reports.iter().find(|r| r.id == id) {
-                Some(r) => match kind {
-                    "" => html_resp(with_actions(&r.html)),
-                    "html" => Response::from_data(r.html.clone().into_bytes())
-                        .with_header(header("Content-Type", "text/html; charset=utf-8"))
-                        .with_header(header(
-                            "Content-Disposition",
-                            &format!("attachment; filename=\"spark-analyzer-{}.html\"", r.id),
-                        )),
-                    "md" => Response::from_data(r.markdown.clone().into_bytes())
-                        .with_header(header("Content-Type", "text/markdown; charset=utf-8"))
-                        .with_header(header(
-                            "Content-Disposition",
-                            &format!("attachment; filename=\"spark-analyzer-{}.md\"", r.id),
-                        )),
-                    _ => html_resp(not_found()).with_status_code(404),
-                },
+            let id = p[3..].trim_end_matches('/').to_string();
+            match report_html(st, &id, lang) {
+                Some(Ok(h)) => html_resp(with_actions(&h)),
+                Some(Err(e)) => html_resp(format!(
+                    "<pre>{}</pre>",
+                    crate::report::html::esc(&format!("{e:#}"))
+                ))
+                .with_status_code(500),
                 None => html_resp(not_found()).with_status_code(404),
             }
         }
         _ => html_resp(not_found()).with_status_code(404),
     };
     let _ = req.respond(resp);
+}
+
+fn render(bytes: &[u8], name: &str, key: Option<&str>) -> Result<webui::Rendered> {
+    let mut loaded = loader::load_bytes(bytes, name)?;
+    if let Some(k) = key {
+        loaded.origin = format!("https://spark.lucko.me/{k}");
+        loaded.viewer_url = Some(format!("https://spark.lucko.me/{k}"));
+    }
+    let (r, _, heap_report) = pipeline::build(loaded, None)?;
+    Ok(webui::render_report(&r, heap_report.as_ref()))
+}
+
+fn report_html(st: &State, id: &str, lang: Lang) -> Option<Result<String>> {
+    let (bytes, name, key) = {
+        let reports = st.reports.lock().unwrap_or_else(|e| e.into_inner());
+        let r = reports.iter().find(|r| r.id == id)?;
+        if let Some(h) = r.cache.get(&lang) {
+            return Some(Ok(h.clone()));
+        }
+        (Arc::clone(&r.bytes), r.name.clone(), r.key.clone())
+    };
+    let out = match render(&bytes, &name, key.as_deref()) {
+        Ok(o) => o,
+        Err(e) => return Some(Err(e)),
+    };
+    let mut reports = st.reports.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(r) = reports.iter_mut().find(|r| r.id == id) {
+        r.cache.insert(lang, out.html.clone());
+    }
+    Some(Ok(out.html))
 }
 
 fn api_result(r: Result<String>) -> Response<std::io::Cursor<Vec<u8>>> {
@@ -203,14 +235,15 @@ fn api_result(r: Result<String>) -> Response<std::io::Cursor<Vec<u8>>> {
     }
 }
 
-fn store(st: &State, loaded: loader::Loaded) -> Result<String> {
-    let (r, _, heap_report) = pipeline::build(loaded, None)?;
-    let out = webui::render_report(&r, heap_report.as_ref());
+fn store(st: &State, bytes: Vec<u8>, name: String, key: Option<String>) -> Result<String> {
+    let out = render(&bytes, &name, key.as_deref())?;
     let n = st.counter.fetch_add(1, Ordering::Relaxed);
     let id = format!(
         "{n}{:x}",
-        (r.meta.start_time.unsigned_abs() ^ (n.wrapping_mul(2_654_435_761))) & 0xffff
+        (bytes.len() as u64 ^ n.wrapping_mul(2_654_435_761)) & 0xffff
     );
+    let mut cache = HashMap::new();
+    cache.insert(i18n::lang(), out.html);
     let mut reports = st.reports.lock().unwrap_or_else(|e| e.into_inner());
     reports.insert(
         0,
@@ -219,8 +252,10 @@ fn store(st: &State, loaded: loader::Loaded) -> Result<String> {
             title: out.title,
             detail: out.detail,
             bad: out.bad,
-            html: out.html,
-            markdown: out.markdown,
+            bytes: Arc::new(bytes),
+            name,
+            key,
+            cache,
         },
     );
     reports.truncate(MAX_STORED);
@@ -232,7 +267,11 @@ fn index_page(st: &State) -> String {
     let recent: Vec<webui::Recent> = reports
         .iter()
         .map(|r| webui::Recent {
-            href: format!("/r/{}", r.id),
+            href: if i18n::is_en() {
+                format!("/r/{}?lang=en", r.id)
+            } else {
+                format!("/r/{}", r.id)
+            },
             title: r.title.clone(),
             detail: r.detail.clone(),
             bad: r.bad,
@@ -249,8 +288,10 @@ fn with_actions(html: &str) -> String {
     html.replacen(
         r#"<div class="actions">"#,
         &format!(
-            r#"<div class="actions"><a class="btn sec" href="/">{}Nuova analisi</a>"#,
-            icon("plus")
+            r#"<div class="actions"><a class="btn sec" href="{}">{}{}</a>"#,
+            if i18n::is_en() { "/?lang=en" } else { "/" },
+            icon("plus"),
+            i18n::t("Nuova analisi", "New analysis")
         ),
         1,
     )

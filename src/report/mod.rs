@@ -1,6 +1,7 @@
 #[cfg(feature = "cli")]
 pub mod cli;
 pub mod html;
+pub mod localize;
 pub mod markdown;
 
 use serde::Serialize;
@@ -105,7 +106,7 @@ pub fn build(
         },
         mode: match p.mode {
             crate::model::Mode::Execution => "CPU".into(),
-            crate::model::Mode::Allocation => "Allocazioni".into(),
+            crate::model::Mode::Allocation => crate::i18n::t("Allocazioni", "Allocations").into(),
             crate::model::Mode::Lock => "Lock".into(),
         },
         start_time: m.start_time,

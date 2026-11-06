@@ -1,5 +1,6 @@
 use wasm_bindgen::prelude::*;
 
+use sparkscope::i18n::{self, Lang};
 use sparkscope::{loader, pipeline, webui};
 
 pub fn analyze_to_json(
@@ -7,7 +8,9 @@ pub fn analyze_to_json(
     name: &str,
     key: Option<String>,
     home: &str,
+    lang: &str,
 ) -> Result<String, String> {
+    let _guard = i18n::scoped(Lang::parse(lang));
     let mut loaded = loader::load_bytes(bytes, name).map_err(|e| format!("{e:#}"))?;
     if let Some(k) = &key {
         loaded.origin = format!("https://spark.lucko.me/{k}");
@@ -31,8 +34,9 @@ pub fn analyze(
     name: &str,
     key: Option<String>,
     home: String,
+    lang: String,
 ) -> Result<String, JsValue> {
-    analyze_to_json(bytes, name, key, &home).map_err(|e| JsValue::from_str(&e))
+    analyze_to_json(bytes, name, key, &home, &lang).map_err(|e| JsValue::from_str(&e))
 }
 
 #[wasm_bindgen]

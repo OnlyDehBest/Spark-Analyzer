@@ -19,9 +19,9 @@ pub enum Payload {
 impl Payload {
     pub fn kind(&self) -> &'static str {
         match self {
-            Payload::Sampler(_) => "profilo CPU (sampler)",
+            Payload::Sampler(_) => crate::i18n::t("profilo CPU (sampler)", "CPU profile (sampler)"),
             Payload::Heap(_) => "heap summary",
-            Payload::Health(_) => "health report",
+            Payload::Health(_) => crate::i18n::t("health report", "health report"),
         }
     }
 }
@@ -44,7 +44,8 @@ pub struct Loaded {
 pub fn load(input: &str, bytebin: &str) -> Result<Loaded> {
     let path = Path::new(input);
     if path.exists() {
-        let bytes = std::fs::read(path).with_context(|| format!("impossibile leggere {input}"))?;
+        let bytes = std::fs::read(path)
+            .with_context(|| tf!("impossibile leggere {input}", "cannot read {input}"))?;
         let hint = match path.extension().and_then(|e| e.to_str()).unwrap_or("") {
             "sparkprofile" => Hint::Sampler,
             "sparkheap" => Hint::Heap,
@@ -59,7 +60,7 @@ pub fn load(input: &str, bytebin: &str) -> Result<Loaded> {
         });
     }
     let key = extract_key(input).ok_or_else(|| {
-        anyhow!("'{input}' non è un file esistente né un link/codice spark valido (es. https://spark.lucko.me/AbCd1234)")
+        anyhow!("{}", tf!("'{input}' non è un file esistente né un link/codice spark valido (es. https://spark.lucko.me/AbCd1234)", "'{input}' is neither an existing file nor a valid spark link/code (e.g. https://spark.lucko.me/AbCd1234)"))
     })?;
     let (bytes, hint) = download(bytebin, &key)?;
     let payload = decode(&bytes, hint)?;
@@ -90,11 +91,18 @@ pub fn load_bytes(bytes: &[u8], name: &str) -> Result<Loaded> {
 }
 
 #[cfg(feature = "cli")]
+pub fn fetch_link(input: &str, bytebin: &str) -> Result<(Vec<u8>, String)> {
+    let key = extract_key(input).ok_or_else(|| {
+        anyhow!("{}", tf!("'{input}' non è un link o codice spark valido (es. https://spark.lucko.me/AbCd1234)", "'{input}' is not a valid spark link or code (e.g. https://spark.lucko.me/AbCd1234)"))
+    })?;
+    let (bytes, _) = download(bytebin, &key)?;
+    Ok((bytes, key))
+}
+
+#[cfg(feature = "cli")]
 pub fn load_link(input: &str, bytebin: &str) -> Result<Loaded> {
     let key = extract_key(input).ok_or_else(|| {
-        anyhow!(
-            "'{input}' non è un link o codice spark valido (es. https://spark.lucko.me/AbCd1234)"
-        )
+        anyhow!("{}", tf!("'{input}' non è un link o codice spark valido (es. https://spark.lucko.me/AbCd1234)", "'{input}' is not a valid spark link or code (e.g. https://spark.lucko.me/AbCd1234)"))
     })?;
     let (bytes, hint) = download(bytebin, &key)?;
     let payload = decode(&bytes, hint)?;
@@ -148,10 +156,12 @@ fn download(bytebin: &str, key: &str) -> Result<(Vec<u8>, Hint)> {
         .user_agent(concat!("sparkscope/", env!("CARGO_PKG_VERSION")))
         .build()
         .into();
-    let mut resp = agent
-        .get(&url)
-        .call()
-        .with_context(|| format!("download fallito da {url} (il link potrebbe essere scaduto)"))?;
+    let mut resp = agent.get(&url).call().with_context(|| {
+        tf!(
+            "download fallito da {url} (il link potrebbe essere scaduto)",
+            "download from {url} failed (the link may have expired)"
+        )
+    })?;
     let ctype = resp
         .headers()
         .get("content-type")
@@ -172,7 +182,10 @@ fn download(bytebin: &str, key: &str) -> Result<(Vec<u8>, Hint)> {
         .with_config()
         .limit(512 * 1024 * 1024)
         .read_to_vec()
-        .context("lettura della risposta fallita")?;
+        .context(crate::i18n::t(
+            "lettura della risposta fallita",
+            "failed to read the response",
+        ))?;
     Ok((bytes, hint))
 }
 
@@ -181,7 +194,10 @@ fn maybe_gunzip(bytes: &[u8]) -> Result<Vec<u8>> {
         let mut out = Vec::with_capacity(bytes.len() * 4);
         flate2::read::MultiGzDecoder::new(bytes)
             .read_to_end(&mut out)
-            .context("decompressione gzip fallita")?;
+            .context(crate::i18n::t(
+                "decompressione gzip fallita",
+                "gzip decompression failed",
+            ))?;
         Ok(out)
     } else {
         Ok(bytes.to_vec())
@@ -201,17 +217,17 @@ fn decode(raw: &[u8], hint: Hint) -> Result<Payload> {
         Ok(s) if s.metadata.is_some() && (!s.threads.is_empty() || looks_like_sampler(&s)) => {
             return Ok(Payload::Sampler(Box::new(s)));
         }
-        Ok(_) => errors.push("sampler: nessun dato".into()),
+        Ok(_) => errors.push(crate::i18n::t("sampler: nessun dato", "sampler: no data").into()),
         Err(e) => errors.push(format!("sampler: {e}")),
     }
     match HeapData::decode(&*bytes) {
         Ok(h) if !h.entries.is_empty() => return Ok(Payload::Heap(Box::new(h))),
-        Ok(_) => errors.push("heap: nessun dato".into()),
+        Ok(_) => errors.push(crate::i18n::t("heap: nessun dato", "heap: no data").into()),
         Err(e) => errors.push(format!("heap: {e}")),
     }
     match HealthData::decode(&*bytes) {
         Ok(h) if h.metadata.is_some() => return Ok(Payload::Health(Box::new(h))),
-        Ok(_) => errors.push("health: nessun dato".into()),
+        Ok(_) => errors.push(crate::i18n::t("health: nessun dato", "health: no data").into()),
         Err(e) => errors.push(format!("health: {e}")),
     }
     bail!("{}", describe_unknown(raw, &bytes, &errors))
@@ -232,24 +248,30 @@ fn describe_unknown(raw: &[u8], bytes: &[u8], errors: &[String]) -> String {
         .take(200)
         .filter(|b| b.is_ascii_graphic() || **b == b' ' || **b == b'\n')
         .count();
-    let mut msg = String::from(
+    let mut msg = String::from(crate::i18n::t(
         "formato non riconosciuto: non sembra un profilo spark (sampler, heap o health).",
-    );
+        "unrecognized format: this doesn't look like a spark profile (sampler, heap or health).",
+    ));
     if bytes.is_empty() {
-        msg.push_str(" Il contenuto è vuoto: il link potrebbe essere scaduto.");
+        msg.push_str(crate::i18n::t(
+            " Il contenuto è vuoto: il link potrebbe essere scaduto.",
+            " The content is empty: the link may have expired.",
+        ));
     } else if printable * 10 >= bytes.len().min(200) * 9 {
         let text: String =
             String::from_utf8_lossy(&bytes[..bytes.len().min(160)]).replace('\n', " ");
-        msg.push_str(&format!(
+        msg.push_str(&tf!(
             " Il contenuto è testo, non un profilo: «{}»",
+            " The content is text, not a profile: “{}”",
             text.trim()
         ));
     } else {
-        msg.push_str(&format!(
+        msg.push_str(&tf!(
             " Dettagli: {} byte{}, inizio {}; {}.",
+            " Details: {} bytes{}, starting with {}; {}.",
             bytes.len(),
             if raw.len() != bytes.len() {
-                format!(" ({} compressi)", raw.len())
+                tf!(" ({} compressi)", " ({} compressed)", raw.len())
             } else {
                 String::new()
             },

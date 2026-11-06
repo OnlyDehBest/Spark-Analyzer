@@ -92,21 +92,22 @@ pub fn analyze(h: &HeapData) -> HeapReport {
     let mut notes = Vec::new();
     let chunks = count(".LevelChunk") + count(".Chunk");
     if chunks > 0 {
-        notes.push(format!("Chunk in memoria: circa {chunks}. Valori molto alti indicano view-distance alta o plugin che tengono chunk caricati."));
+        notes.push(tf!("Chunk in memoria: circa {chunks}. Valori molto alti indicano view-distance alta o plugin che tengono chunk caricati.", "Chunks in memory: about {chunks}. Very high values indicate a high view-distance or plugins keeping chunks loaded."));
     }
     let items = count(".ItemEntity");
     if items > 2000 {
-        notes.push(format!(
-            "{items} item a terra (ItemEntity): farm o drop che si accumulano."
+        notes.push(tf!(
+            "{items} item a terra (ItemEntity): farm o drop che si accumulano.",
+            "{items} dropped items (ItemEntity): farms or drops piling up."
         ));
     }
     let players = count(".ServerPlayer");
     if players > 0 {
-        notes.push(format!("{players} oggetti ServerPlayer: se sono molto più dei giocatori online c'è un memory leak (un plugin tiene riferimenti a giocatori usciti)."));
+        notes.push(tf!("{players} oggetti ServerPlayer: se sono molto più dei giocatori online c'è un memory leak (un plugin tiene riferimenti a giocatori usciti).", "{players} ServerPlayer objects: if this is far more than the online players there is a memory leak (a plugin keeps references to players who left)."));
     }
     let worlds = count(".ServerLevel");
     if worlds > 0 {
-        notes.push(format!("{worlds} mondi (ServerLevel) in memoria: se più dei mondi caricati, un plugin tiene riferimenti a mondi scaricati."));
+        notes.push(tf!("{worlds} mondi (ServerLevel) in memoria: se più dei mondi caricati, un plugin tiene riferimenti a mondi scaricati.", "{worlds} worlds (ServerLevel) in memory: if more than the loaded worlds, a plugin keeps references to unloaded worlds."));
     }
     for g in by_package.iter().take(12) {
         if !g.kind.starts_with("JDK")
@@ -115,7 +116,7 @@ pub fn analyze(h: &HeapData) -> HeapReport {
             && !g.kind.starts_with("it.unimi")
             && g.pct >= 5.0
         {
-            notes.push(format!("Il package {} occupa il {:.1}% dell'heap: probabile cache/dati di un plugin, verifica se cresce nel tempo.", g.kind, g.pct));
+            notes.push(tf!("Il package {} occupa il {:.1}% dell'heap: probabile cache/dati di un plugin, verifica se cresce nel tempo.", "Package {} takes {:.1}% of the heap: probably a plugin's cache/data, check whether it grows over time.", g.kind, g.pct));
         }
     }
     top.truncate(50);
@@ -133,18 +134,22 @@ pub fn render_text(r: &HeapReport) -> String {
     let _ = writeln!(o, "\n━━ sparkscope · heap summary ━━");
     let _ = writeln!(
         o,
-        "Totale: {} in {} oggetti\n",
-        fmt_time(r.total_size as f64, "byte"),
-        r.total_instances
+        "{}",
+        tf!(
+            "Totale: {} in {} oggetti\n",
+            "Total: {} in {} objects\n",
+            fmt_time(r.total_size as f64, "byte"),
+            r.total_instances
+        )
     );
     if !r.notes.is_empty() {
-        let _ = writeln!(o, "■ Osservazioni");
+        let _ = writeln!(o, "{}", crate::i18n::t("■ Osservazioni", "■ Observations"));
         for n in &r.notes {
             let _ = writeln!(o, "  • {n}");
         }
         let _ = writeln!(o);
     }
-    let _ = writeln!(o, "■ Per package");
+    let _ = writeln!(o, "{}", crate::i18n::t("■ Per package", "■ By package"));
     for g in r.by_package.iter().take(15) {
         let _ = writeln!(
             o,
@@ -155,7 +160,11 @@ pub fn render_text(r: &HeapReport) -> String {
             g.kind
         );
     }
-    let _ = writeln!(o, "\n■ Tipi più grandi");
+    let _ = writeln!(
+        o,
+        "{}",
+        crate::i18n::t("\n■ Tipi più grandi", "\n■ Largest types")
+    );
     for t in r.top.iter().take(30) {
         let _ = writeln!(
             o,

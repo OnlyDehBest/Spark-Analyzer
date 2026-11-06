@@ -1305,6 +1305,7 @@ dependencies = [
  "prost",
  "prost-build",
  "protox",
+ "regex",
  "serde",
  "serde_json",
  "tiny_http",

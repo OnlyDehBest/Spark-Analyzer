@@ -240,6 +240,10 @@ fn pct_bar(p: f64) -> String {
 pub(crate) const LOGO_SVG: &str = r##"<svg viewBox="0 0 32 32" width="32" height="32" aria-hidden="true"><defs><linearGradient id="sa-g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4dabf7"/><stop offset="1" stop-color="#7048e8"/></linearGradient></defs><rect width="32" height="32" rx="8" fill="url(#sa-g)"/><circle cx="14" cy="14" r="7.6" fill="rgba(255,255,255,.12)" stroke="#fff" stroke-width="2.3"/><path d="M19.7 19.7L25.2 25.2" stroke="#fff" stroke-width="3" stroke-linecap="round"/><path d="M8.6 14.6h2.3l1.5-3.4l2.3 6.2l1.7-4H19.4" fill="none" stroke="#ffd43b" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>"##;
 pub(crate) const FAVICON: &str = r##"<link rel="icon" href="data:image/svg+xml,%3Csvg viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='sa-g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%234dabf7'/%3E%3Cstop offset='1' stop-color='%237048e8'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23sa-g)'/%3E%3Ccircle cx='14' cy='14' r='7.6' fill='rgba(255,255,255,.12)' stroke='%23fff' stroke-width='2.3'/%3E%3Cpath d='M19.7 19.7L25.2 25.2' stroke='%23fff' stroke-width='3' stroke-linecap='round'/%3E%3Cpath d='M8.6 14.6h2.3l1.5-3.4l2.3 6.2l1.7-4H19.4' fill='none' stroke='%23ffd43b' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">"##;
 
+pub(crate) fn lang_to() -> &'static str {
+    if crate::i18n::is_en() { "it" } else { "en" }
+}
+
 pub(crate) fn icon(name: &str) -> String {
     let d = match name {
         "activity" => "M3 12h4l3 8l4-16l3 8h4",
@@ -383,7 +387,8 @@ pub fn render(r: &Report) -> String {
     );
 
     let lag = r.findings.iter().any(|f| {
-        f.area == "Panoramica" && f.title.contains("lag") && !f.title.starts_with("Nessun")
+        f.area == crate::i18n::t("Panoramica", "Overview")
+            && f.title == crate::i18n::t("Il server mostra lag", "The server is lagging")
     });
     let nav_items: [(&str, &str, &str); 9] = [
         ("diagnosi", "clipboard", "Diagnosi"),
@@ -411,7 +416,7 @@ pub fn render(r: &Report) -> String {
     };
     let _ = write!(
         b,
-        r#"<div class="shell"><aside class="side"><div class="brand"><span class="logo">{}</span><span>Spark-Analyzer</span></div><div class="status {}"><i></i>{}</div><nav>{nav}</nav><div class="sidefoot"><div class="srv"><b>{}</b><span>{}</span></div><button id="theme" class="ghost" title="Tema chiaro/scuro">{}</button></div></aside><main class="content">"#,
+        r#"<div class="shell"><aside class="side"><div class="brand"><span class="logo">{}</span><span>Spark-Analyzer</span></div><div class="status {}"><i></i>{}</div><nav>{nav}</nav><div class="sidefoot"><div class="srv"><b>{}</b><span>{}</span></div><button id="langbtn" class="ghost lang" data-to="{}" title="Lingua / Language">{}</button><button id="theme" class="ghost" title="Tema chiaro/scuro">{}</button></div></aside><main class="content">"#,
         LOGO_SVG,
         if lag { "lag" } else { "okk" },
         if lag { "In lag" } else { "Stabile" },
@@ -421,6 +426,8 @@ pub fn render(r: &Report) -> String {
             &m.platform
         }),
         esc(&mc),
+        lang_to(),
+        lang_to().to_ascii_uppercase(),
         icon("moon"),
     );
     let _ = write!(
@@ -452,7 +459,9 @@ pub fn render(r: &Report) -> String {
     let hidable = r
         .findings
         .iter()
-        .filter(|f| f.severity == Severity::Info && f.area != "Panoramica")
+        .filter(|f| {
+            f.severity == Severity::Info && f.area != crate::i18n::t("Panoramica", "Overview")
+        })
         .count();
     b.push_str(r#"<section id="diagnosi"><h2>Diagnosi</h2>"#);
     if hidable > 0 {
@@ -462,16 +471,18 @@ pub fn render(r: &Report) -> String {
         );
     }
     for f in &r.findings {
-        let hide = if f.severity == Severity::Info && f.area != "Panoramica" {
-            " hidable"
-        } else {
-            ""
-        };
-        let open = if f.severity <= Severity::Alto || f.area == "Panoramica" {
-            " open"
-        } else {
-            ""
-        };
+        let hide =
+            if f.severity == Severity::Info && f.area != crate::i18n::t("Panoramica", "Overview") {
+                " hidable"
+            } else {
+                ""
+            };
+        let open =
+            if f.severity <= Severity::Alto || f.area == crate::i18n::t("Panoramica", "Overview") {
+                " open"
+            } else {
+                ""
+            };
         let impact = if f.impact_pct > 0.0 {
             format!(r#"<span class="imp">{}%</span>"#, fmt_num(f.impact_pct))
         } else {
@@ -872,14 +883,19 @@ pub fn render(r: &Report) -> String {
             ),
         );
     }
-    format!(
+    let page = format!(
         "<!doctype html><html lang=\"it\" data-theme=\"dark\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">{}<title>{}</title><style>{}</style></head><body>{}<script>{}</script></body></html>",
         FAVICON,
         esc(&title),
         CSS,
         b,
         JS
-    )
+    );
+    if crate::i18n::is_en() {
+        super::localize::to_english(&page)
+    } else {
+        page
+    }
 }
 
 pub(crate) const CSS: &str = r#"
@@ -896,7 +912,7 @@ a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
 .side nav a{display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:5px;color:var(--fg);font-size:13px}.side nav a:hover{background:var(--card2);text-decoration:none}.side nav a.on{background:var(--accl);color:var(--acc)}.side nav svg{width:16px;height:16px;flex:none;opacity:.85}
 .sidefoot{margin-top:auto;display:flex;gap:8px;align-items:center;border:1px solid var(--line);border-radius:6px;padding:8px;background:var(--card)}
 .srv{flex:1;min-width:0;display:flex;flex-direction:column;font-size:12px}.srv b{color:var(--hd);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.srv span{color:var(--muted)}
-.ghost{background:transparent;border:1px solid var(--line);color:var(--fg);border-radius:5px;width:32px;height:32px;display:grid;place-items:center;cursor:pointer;padding:0}.ghost:hover{background:var(--card2)}
+.ghost{background:transparent;border:1px solid var(--line);color:var(--fg);border-radius:5px;width:32px;height:32px;display:grid;place-items:center;cursor:pointer;padding:0}.ghost:hover{background:var(--card2)}.ghost.lang{font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--muted)}
 .content{flex:1;min-width:0;padding:6px 8px 0}
 .top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin:4px 0 16px}
 h1{margin:0;font-size:28px;font-weight:600;color:var(--hd);letter-spacing:-.01em}.sub{margin:4px 0 0;color:var(--muted);font-size:13px}
@@ -942,6 +958,7 @@ const JS: &str = r#"
 (function(){
 var docEl=document.documentElement;try{var t=localStorage.getItem('sparkscope-theme');if(t)docEl.dataset.theme=t}catch(e){}
 var tb=document.getElementById('theme');if(tb)tb.addEventListener('click',function(){var n=docEl.dataset.theme==='dark'?'light':'dark';docEl.dataset.theme=n;try{localStorage.setItem('sparkscope-theme',n)}catch(e){}if(window.__redrawFlame)window.__redrawFlame()});
+var lb=document.getElementById('langbtn');if(lb)lb.addEventListener('click',function(){var n=lb.dataset.to;try{localStorage.setItem('sa-lang',n)}catch(e){}if(window.__saRender){window.__saRender(n);return}var u=new URL(location.href);u.searchParams.set('lang',n);location.href=u.toString()});
 var links=Array.from(document.querySelectorAll('.side nav a'));if('IntersectionObserver' in window){var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){links.forEach(function(l){l.classList.toggle('on',l.getAttribute('href')==='#'+e.target.id)})}})},{rootMargin:'-20% 0px -70% 0px'});document.querySelectorAll('section[id]').forEach(function(s){io.observe(s)})}
 document.body.classList.add('hideinfo');
 var si=document.getElementById('showinfo');if(si)si.addEventListener('change',function(){document.body.classList.toggle('hideinfo',!si.checked)});

@@ -4,6 +4,8 @@
     clippy::redundant_guards
 )]
 
+#[macro_use]
+pub mod i18n;
 pub mod analysis;
 pub mod config;
 pub mod diff;

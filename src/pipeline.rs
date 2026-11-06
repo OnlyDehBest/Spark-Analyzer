@@ -18,8 +18,12 @@ pub fn build(loaded: Loaded, thread: Option<&str>) -> Result<Built> {
             {
                 let names: Vec<&str> = p.threads.iter().map(|t| t.name.as_str()).collect();
                 bail!(
-                    "thread '{t}' non trovato. Disponibili: {}",
-                    names.join(", ")
+                    "{}",
+                    tf!(
+                        "thread '{t}' non trovato. Disponibili: {}",
+                        "thread '{t}' not found. Available: {}",
+                        names.join(", ")
+                    )
                 );
             }
             let a = analysis::analyze(&p);
