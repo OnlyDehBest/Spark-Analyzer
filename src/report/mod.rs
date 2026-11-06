@@ -36,6 +36,8 @@ pub struct MetaInfo {
     pub mspt_max: Option<f64>,
     pub ticked_threshold: Option<i64>,
     pub uptime_s: Option<f64>,
+    pub window_filter: Option<Vec<usize>>,
+    pub windows_total: usize,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -127,6 +129,12 @@ pub fn build(
         mspt_p95: mspt.map(|x| x.percentile95),
         mspt_max: mspt.map(|x| x.max),
         ticked_threshold: p.ticked_threshold(),
+        window_filter: p.window_filter.clone(),
+        windows_total: if p.windows_total > 0 {
+            p.windows_total
+        } else {
+            p.window_count()
+        },
         uptime_s: ps.map(|s| s.uptime as f64 / 1000.0).filter(|v| *v > 0.0),
     };
     let hot_chunks = rules::hot_chunks(ps, 15)

@@ -205,8 +205,9 @@ fn timeline_svg(r: &Report) -> Option<String> {
     }
     let _ = write!(
         s,
-        r#"<line class="guide" x1="0" x2="0" y1="10" y2="{:.1}" style="display:none"/>"#,
-        10.0 + ph
+        r#"<line class="guide" x1="0" x2="0" y1="10" y2="{:.1}" style="display:none"/><rect class="brush" x="0" y="10" width="0" height="{:.1}" style="display:none"/>"#,
+        10.0 + ph,
+        ph
     );
     let bw = pw / n;
     for i in 0..ws.len() {
@@ -226,7 +227,7 @@ fn timeline_svg(r: &Report) -> Option<String> {
             r#"<text x="{:.1}" y="{:.1}" class="axis" text-anchor="middle">#{}</text>"#,
             x(i),
             ht - 8.0,
-            i + 1
+            ws[i].index + 1
         );
     }
     s.push_str("</svg>");
@@ -260,6 +261,7 @@ fn timeline_svg(r: &Report) -> Option<String> {
                 .unwrap_or_default();
             serde_json::json!({
                 "t": crate::rules::window_label(w),
+                "o": w.index,
                 "tps": w.tps, "med": w.mspt_median, "max": w.mspt_max, "busy": w.busy_per_tick,
                 "pl": w.players, "en": w.entities, "te": w.tile_entities, "ch": w.chunks,
                 "cpu": w.cpu_process * 100.0, "spike": reason, "causes": causes,
@@ -365,6 +367,9 @@ pub(crate) fn icon(name: &str) -> String {
         }
         "external" => {
             "M12 6H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6M11 13l9-9M15 4h5v5"
+        }
+        "tree" => {
+            "M5 4v12a2 2 0 0 0 2 2h4M5 9h6M15 7a2 2 0 1 0 4 0a2 2 0 1 0-4 0M15 12a2 2 0 1 0 4 0a2 2 0 1 0-4 0M15 18a2 2 0 1 0 4 0a2 2 0 1 0-4 0M11 9h4M11 18h4"
         }
         "sidebar" => "M4 5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM9 4v16",
         "moon" => "M12 3h.39a7.5 7.5 0 0 0 7.92 12.45A9 9 0 1 1 12 3z",
@@ -474,12 +479,13 @@ pub fn render(r: &Report) -> String {
         f.area == crate::i18n::t("Panoramica", "Overview")
             && f.title == crate::i18n::t("Il server mostra lag", "The server is lagging")
     });
-    let nav_items: [(&str, &str, &str); 9] = [
+    let nav_items: [(&str, &str, &str); 10] = [
         ("diagnosi", "clipboard", "Diagnosi"),
         ("tempo", "pie", "Tempo main thread"),
         ("plugin", "plug", "Plugin e mod"),
         ("spike", "line", "Lag spike"),
         ("flame", "flame", "Flamegraph"),
+        ("albero", "tree", "Albero chiamate"),
         ("metodi", "list", "Metodi"),
         ("entita", "cube", "Entità"),
         ("thread", "stack", "Thread"),
@@ -552,6 +558,22 @@ pub fn render(r: &Report) -> String {
             b,
             r#"<div class="unitbar"><span class="dim">{}</span><div class="seg" id="unitsel" data-f="{factor}" data-u="{unit}"><button type="button" data-m="pct" class="on">%</button><button type="button" data-m="ms">{unit}</button></div></div>"#,
             crate::i18n::t("Mostra i consumi in", "Show usage as")
+        );
+    }
+    if let Some(sel) = &m.window_filter {
+        let list: Vec<String> = sel.iter().map(|i| format!("#{}", i + 1)).collect();
+        let _ = write!(
+            b,
+            r#"<div class="fbanner">{}<span>{}</span><button type="button" class="chip needs-filter" data-w="" hidden>{}</button></div>"#,
+            icon("line"),
+            esc(&tf!(
+                "Analisi limitata a {} finestre su {} ({}): i valori si riferiscono solo a questo periodo.",
+                "Analysis limited to {} of {} windows ({}): values refer to this period only.",
+                sel.len(),
+                m.windows_total,
+                list.join(", ")
+            )),
+            crate::i18n::t("Mostra tutto il profilo", "Show the whole profile")
         );
     }
     let _ = write!(b, r#"<section class="stats">{cards}</section>"#);
@@ -734,8 +756,10 @@ pub fn render(r: &Report) -> String {
                     .collect();
                 let _ = write!(
                     b,
-                    r#"<tr><td><b>{}</b></td><td class="n">{}</td><td>{}</td><td class="n">{}</td><td class="small">{}</td><td class="small">{}</td></tr>"#,
+                    r##"<tr><td><b>{}</b><br><a class="totree small" href="#albero" data-q="[{}]">{}</a></td><td class="n">{}</td><td>{}</td><td class="n">{}</td><td class="small">{}</td><td class="small">{}</td></tr>"##,
                     esc(&s.display),
+                    esc(&s.source),
+                    crate::i18n::t("vedi nell'albero →", "show in tree →"),
                     pvh(s.incl_pct),
                     pct_bar(s.incl_pct),
                     pvh(s.self_pct),
@@ -761,6 +785,35 @@ pub fn render(r: &Report) -> String {
         b.push_str("</section>");
 
         let _ = write!(b, r#"<section id="spike"><h2>Andamento e lag spike</h2>"#);
+        if m.windows_total > 1 {
+            let spikes: Vec<String> = if m.window_filter.is_some() {
+                Vec::new()
+            } else {
+                a.spikes
+                    .iter()
+                    .map(|sp| sp.window.index.to_string())
+                    .collect()
+            };
+            let _ = write!(
+                b,
+                r#"<div class="filterbar needs-filter" hidden><span class="dim">{}</span><button type="button" class="chip" data-w="">{}</button>{}<span class="dim small">{}</span></div>"#,
+                crate::i18n::t("Periodo:", "Period:"),
+                crate::i18n::t("Tutto il profilo", "Whole profile"),
+                if spikes.is_empty() {
+                    String::new()
+                } else {
+                    format!(
+                        r#"<button type="button" class="chip" data-w="{}">{}</button>"#,
+                        spikes.join(","),
+                        crate::i18n::t("Solo i lag spike", "Lag spikes only")
+                    )
+                },
+                crate::i18n::t(
+                    "oppure trascina sul grafico per scegliere i minuti",
+                    "or drag on the chart to pick the minutes"
+                )
+            );
+        }
         match timeline_svg(r) {
             Some(svg) => b.push_str(&svg),
             None => b.push_str(r#"<p class="note">Il profilo contiene una sola finestra temporale: registra almeno 3-5 minuti per vedere l'andamento.</p>"#),
@@ -816,6 +869,26 @@ pub fn render(r: &Report) -> String {
             b,
             r#"<section id="flame"><h2>Flamegraph del main thread</h2><p class="note">Solo tempo attivo. Clic su un blocco per zoomare, clic sulla radice per tornare indietro. Larghezza = tempo.</p><div class="fbar"><input id="fsearch" placeholder="Cerca metodo o plugin (es. HopperBlockEntity, MyPlugin)"><span id="fmatch"></span><button id="freset">Reset</button></div><div id="fwrap"><canvas id="flamec"></canvas><div id="ftip"></div></div><script type="application/json" id="flamedata">{}</script></section>"#,
             flame.replace("</", "<\\/")
+        );
+        let _ = write!(
+            b,
+            r#"<section id="albero"><h2>{}</h2><p class="note">{}</p><div class="fbar"><input id="tsearch" placeholder="{}"><span id="tmatch" class="dim small"></span><button type="button" id="theavy">{}</button><button type="button" id="tcollapse">{}</button></div><div id="tree" class="tree" data-more="{}" data-self="{}"></div></section>"#,
+            crate::i18n::t("Albero delle chiamate", "Call tree"),
+            crate::i18n::t(
+                "Come nel viewer di spark: clic su una riga per espandere i metodi chiamati. Il valore è il tempo totale passato in quel ramo (solo tempo attivo del main thread).",
+                "Like the spark viewer: click a row to expand the methods it calls. The value is the total time spent in that branch (main thread active time only)."
+            ),
+            crate::i18n::t(
+                "Cerca metodo, classe o [Plugin]…",
+                "Search method, class or [Plugin]…"
+            ),
+            crate::i18n::t(
+                "Espandi il percorso più pesante",
+                "Expand the heaviest path"
+            ),
+            crate::i18n::t("Chiudi tutto", "Collapse all"),
+            crate::i18n::t("rami minori nascosti", "smaller branches hidden"),
+            crate::i18n::t("proprio", "self")
         );
 
         let _ = write!(
@@ -977,6 +1050,7 @@ pub fn render(r: &Report) -> String {
         ("plugin", "plug"),
         ("spike", "line"),
         ("flame", "flame"),
+        ("albero", "tree"),
         ("metodi", "list"),
         ("entita", "cube"),
         ("thread", "stack"),
@@ -1048,7 +1122,7 @@ table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font
 code{font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--code);border:1px solid var(--line2);padding:1px 5px;border-radius:4px;word-break:break-all;color:var(--fg)}
 .bar{display:inline-block;width:110px;height:6px;background:var(--code);border-radius:3px;overflow:hidden;vertical-align:middle}.bar i{display:block;height:100%;background:var(--bar);border-radius:3px}
 .ctx{color:var(--muted);font-size:11px}.unitbar{display:flex;align-items:center;gap:10px;margin:-4px 0 12px;font-size:13px;flex-wrap:wrap}.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--card)}.seg button{border:0;border-radius:0;background:transparent;padding:5px 12px;font-size:12px;font-weight:600;color:var(--muted)}.seg button+button{border-left:1px solid var(--line)}.seg button.on{background:var(--acc);color:#fff}.warn{color:var(--high);font-weight:600}
-.chart{width:100%;height:auto;background:var(--card2);border:1px solid var(--line);border-radius:6px}.chart .grid{stroke:var(--line2)}.chart .budget{stroke:var(--crit);stroke-dasharray:4 4;opacity:.8}.chart .axis{fill:var(--muted);font-size:11px}.chart polyline{fill:none;stroke-width:2}.chart .l1{stroke:var(--high)}.chart .l2{stroke:var(--acc)}.chart .l3{stroke:var(--ok);stroke-dasharray:3 3}.chart circle{fill:var(--high)}.chart circle.sp{fill:var(--crit)}.chart .spikebg{fill:var(--spike)}.chartwrap{position:relative}.chart .hov{fill:transparent;cursor:crosshair}.chart .hov:hover{fill:rgba(127,127,127,.08)}.chart .guide{stroke:var(--muted);stroke-dasharray:3 3}.chart circle.on{r:5;stroke:var(--card);stroke-width:2}.ctip{position:absolute;z-index:4;pointer-events:none;min-width:200px;max-width:300px;background:var(--card);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.35);padding:10px 12px;font-size:12px;color:var(--fg)}.ctip b{color:var(--hd)}.ctip .r{display:flex;justify-content:space-between;gap:16px;margin-top:3px}.ctip .r span:last-child{font-variant-numeric:tabular-nums;color:var(--hd)}.ctip .sp{margin-top:7px;padding-top:6px;border-top:1px solid var(--line2);color:var(--crit)}.ctip .cs{color:var(--muted);margin-top:2px}
+.chart{width:100%;height:auto;background:var(--card2);border:1px solid var(--line);border-radius:6px}.chart .grid{stroke:var(--line2)}.chart .budget{stroke:var(--crit);stroke-dasharray:4 4;opacity:.8}.chart .axis{fill:var(--muted);font-size:11px}.chart polyline{fill:none;stroke-width:2}.chart .l1{stroke:var(--high)}.chart .l2{stroke:var(--acc)}.chart .l3{stroke:var(--ok);stroke-dasharray:3 3}.chart circle{fill:var(--high)}.chart circle.sp{fill:var(--crit)}.chart .spikebg{fill:var(--spike)}.tree{background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:6px 0;max-height:70vh;overflow:auto;font-size:13px}.tn{display:flex;align-items:center;gap:8px;padding:4px 12px 4px 0;cursor:pointer;white-space:nowrap;border-radius:6px}.tn:hover{background:var(--card3)}.tn .cr{width:14px;flex:none;color:var(--muted);text-align:center;transition:transform .15s ease;font-size:10px}.tn.open>.cr{transform:rotate(90deg)}.tn.leaf .cr{opacity:0}.tn .tv{min-width:86px;text-align:right;flex:none;font-variant-numeric:tabular-nums;color:var(--hd)}.tn .tb{width:60px;height:5px;flex:none;background:var(--card3);border-radius:999px;overflow:hidden}.tn .tb i{display:block;height:100%;background:var(--acc);border-radius:999px}.tn .tl{overflow:hidden;text-overflow:ellipsis;font-family:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;font-size:12px}.tn .src{color:var(--ok);margin-left:6px}.tn .ts{color:var(--muted);font-size:11px;margin-left:8px}.tn.hit{background:var(--accl)}.tn.hit .tl{color:var(--hd)}.tmore{padding:3px 0 3px 0;color:var(--muted);font-size:11px}.totree{color:var(--acc)}.filterbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px}.filterbar[hidden],.needs-filter[hidden]{display:none!important}.chip{border-radius:999px;padding:5px 12px;font-size:12px;background:var(--card);border:1px solid var(--line);color:var(--fg)}.chip:hover{border-color:var(--muted);color:var(--hd)}.chip.on{background:var(--card3);color:var(--hd)}.fbanner{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--accl);border:1px solid var(--acc);color:var(--hd);border-radius:12px;padding:10px 14px;margin:0 0 14px;font-size:13px}.fbanner svg{color:var(--acc);flex:none}.fbanner .chip{margin-left:auto}.chart .brush{fill:var(--accl);stroke:var(--acc);stroke-dasharray:4 3}.chart.brushing .hov{cursor:ew-resize}.chartwrap{position:relative}.chart .hov{fill:transparent;cursor:crosshair}.chart .hov:hover{fill:rgba(127,127,127,.08)}.chart .guide{stroke:var(--muted);stroke-dasharray:3 3}.chart circle.on{r:5;stroke:var(--card);stroke-width:2}.ctip{position:absolute;z-index:4;pointer-events:none;min-width:200px;max-width:300px;background:var(--card);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.35);padding:10px 12px;font-size:12px;color:var(--fg)}.ctip b{color:var(--hd)}.ctip .r{display:flex;justify-content:space-between;gap:16px;margin-top:3px}.ctip .r span:last-child{font-variant-numeric:tabular-nums;color:var(--hd)}.ctip .sp{margin-top:7px;padding-top:6px;border-top:1px solid var(--line2);color:var(--crit)}.ctip .cs{color:var(--muted);margin-top:2px}
 .legend{color:var(--muted);font-size:12px;margin:8px 0 12px;display:flex;gap:6px 14px;flex-wrap:wrap;align-items:center}.legend span{display:inline-block;width:14px;height:3px;vertical-align:middle;margin-right:4px;border-radius:2px}.k1{background:var(--high)}.k2{background:var(--acc)}.k3{background:var(--ok)}.kb{background:var(--crit)}.ks{background:var(--spike);height:10px!important}
 .spike{background:var(--card2);border:1px solid var(--line);border-left:3px solid var(--crit);border-radius:6px;padding:10px 14px;margin:10px 0}.spike h4 small{color:var(--muted);font-weight:400}.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}.grid3 td{padding:4px 6px}
 .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
@@ -1170,9 +1244,30 @@ const JS: &str = r#"
 var docEl=document.documentElement;try{var t=localStorage.getItem('sparkscope-theme');if(t)docEl.dataset.theme=t}catch(e){}
 var tb=document.getElementById('theme');if(tb)tb.addEventListener('click',function(){var n=docEl.dataset.theme==='dark'?'light':'dark';docEl.dataset.theme=n;try{localStorage.setItem('sparkscope-theme',n)}catch(e){}if(window.__redrawFlame)window.__redrawFlame()});
 var bl=document.getElementById('brandlink'),ch=document.getElementById('crumbhome'),nb=document.querySelector('.actions a.btn.sec');if(nb){if(bl)bl.href=nb.getAttribute('href');if(ch)ch.href=nb.getAttribute('href')}
-var cl=document.getElementById('copylink');if(cl){var sh=null;try{var u=new URL(location.href);if(u.searchParams.get('p')){var k=u.searchParams.get('p');u=new URL(location.href);u.search='?p='+encodeURIComponent(k);u.hash='';sh=u.toString()}else if(/\/r\/[^\/]+/.test(u.pathname)&&u.protocol.indexOf('http')===0){u.hash='';sh=u.toString()}}catch(e){}if(sh){cl.hidden=false;cl.addEventListener('click',function(){function done(){var sp=cl.querySelector('span');sp.textContent=cl.dataset.ok;cl.classList.add('ok');setTimeout(function(){sp.textContent=cl.dataset.label;cl.classList.remove('ok')},1800)}function fallback(){var ta=document.createElement('textarea');ta.value=sh;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();try{document.execCommand('copy')}catch(e){}ta.remove();done()}if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(sh).then(done,fallback)}else{fallback()}})}}
+var cl=document.getElementById('copylink');if(cl){var sh=null;try{var u=new URL(location.href);if(u.searchParams.get('p')){var k=u.searchParams.get('p');u=new URL(location.href);var wq=new URL(location.href).searchParams.get('w');u.search='?p='+encodeURIComponent(k)+(wq?'&w='+encodeURIComponent(wq):'');u.hash='';sh=u.toString()}else if(/\/r\/[^\/]+/.test(u.pathname)&&u.protocol.indexOf('http')===0){u.hash='';sh=u.toString()}}catch(e){}if(sh){cl.hidden=false;cl.addEventListener('click',function(){function done(){var sp=cl.querySelector('span');sp.textContent=cl.dataset.ok;cl.classList.add('ok');setTimeout(function(){sp.textContent=cl.dataset.label;cl.classList.remove('ok')},1800)}function fallback(){var ta=document.createElement('textarea');ta.value=sh;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();try{document.execCommand('copy')}catch(e){}ta.remove();done()}if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(sh).then(done,fallback)}else{fallback()}})}}
+(function(){var can=!!window.__saFilter||(/^https?:/.test(location.protocol)&&/\/r\/[^\/]+/.test(location.pathname));if(!can)return;function apply(list){if(window.__saFilter){window.__saFilter(list);return}var u=new URL(location.href);if(list)u.searchParams.set('w',list);else u.searchParams.delete('w');location.href=u.toString()}document.querySelectorAll('.needs-filter').forEach(function(e){e.hidden=false});document.querySelectorAll('[data-w]').forEach(function(bt){bt.addEventListener('click',function(){apply(bt.dataset.w||null)})});document.querySelectorAll('.chartwrap').forEach(function(cw){var d;try{d=JSON.parse(cw.querySelector('.chartdata').textContent)}catch(e){return}var svg=cw.querySelector('svg'),br=svg.querySelector('.brush'),hs=svg.querySelectorAll('.hov'),a=null,b=null;function geom(i){var r=hs[i];return [parseFloat(r.getAttribute('x')),parseFloat(r.getAttribute('width'))]}function draw(){if(a===null)return;var lo=Math.min(a,b),hi=Math.max(a,b),g1=geom(lo),g2=geom(hi);br.setAttribute('x',g1[0]);br.setAttribute('width',g2[0]+g2[1]-g1[0]);br.style.display=''}hs.forEach(function(r,i){r.addEventListener('mousedown',function(e){e.preventDefault();a=b=i;svg.classList.add('brushing');draw()});r.addEventListener('mouseenter',function(){if(a!==null){b=i;draw()}})});window.addEventListener('mouseup',function(){if(a===null)return;var lo=Math.min(a,b),hi=Math.max(a,b);a=null;svg.classList.remove('brushing');br.style.display='none';if(hi-lo<1)return;var list=[];for(var k=lo;k<=hi;k++)list.push(d.rows[k].o);if(list.length===d.rows.length&&!document.querySelector('.fbanner'))return;apply(list.join(','))})})})();
+(function(){var box=document.getElementById('tree'),el=document.getElementById('flamedata');if(!box||!el)return;var data;try{data=JSON.parse(el.textContent)}catch(e){return}var N=data.names,R=data.tree,TOT=R[1]||1,MORE=box.dataset.more,SELF=box.dataset.self;
+function fm(v){return v>=100?v.toFixed(0):v>=10?v.toFixed(1):v.toFixed(2)}
+function val(v){var p=v/TOT*100,u=window.__saUnit;return u&&u.m==='ms'?fm(p*u.F)+' '+u.U:fm(p)+'%'}
+function selfOf(n){var s=n[1];for(var i=2;i<n.length;i++)s-=n[i][1];return Math.max(0,s)}
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+function label(n){var t=N[n[0]],m=t.match(/^(.*?)( \[[^\]]+\])$/);return m?esc(m[1])+'<span class="src">'+esc(m[2].trim())+'</span>':esc(t)}
+function row(n,d){var r=document.createElement('div');var leaf=n.length<=2;r.className='tn'+(leaf?' leaf':'');r.style.paddingLeft=(10+d*16)+'px';r._n=n;r._d=d;var sf=selfOf(n);r.innerHTML='<span class="cr">▶</span><span class="tv" data-v="'+n[1]+'">'+val(n[1])+'</span><span class="tb"><i style="width:'+Math.max(1,n[1]/TOT*100).toFixed(1)+'%"></i></span><span class="tl">'+label(n)+'</span>'+(sf>0&&!leaf?'<span class="ts" data-s="'+sf+'">'+SELF+' '+val(sf)+'</span>':'');return r}
+function kids(r){var c=r.nextSibling,out=[];while(c&&c._d>r._d){out.push(c);c=c.nextSibling}return out}
+function expand(r){if(r.classList.contains('open')||r.classList.contains('leaf'))return;r.classList.add('open');var n=r._n,frag=document.createDocumentFragment(),shown=0,hidden=0;for(var i=2;i<n.length;i++){if(n[i][1]/TOT<0.0005&&shown>=3){hidden++;continue}frag.appendChild(row(n[i],r._d+1));shown++}if(hidden){var m=document.createElement('div');m.className='tmore';m._d=r._d+1;m.style.paddingLeft=(30+(r._d+1)*16)+'px';m.textContent='+'+hidden+' '+MORE;frag.appendChild(m)}r.parentNode.insertBefore(frag,r.nextSibling)}
+function collapse(r){kids(r).forEach(function(k){k.remove()});r.classList.remove('open')}
+box.addEventListener('click',function(e){var r=e.target.closest('.tn');if(!r)return;if(r.classList.contains('open'))collapse(r);else expand(r)});
+function reset(){box.innerHTML='';for(var i=2;i<R.length;i++)box.appendChild(row(R[i],0))}
+reset();
+function heaviest(){reset();var r=box.firstChild;var guard=0;while(r&&guard++<60){var n=r._n;if(n.length<=2)break;expand(r);var best=null,c=r.nextSibling;while(c&&c._d>r._d){if(c._d===r._d+1&&c._n&&(!best||c._n[1]>best._n[1]))best=c;c=c.nextSibling}if(!best||best._n[1]<n[1]*0.25)break;r=best}if(r)r.scrollIntoView({block:'nearest'})}
+document.getElementById('theavy').addEventListener('click',heaviest);document.getElementById('tcollapse').addEventListener('click',function(){reset();document.getElementById('tmatch').textContent='';document.getElementById('tsearch').value=''});
+function search(q){reset();var tm=document.getElementById('tmatch');if(!q){tm.textContent='';return}q=q.toLowerCase();var paths=[],tot=0;(function walk(n,path,inHit){var nm=N[n[0]].toLowerCase(),hit=nm.indexOf(q)>=0;if(hit&&!inHit){tot+=n[1];if(paths.length<40)paths.push(path.concat([n]))}for(var i=2;i<n.length;i++)walk(n[i],path.concat([n]),inHit||hit)})(R,[],false);tm.textContent=paths.length?(fm(tot/TOT*100)+'%'):'0';paths.forEach(function(p){var r=null;for(var j=1;j<p.length;j++){var target=p[j],c=r?r.nextSibling:box.firstChild,found=null;while(c){if(c._n===target&&c._d===j-1){found=c;break}if(r&&c._d<=r._d)break;c=c.nextSibling}if(!found)return;if(j<p.length-1)expand(found);else found.classList.add('hit');r=found}});var first=box.querySelector('.tn.hit');if(first)first.scrollIntoView({block:'nearest'})}
+var to;document.getElementById('tsearch').addEventListener('input',function(e){clearTimeout(to);to=setTimeout(function(){search(e.target.value.trim())},200)});
+document.addEventListener('sa-unit',function(){box.querySelectorAll('.tv').forEach(function(x){x.textContent=val(+x.dataset.v)});box.querySelectorAll('.ts').forEach(function(x){x.textContent=SELF+' '+val(+x.dataset.s)})});
+document.querySelectorAll('.totree').forEach(function(a){a.addEventListener('click',function(){var q=a.dataset.q;var i=document.getElementById('tsearch');i.value=q;search(q)})});
+})();
 var lb=document.getElementById('langbtn');if(lb)lb.addEventListener('click',function(){var n=lb.dataset.to;try{localStorage.setItem('sa-lang',n)}catch(e){}if(window.__saRender){window.__saRender(n);return}var u=new URL(location.href);u.searchParams.set('lang',n);location.href=u.toString()});
-var us=document.getElementById('unitsel');if(us){var F=parseFloat(us.dataset.f)||0,U=us.dataset.u;function fm(v){return v>=100?v.toFixed(0):v>=10?v.toFixed(1):v.toFixed(2)}function setUnit(m){us.querySelectorAll('button').forEach(function(x){x.classList.toggle('on',x.dataset.m===m)});document.querySelectorAll('.pv').forEach(function(e){var p=parseFloat(e.dataset.p);e.textContent=m==='ms'?fm(p*F)+' '+U:fm(p)+'%'});document.querySelectorAll('.uh').forEach(function(e){e.textContent=m==='ms'?U:'%'})}us.addEventListener('click',function(e){var bt=e.target.closest('button');if(!bt)return;try{localStorage.setItem('sa-unit',bt.dataset.m)}catch(x){}setUnit(bt.dataset.m)});var su='pct';try{su=localStorage.getItem('sa-unit')||'pct'}catch(x){}if(su!=='pct')setUnit(su)}
+var us=document.getElementById('unitsel');if(us){var F=parseFloat(us.dataset.f)||0,U=us.dataset.u;function fm(v){return v>=100?v.toFixed(0):v>=10?v.toFixed(1):v.toFixed(2)}function setUnit(m){window.__saUnit={m:m,F:F,U:U};document.dispatchEvent(new Event('sa-unit'));us.querySelectorAll('button').forEach(function(x){x.classList.toggle('on',x.dataset.m===m)});document.querySelectorAll('.pv').forEach(function(e){var p=parseFloat(e.dataset.p);e.textContent=m==='ms'?fm(p*F)+' '+U:fm(p)+'%'});document.querySelectorAll('.uh').forEach(function(e){e.textContent=m==='ms'?U:'%'})}us.addEventListener('click',function(e){var bt=e.target.closest('button');if(!bt)return;try{localStorage.setItem('sa-unit',bt.dataset.m)}catch(x){}setUnit(bt.dataset.m)});var su='pct';try{su=localStorage.getItem('sa-unit')||'pct'}catch(x){}if(su!=='pct')setUnit(su)}
 document.querySelectorAll('.chartwrap').forEach(function(cw){var d;try{d=JSON.parse(cw.querySelector('.chartdata').textContent)}catch(e){return}var svg=cw.querySelector('svg'),tip=cw.querySelector('.ctip'),guide=cw.querySelector('.guide'),L=d.labels;function f1(v){return v>=100?v.toFixed(0):v.toFixed(1)}function row(k,v){return '<div class="r"><span>'+L[k]+'</span><span>'+v+'</span></div>'}function show(el){var i=+el.dataset.i,w=d.rows[i];if(!w)return;var h='<b>'+w.t+'</b>';if(d.mspt){h+=row('tps',f1(w.tps))+row('med',f1(w.med)+' ms')+row('max',f1(w.max)+' ms')}if(w.busy>0)h+=row('busy',f1(w.busy)+' ms/tick');if(w.cpu>0)h+=row('cpu',f1(w.cpu)+'%');if(w.pl||w.en){h+=row('pl',w.pl)+row('en',w.en)+row('te',w.te)+row('ch',w.ch)}if(w.spike){h+='<div class="sp">⚠ '+L.spike+': '+w.spike+'</div>';if(w.causes&&w.causes.length)h+='<div class="cs">'+L.causes+': '+w.causes.join(', ')+'</div>'}tip.innerHTML=h;tip.hidden=false;var vb=svg.viewBox.baseVal,sc=svg.clientWidth/vb.width,gx=parseFloat(el.dataset.x);guide.setAttribute('x1',gx);guide.setAttribute('x2',gx);guide.style.display='';svg.querySelectorAll('circle').forEach(function(c){c.classList.toggle('on',+c.dataset.i===i)});var px=gx*sc,tw=tip.offsetWidth,cwW=cw.clientWidth;var left=px+14;if(left+tw>cwW)left=Math.max(0,px-tw-14);tip.style.left=left+'px';tip.style.top='12px'}function hide(){tip.hidden=true;guide.style.display='none';svg.querySelectorAll('circle.on').forEach(function(c){c.classList.remove('on')})}svg.querySelectorAll('.hov').forEach(function(r){r.addEventListener('mouseenter',function(){show(r)});r.addEventListener('click',function(){show(r)})});svg.addEventListener('mouseleave',hide);document.addEventListener('click',function(e){if(!cw.contains(e.target))hide()})});
 var links=Array.from(document.querySelectorAll('.side nav a'));if('IntersectionObserver' in window){var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){links.forEach(function(l){l.classList.toggle('on',l.getAttribute('href')==='#'+e.target.id)})}})},{rootMargin:'-20% 0px -70% 0px'});document.querySelectorAll('section[id]').forEach(function(s){io.observe(s)})}
 document.body.classList.add('hideinfo');

@@ -163,6 +163,9 @@ pub struct Profile {
     pub threads: Vec<Thread>,
     pub sources: SourceResolver,
     pub thread_override: Option<usize>,
+    pub window_filter: Option<Vec<usize>>,
+    pub windows_total: usize,
+    pub window_map: Vec<usize>,
 }
 
 impl Profile {
@@ -203,7 +206,101 @@ impl Profile {
                 ..Default::default()
             },
             thread_override: None,
+            window_filter: None,
+            windows_total: 0,
+            window_map: Vec::new(),
         }
+    }
+
+    pub fn window_count(&self) -> usize {
+        self.threads.first().map(|t| t.windows).unwrap_or(0)
+    }
+
+    pub fn restrict_windows(&mut self, selected: &[usize]) -> bool {
+        let total = self.window_count();
+        let mut sel: Vec<usize> = selected.iter().copied().filter(|w| *w < total).collect();
+        sel.sort_unstable();
+        sel.dedup();
+        if total < 2 || sel.is_empty() || sel.len() == total {
+            return false;
+        }
+        let ids: Vec<i32> = sel
+            .iter()
+            .map(|i| self.window_ids.get(*i).copied().unwrap_or(*i as i32))
+            .collect();
+        for t in &mut self.threads {
+            let w = t.windows;
+            if w != total {
+                continue;
+            }
+            let n = t.nodes.len();
+            let mut times = vec![0.0f32; n * sel.len()];
+            for node in 0..n {
+                let mut sum = 0.0f64;
+                for (k, wi) in sel.iter().enumerate() {
+                    let v = t.node_times[node * w + wi];
+                    times[node * sel.len() + k] = v;
+                    sum += v as f64;
+                }
+                t.nodes[node].total = sum;
+            }
+            t.node_times = times;
+            t.window_totals = sel
+                .iter()
+                .map(|wi| t.window_totals.get(*wi).copied().unwrap_or(0.0))
+                .collect();
+            t.total = t.window_totals.iter().sum();
+            if t.total <= 0.0 {
+                t.total = t.roots.iter().map(|r| t.nodes[*r as usize].total).sum();
+            }
+            t.windows = sel.len();
+        }
+        self.threads.sort_by(|a, b| {
+            b.total
+                .partial_cmp(&a.total)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        let stats: Vec<&WindowStatistics> = ids
+            .iter()
+            .filter_map(|id| self.window_stats.get(id))
+            .collect();
+        let tick_sum: i64 = stats.iter().map(|s| s.ticks as i64).sum();
+        let scale = sel.len() as f64 / total as f64;
+        if stats.len() == sel.len() && tick_sum > 0 {
+            self.meta.number_of_ticks = tick_sum as i32;
+        } else {
+            self.meta.number_of_ticks = (self.meta.number_of_ticks as f64 * scale).round() as i32;
+        }
+        if let Some(agg) = self.meta.data_aggregator.as_mut() {
+            if agg.number_of_included_ticks > 0 {
+                agg.number_of_included_ticks = ((agg.number_of_included_ticks as f64) * scale)
+                    .round()
+                    .max(1.0) as i32;
+            }
+        }
+        let starts: Vec<i64> = stats
+            .iter()
+            .map(|s| s.start_time)
+            .filter(|v| *v > 0)
+            .collect();
+        let ends: Vec<i64> = stats
+            .iter()
+            .map(|s| s.end_time)
+            .filter(|v| *v > 0)
+            .collect();
+        if let (Some(a), Some(b)) = (starts.iter().min(), ends.iter().max()) {
+            self.meta.start_time = *a;
+            self.meta.end_time = *b;
+        } else {
+            let dur = (self.duration_ms() as f64 * scale) as i64;
+            self.meta.end_time = self.meta.start_time + dur;
+        }
+        self.window_stats.retain(|k, _| ids.contains(k));
+        self.window_ids = ids;
+        self.window_map = sel.clone();
+        self.windows_total = total;
+        self.window_filter = Some(sel);
+        true
     }
 
     pub fn select_thread(&mut self, name: &str) -> bool {
@@ -269,6 +366,9 @@ impl Profile {
             sources,
             meta,
             thread_override: None,
+            window_filter: None,
+            windows_total: 0,
+            window_map: Vec::new(),
         }
     }
 

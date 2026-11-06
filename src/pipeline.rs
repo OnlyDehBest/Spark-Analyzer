@@ -9,6 +9,14 @@ use crate::report::{self, Report};
 pub type Built = (Report, Option<Profile>, Option<heap::HeapReport>);
 
 pub fn build(loaded: Loaded, thread: Option<&str>) -> Result<Built> {
+    build_with(loaded, thread, None)
+}
+
+pub fn build_with(
+    loaded: Loaded,
+    thread: Option<&str>,
+    windows: Option<&[usize]>,
+) -> Result<Built> {
     let kind = loaded.payload.kind();
     match loaded.payload {
         Payload::Sampler(s) => {
@@ -25,6 +33,9 @@ pub fn build(loaded: Loaded, thread: Option<&str>) -> Result<Built> {
                         names.join(", ")
                     )
                 );
+            }
+            if let Some(w) = windows {
+                p.restrict_windows(w);
             }
             let a = analysis::analyze(&p);
             let r = report::build(&p, a, &loaded.origin, loaded.viewer_url, kind);

@@ -1007,7 +1007,7 @@ fn analyze_windows(
         let ticks = s.ticks;
         let busy = busy_win.get(i).copied().unwrap_or(0.0);
         windows.push(WindowStat {
-            index: i,
+            index: p.window_map.get(i).copied().unwrap_or(i),
             id,
             start_time: s.start_time,
             end_time: s.end_time,

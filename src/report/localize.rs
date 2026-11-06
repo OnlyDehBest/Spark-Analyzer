@@ -12,6 +12,7 @@ const PAIRS: &[(&str, &str)] = &[
     ("<span>Plugin e mod</span>", "<span>Plugins and mods</span>"),
     ("<span>Lag spike</span>", "<span>Lag spikes</span>"),
     ("<span>Metodi</span>", "<span>Methods</span>"),
+    ("<span>Albero chiamate</span>", "<span>Call tree</span>"),
     ("<span>Entità</span>", "<span>Entities</span>"),
     ("<span>Mondo</span>", "<span>World</span>"),
     ("title=\"Tema chiaro/scuro\"", "title=\"Light/dark theme\""),

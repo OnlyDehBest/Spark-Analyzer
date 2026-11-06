@@ -251,3 +251,34 @@ fn unit_toggle_and_no_raw_tokens() {
     let md = report::markdown::render(&r);
     assert!(!md.contains('⟪'));
 }
+
+#[test]
+fn window_filter_recomputes_report() {
+    let bytes = fixture::sample().encode_to_vec();
+    let full = {
+        let l = sparkscope::loader::load_bytes(&bytes, "a.sparkprofile").unwrap();
+        sparkscope::pipeline::build(l, None).unwrap().0
+    };
+    let l = sparkscope::loader::load_bytes(&bytes, "a.sparkprofile").unwrap();
+    let (r, _, _) = sparkscope::pipeline::build_with(l, None, Some(&[2, 5, 8])).unwrap();
+    assert_eq!(r.meta.window_filter.as_deref(), Some(&[2usize, 5, 8][..]));
+    assert_eq!(r.meta.windows_total, 10);
+    assert_eq!(r.analysis.main.ticks, 2700);
+    assert_eq!(r.analysis.windows.len(), 3);
+    assert_eq!(r.analysis.windows[0].index, 2);
+    let save = |rep: &report::Report| {
+        rep.analysis
+            .categories
+            .iter()
+            .find(|c| c.cat == Cat::ChunkSave)
+            .map(|c| c.pct)
+            .unwrap_or(0.0)
+    };
+    assert!(
+        save(&r) > save(&full) * 2.0,
+        "{} vs {}",
+        save(&r),
+        save(&full)
+    );
+    assert!(r.analysis.main.busy_per_tick.unwrap() > full.analysis.main.busy_per_tick.unwrap());
+}

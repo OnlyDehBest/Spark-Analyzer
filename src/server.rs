@@ -23,7 +23,7 @@ struct Stored {
     bytes: Arc<Vec<u8>>,
     name: String,
     key: Option<String>,
-    cache: HashMap<Lang, String>,
+    cache: HashMap<(Lang, String), String>,
 }
 
 struct State {
@@ -183,7 +183,7 @@ fn handle(mut req: Request, st: &State) {
         }
         (Method::Get, p) if p.starts_with("/r/") => {
             let id = p[3..].trim_end_matches('/').to_string();
-            match report_html(st, &id, lang) {
+            match report_html(st, &id, lang, &query_param(&url, "w").unwrap_or_default()) {
                 Some(Ok(h)) => html_resp(with_actions(&h)),
                 Some(Err(e)) => html_resp(format!(
                     "<pre>{}</pre>",
@@ -198,32 +198,38 @@ fn handle(mut req: Request, st: &State) {
     let _ = req.respond(resp);
 }
 
-fn render(bytes: &[u8], name: &str, key: Option<&str>) -> Result<webui::Rendered> {
+fn render(bytes: &[u8], name: &str, key: Option<&str>, windows: &str) -> Result<webui::Rendered> {
     let mut loaded = loader::load_bytes(bytes, name)?;
     if let Some(k) = key {
         loaded.origin = format!("https://spark.lucko.me/{k}");
         loaded.viewer_url = Some(format!("https://spark.lucko.me/{k}"));
     }
-    let (r, _, heap_report) = pipeline::build(loaded, None)?;
+    let win: Vec<usize> = windows
+        .split(',')
+        .filter_map(|x| x.trim().parse().ok())
+        .collect();
+    let (r, _, heap_report) =
+        pipeline::build_with(loaded, None, if win.is_empty() { None } else { Some(&win) })?;
     Ok(webui::render_report(&r, heap_report.as_ref()))
 }
 
-fn report_html(st: &State, id: &str, lang: Lang) -> Option<Result<String>> {
+fn report_html(st: &State, id: &str, lang: Lang, windows: &str) -> Option<Result<String>> {
+    let ck = (lang, windows.to_string());
     let (bytes, name, key) = {
         let reports = st.reports.lock().unwrap_or_else(|e| e.into_inner());
         let r = reports.iter().find(|r| r.id == id)?;
-        if let Some(h) = r.cache.get(&lang) {
+        if let Some(h) = r.cache.get(&ck) {
             return Some(Ok(h.clone()));
         }
         (Arc::clone(&r.bytes), r.name.clone(), r.key.clone())
     };
-    let out = match render(&bytes, &name, key.as_deref()) {
+    let out = match render(&bytes, &name, key.as_deref(), windows) {
         Ok(o) => o,
         Err(e) => return Some(Err(e)),
     };
     let mut reports = st.reports.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(r) = reports.iter_mut().find(|r| r.id == id) {
-        r.cache.insert(lang, out.html.clone());
+        r.cache.insert(ck, out.html.clone());
     }
     Some(Ok(out.html))
 }
@@ -236,14 +242,14 @@ fn api_result(r: Result<String>) -> Response<std::io::Cursor<Vec<u8>>> {
 }
 
 fn store(st: &State, bytes: Vec<u8>, name: String, key: Option<String>) -> Result<String> {
-    let out = render(&bytes, &name, key.as_deref())?;
+    let out = render(&bytes, &name, key.as_deref(), "")?;
     let n = st.counter.fetch_add(1, Ordering::Relaxed);
     let id = format!(
         "{n}{:x}",
         (bytes.len() as u64 ^ n.wrapping_mul(2_654_435_761)) & 0xffff
     );
     let mut cache = HashMap::new();
-    cache.insert(i18n::lang(), out.html);
+    cache.insert((i18n::lang(), String::new()), out.html);
     let mut reports = st.reports.lock().unwrap_or_else(|e| e.into_inner());
     reports.insert(
         0,
