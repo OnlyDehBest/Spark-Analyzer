@@ -38,6 +38,165 @@ pub struct MetaInfo {
     pub uptime_s: Option<f64>,
     pub window_filter: Option<Vec<usize>>,
     pub windows_total: usize,
+    pub machine: Vec<(String, String)>,
+    pub resources: Vec<Resource>,
+}
+
+/// Riga di risorsa: `pct` (0..100) disegna la barra.
+#[derive(Clone, Debug, Serialize, Default)]
+pub struct Resource {
+    pub label: String,
+    pub value: String,
+    pub pct: Option<f64>,
+}
+
+fn machine_info(
+    sys: Option<&crate::proto::SystemStatistics>,
+    ps: Option<&crate::proto::PlatformStatistics>,
+) -> (Vec<(String, String)>, Vec<Resource>) {
+    let t = crate::i18n::t;
+    let gb = |b: i64| crate::rules::gb(b.max(0) as u64);
+    let mut mach = Vec::new();
+    let mut res = Vec::new();
+    let mut m = |l: &str, v: String| {
+        if !v.trim().is_empty() {
+            mach.push((l.to_string(), v.trim().to_string()));
+        }
+    };
+    let mut r = |l: String, v: String, pct: Option<f64>| {
+        res.push(Resource {
+            label: l,
+            value: v,
+            pct,
+        });
+    };
+    let used_of = |used: i64, total: i64| (total > 0).then(|| used as f64 / total as f64 * 100.0);
+    if let Some(s) = sys {
+        if let Some(c) = &s.cpu {
+            m("CPU", c.model_name.clone());
+            if c.threads > 0 {
+                m(t("Thread CPU", "CPU threads"), c.threads.to_string());
+            }
+            for (name, u) in [
+                (t("CPU processo", "CPU process"), &c.process_usage),
+                (t("CPU sistema", "CPU system"), &c.system_usage),
+            ] {
+                if let Some(u) = u.as_ref().filter(|u| u.last1m > 0.0 || u.last15m > 0.0) {
+                    r(
+                        name.into(),
+                        format!(
+                            "{:.0}% (1m) / {:.0}% (15m)",
+                            u.last1m * 100.0,
+                            u.last15m * 100.0
+                        ),
+                        Some(u.last1m * 100.0),
+                    );
+                }
+            }
+        }
+        if let Some(o) = &s.os {
+            m(
+                t("Sistema operativo", "Operating system"),
+                format!("{} {} ({})", o.name, o.version, o.arch),
+            );
+        }
+        if let Some(j) = &s.java {
+            m(
+                "Java",
+                format!("{} {} {}", j.vendor, j.version, j.vendor_version),
+            );
+        }
+        if let Some(j) = &s.jvm {
+            m("JVM", format!("{} {} {}", j.name, j.vendor, j.version));
+        }
+        if s.uptime > 0 {
+            m(
+                t("Uptime sistema", "System uptime"),
+                fmt_duration(s.uptime as f64 / 1000.0),
+            );
+        }
+        if let Some(mem) = &s.memory {
+            for (name, p) in [("RAM", &mem.physical), ("Swap", &mem.swap)] {
+                if let Some(p) = p.as_ref().filter(|p| p.total > 0) {
+                    r(
+                        name.into(),
+                        format!("{} / {}", gb(p.used), gb(p.total)),
+                        used_of(p.used, p.total),
+                    );
+                }
+            }
+        }
+        if let Some(d) = s.disk.as_ref().filter(|d| d.total > 0) {
+            r(
+                t("Disco", "Disk").into(),
+                format!("{} / {}", gb(d.used), gb(d.total)),
+                used_of(d.used, d.total),
+            );
+        }
+    }
+    if let Some(mem) = ps.and_then(|s| s.memory.as_ref()) {
+        if let Some(h) = mem.heap.as_ref().filter(|h| h.used > 0) {
+            let cap = if h.max > 0 { h.max } else { h.committed };
+            r(
+                "Heap".into(),
+                format!("{} / {}", gb(h.used), gb(cap)),
+                used_of(h.used, cap),
+            );
+        }
+        if let Some(h) = mem.non_heap.as_ref().filter(|h| h.used > 0) {
+            r("Non-heap".into(), gb(h.used), None);
+        }
+        if let Some(a) = mem.alloc_bps_last1m.as_ref().filter(|a| a.mean > 0.0) {
+            r(
+                t("Allocazioni (1m)", "Allocation rate (1m)").into(),
+                format!("{:.1} MB/s", a.mean / 1e6),
+                None,
+            );
+        }
+    }
+    let gcs: Vec<_> = match ps.map(|s| &s.gc).filter(|g| !g.is_empty()) {
+        Some(g) => g
+            .iter()
+            .map(|(k, v)| (k, v.total, v.avg_time, v.avg_frequency))
+            .collect(),
+        None => sys.map_or(vec![], |s| {
+            s.gc.iter()
+                .map(|(k, v)| (k, v.total, v.avg_time, v.avg_frequency))
+                .collect()
+        }),
+    };
+    let mut gcs = gcs;
+    gcs.sort_by(|a, b| a.0.cmp(b.0));
+    for (k, n, time, freq) in gcs.into_iter().filter(|g| g.1 > 0) {
+        r(
+            format!("GC {k}"),
+            format!(
+                "{n} {}, {time:.1} ms {}, {} {}",
+                t("raccolte", "collections"),
+                t("medi", "avg"),
+                t("ogni", "every"),
+                fmt_duration(freq / 1000.0)
+            ),
+            None,
+        );
+    }
+    if let Some(s) = sys {
+        let mut nets: Vec<_> = s.net.iter().collect();
+        nets.sort_by(|a, b| a.0.cmp(b.0));
+        for (k, n) in nets {
+            let f =
+                |v: &Option<crate::proto::RollingAverageValues>| v.as_ref().map_or(0.0, |v| v.mean);
+            let (rx, tx) = (f(&n.rx_bytes_per_second), f(&n.tx_bytes_per_second));
+            if rx > 0.0 || tx > 0.0 {
+                r(
+                    format!("Net {k}"),
+                    format!("rx {:.2} MB/s, tx {:.2} MB/s", rx / 1e6, tx / 1e6),
+                    None,
+                );
+            }
+        }
+    }
+    (mach, res)
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -85,7 +244,10 @@ pub fn build(
         .map(|s| (s.name.clone(), s.version.clone()))
         .collect();
     plugins.sort();
+    let (machine, resources) = machine_info(m.system_statistics.as_ref(), ps);
     let meta = MetaInfo {
+        machine,
+        resources,
         kind: kind.to_string(),
         origin: origin.to_string(),
         viewer_url,

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fmt::Write;
 
 use super::{Report, fmt_duration, fmt_num, fmt_time, fmt_utc};
-use crate::rules::{Severity, short};
+use crate::rules::{Finding, Severity, short};
 
 pub(crate) fn esc(s: &str) -> String {
     let mut o = String::with_capacity(s.len());
@@ -479,7 +479,7 @@ pub fn render(r: &Report) -> String {
         f.area == crate::i18n::t("Panoramica", "Overview")
             && f.title == crate::i18n::t("Il server mostra lag", "The server is lagging")
     });
-    let nav_items: [(&str, &str, &str); 10] = [
+    let nav_items: [(&str, &str, &str); 11] = [
         ("diagnosi", "clipboard", "Diagnosi"),
         ("tempo", "pie", "Tempo main thread"),
         ("plugin", "plug", "Plugin e mod"),
@@ -489,10 +489,14 @@ pub fn render(r: &Report) -> String {
         ("metodi", "list", "Metodi"),
         ("entita", "cube", "Entità"),
         ("thread", "stack", "Thread"),
+        ("macchina", "cube", "Macchina e risorse"),
         ("mondo", "world", "Mondo"),
     ];
     let mut nav = String::new();
     for (id, ic, label) in nav_items {
+        if id == "macchina" && m.machine.is_empty() && m.resources.is_empty() {
+            continue;
+        }
         let _ = write!(
             nav,
             r##"<a href="#{id}">{}<span>{label}</span></a>"##,
@@ -598,13 +602,25 @@ pub fn render(r: &Report) -> String {
             r#"<div class="filters"><label><input type="checkbox" id="showinfo"> mostra anche le note informative ({hidable})</label></div>"#
         );
     }
-    for f in &r.findings {
-        let hide =
-            if f.severity == Severity::Info && f.area != crate::i18n::t("Panoramica", "Overview") {
-                " hidable"
-            } else {
-                ""
-            };
+    let is_note = |f: &&Finding| {
+        f.severity == Severity::Info && f.area != crate::i18n::t("Panoramica", "Overview")
+    };
+    let mut notes_open = false;
+    // le note informative stanno tutte in fondo, in un gruppo con titolo: mostrarle si vede subito
+    for f in r
+        .findings
+        .iter()
+        .filter(|f| !is_note(f))
+        .chain(r.findings.iter().filter(is_note))
+    {
+        let hide = if is_note(&f) { " hidable" } else { "" };
+        if is_note(&f) && !notes_open {
+            notes_open = true;
+            let _ = write!(
+                b,
+                r#"<div class="infonotes" id="infonotes"><h3>Note informative ({hidable})</h3>"#
+            );
+        }
         let open =
             if f.severity <= Severity::Alto || f.area == crate::i18n::t("Panoramica", "Overview") {
                 " open"
@@ -657,6 +673,9 @@ pub fn render(r: &Report) -> String {
             b.push_str("</ol>");
         }
         b.push_str("</div></details>");
+    }
+    if notes_open {
+        b.push_str("</div>");
     }
     b.push_str("</section>");
 
@@ -879,7 +898,11 @@ pub fn render(r: &Report) -> String {
             }));
             b.push_str("</div></div>");
         }
-        if a.spikes.iter().take(8).any(crate::rules::spike_unattributed) {
+        if a.spikes
+            .iter()
+            .take(8)
+            .any(crate::rules::spike_unattributed)
+        {
             let _ = write!(
                 b,
                 r#"<p class="note">{}</p>"#,
@@ -1030,6 +1053,33 @@ pub fn render(r: &Report) -> String {
         b.push_str("</tbody></table></section>");
     }
 
+    if !m.machine.is_empty() || !m.resources.is_empty() {
+        b.push_str(r#"<section id="macchina"><h2>Macchina e risorse</h2>"#);
+        if !m.machine.is_empty() {
+            b.push_str("<table><tbody>");
+            for (k, v) in &m.machine {
+                let _ = write!(b, "<tr><th>{}</th><td>{}</td></tr>", esc(k), esc(v));
+            }
+            b.push_str("</tbody></table>");
+        }
+        if !m.resources.is_empty() {
+            b.push_str(
+                "<table><thead><tr><th>Risorsa</th><th>Valore</th><th></th></tr></thead><tbody>",
+            );
+            for x in &m.resources {
+                let _ = write!(
+                    b,
+                    "<tr><td>{}</td><td>{}</td><td>{}</td></tr>",
+                    esc(&x.label),
+                    esc(&x.value),
+                    x.pct.map(pct_bar).unwrap_or_default()
+                );
+            }
+            b.push_str("</tbody></table>");
+        }
+        b.push_str("</section>");
+    }
+
     let _ = write!(b, r#"<section id="mondo"><h2>Mondo</h2>"#);
     if r.hot_chunks.is_empty() {
         b.push_str("<p class=\"note\">Il profilo non contiene statistiche sul mondo.</p>");
@@ -1078,6 +1128,7 @@ pub fn render(r: &Report) -> String {
         ("metodi", "list"),
         ("entita", "cube"),
         ("thread", "stack"),
+        ("macchina", "cube"),
         ("mondo", "world"),
     ] {
         b = b.replace(
@@ -1140,7 +1191,7 @@ h3{font-size:14px;color:var(--hd);margin:18px 0 8px;font-weight:600}h4{margin:12
 .crit .sev{color:var(--crit);background:rgba(250,82,82,.15)}.high .sev{color:var(--high);background:rgba(253,126,20,.15)}.med .sev{color:var(--med);background:rgba(250,176,5,.15)}.low .sev{color:var(--low);background:rgba(77,171,247,.15)}
 .ft{font-weight:600;color:var(--hd);flex:1;min-width:200px}.area{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em;background:var(--code);border:1px solid var(--line);padding:1px 8px;border-radius:10px}.imp{font-weight:700;color:var(--hd);font-variant-numeric:tabular-nums}
 .fb{padding:0 16px 14px;border-top:1px solid var(--line2)}.ev{margin:10px 0 0;padding-left:18px}.ev li{margin:3px 0}.why{color:var(--muted)}.cul{margin:8px 0}.sol{padding-left:20px}.sol li{margin:5px 0}.sol ul{margin:6px 0;padding-left:16px}
-body.hideinfo .finding.hidable{display:none}
+body.hideinfo .infonotes{display:none}.infonotes{margin-top:18px;padding-top:12px;border-top:1px dashed var(--line)}.infonotes h3{margin:0 0 6px;font-size:14px}.infonotes.flash{animation:sa-fade .6s ease both}
 table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:13px}th,td{padding:8px 10px;border-bottom:1px solid var(--line2);text-align:left;vertical-align:top}th{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;cursor:pointer;user-select:none;border-bottom:1px solid var(--line)}tbody tr:hover{background:rgba(127,127,127,.06)}tr:last-child td{border-bottom:0}.n{text-align:right;white-space:nowrap}.small{font-size:12px}.dim{color:var(--muted)}
 .panel>table,.grid2 table,.panel>div>table{background:var(--card2);border:1px solid var(--line);border-radius:6px;overflow:hidden;border-collapse:separate;border-spacing:0}
 code{font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--code);border:1px solid var(--line2);padding:1px 5px;border-radius:4px;word-break:break-all;color:var(--fg)}
@@ -1295,7 +1346,7 @@ var us=document.getElementById('unitsel');if(us){var F=parseFloat(us.dataset.f)|
 document.querySelectorAll('.chartwrap').forEach(function(cw){var d;try{d=JSON.parse(cw.querySelector('.chartdata').textContent)}catch(e){return}var svg=cw.querySelector('svg'),tip=cw.querySelector('.ctip'),guide=cw.querySelector('.guide'),L=d.labels;function f1(v){return v>=100?v.toFixed(0):v.toFixed(1)}function row(k,v){return '<div class="r"><span>'+L[k]+'</span><span>'+v+'</span></div>'}function show(el){var i=+el.dataset.i,w=d.rows[i];if(!w)return;var h='<b>'+w.t+'</b>';if(d.mspt){h+=row('tps',f1(w.tps))+row('med',f1(w.med)+' ms')+row('max',f1(w.max)+' ms')}if(w.busy>0)h+=row('busy',f1(w.busy)+' ms/tick');if(w.cpu>0)h+=row('cpu',f1(w.cpu)+'%');if(w.pl||w.en){h+=row('pl',w.pl)+row('en',w.en)+row('te',w.te)+row('ch',w.ch)}if(w.spike){h+='<div class="sp">⚠ '+L.spike+': '+w.spike+'</div>';if(w.causes&&w.causes.length)h+='<div class="cs">'+L.causes+': '+w.causes.join(', ')+'</div>'}tip.innerHTML=h;tip.hidden=false;var vb=svg.viewBox.baseVal,sc=svg.clientWidth/vb.width,gx=parseFloat(el.dataset.x);guide.setAttribute('x1',gx);guide.setAttribute('x2',gx);guide.style.display='';svg.querySelectorAll('circle').forEach(function(c){c.classList.toggle('on',+c.dataset.i===i)});var px=gx*sc,tw=tip.offsetWidth,cwW=cw.clientWidth;var left=px+14;if(left+tw>cwW)left=Math.max(0,px-tw-14);tip.style.left=left+'px';tip.style.top='12px'}function hide(){tip.hidden=true;guide.style.display='none';svg.querySelectorAll('circle.on').forEach(function(c){c.classList.remove('on')})}svg.querySelectorAll('.hov').forEach(function(r){r.addEventListener('mouseenter',function(){show(r)});r.addEventListener('click',function(){show(r)})});svg.addEventListener('mouseleave',hide);document.addEventListener('click',function(e){if(!cw.contains(e.target))hide()})});
 var links=Array.from(document.querySelectorAll('.side nav a'));if('IntersectionObserver' in window){var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){links.forEach(function(l){l.classList.toggle('on',l.getAttribute('href')==='#'+e.target.id)})}})},{rootMargin:'-20% 0px -70% 0px'});document.querySelectorAll('section[id]').forEach(function(s){io.observe(s)})}
 document.body.classList.add('hideinfo');
-var si=document.getElementById('showinfo');if(si)si.addEventListener('change',function(){document.body.classList.toggle('hideinfo',!si.checked)});
+var si=document.getElementById('showinfo');if(si)si.addEventListener('change',function(){document.body.classList.toggle('hideinfo',!si.checked);var g=document.getElementById('infonotes');if(si.checked&&g){g.classList.remove('flash');void g.offsetWidth;g.classList.add('flash');g.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth',block:'start'})}});
 document.querySelectorAll('table.sortable').forEach(function(t){var ths=t.querySelectorAll('th');ths.forEach(function(th,i){th.addEventListener('click',function(){var tb=t.tBodies[0];var rows=Array.from(tb.rows);var asc=th.dataset.asc!=='1';ths.forEach(function(x){delete x.dataset.asc});th.dataset.asc=asc?'1':'0';rows.sort(function(a,b){var A=a.cells[i],B=b.cells[i];if(!A||!B)return 0;var av=A.dataset.v||A.textContent.trim(),bv=B.dataset.v||B.textContent.trim();var an=parseFloat(av.replace(',','.')),bn=parseFloat(bv.replace(',','.'));var r=(!isNaN(an)&&!isNaN(bn))?an-bn:av.localeCompare(bv);return asc?r:-r});rows.forEach(function(r){tb.appendChild(r)})})})});
 document.querySelectorAll('.tfilter').forEach(function(inp){inp.addEventListener('input',function(){var q=inp.value.toLowerCase();var t=document.getElementById(inp.dataset.t);Array.from(t.tBodies[0].rows).forEach(function(r){r.style.display=r.textContent.toLowerCase().indexOf(q)>=0?'':'none'})})});
 document.querySelectorAll('code.copy').forEach(function(c){c.title='Clic per copiare';c.addEventListener('click',function(){if(navigator.clipboard)navigator.clipboard.writeText(c.textContent)})});

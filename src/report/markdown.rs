@@ -207,14 +207,38 @@ pub fn render(r: &Report) -> String {
                     let _ = writeln!(o, "  - plugin: {}", ow.join(", "));
                 }
             }
-            if a.spikes.iter().take(10).any(crate::rules::spike_unattributed) {
-                let _ = writeln!(o, "
-{}", crate::rules::spike_unattributed_note());
+            if a.spikes
+                .iter()
+                .take(10)
+                .any(crate::rules::spike_unattributed)
+            {
+                let _ = writeln!(
+                    o,
+                    "
+{}",
+                    crate::rules::spike_unattributed_note()
+                );
             }
         }
         let _ = writeln!(o, "\n## Percorsi più caldi\n");
         for h in a.hot_paths.iter().take(10) {
             let _ = writeln!(o, "- {}% — `{}`", fmt_num(h.pct), h.frames.join(" → "));
+        }
+    }
+    if !r.meta.machine.is_empty() || !r.meta.resources.is_empty() {
+        let _ = writeln!(
+            o,
+            "
+## Macchina e risorse
+
+| | |
+|---|---|"
+        );
+        for (k, v) in &r.meta.machine {
+            let _ = writeln!(o, "| {} | {} |", esc(k), esc(v));
+        }
+        for x in &r.meta.resources {
+            let _ = writeln!(o, "| {} | {} |", esc(&x.label), esc(&x.value));
         }
     }
     if !r.hot_chunks.is_empty() {

@@ -257,8 +257,8 @@ fn jvm_advice_matches_gc_and_java_version() {
         r.findings
             .into_iter()
             .find(|f| f.area == "JVM / Macchina")
-            .unwrap()
-            .solutions
+            .map(|f| f.solutions)
+            .unwrap_or_default()
     };
     let z = jvm("-Xmx16G -XX:+UseZGC");
     assert!(z.iter().any(|s| s.contains("-XX:+ZGenerational")), "{z:?}");
@@ -269,6 +269,16 @@ fn jvm_advice_matches_gc_and_java_version() {
             .all(|s| !s.contains("ZGenerational") && !s.contains("-Xms")),
         "{ok:?}"
     );
+}
+
+#[test]
+fn machine_and_resources_are_reported() {
+    let r = build();
+    let ram = r.meta.resources.iter().find(|x| x.label == "RAM").unwrap();
+    assert!((ram.pct.unwrap() - 87.3).abs() < 1.0);
+    let html = report::html::render(&r);
+    assert!(html.contains(r#"id="macchina""#) && html.contains("AMD Ryzen 9 5950X"));
+    assert!(report::markdown::render(&r).contains("AMD Ryzen 9 5950X"));
 }
 
 #[test]
@@ -302,6 +312,7 @@ fn info_toggle_only_when_there_are_hidden_notes() {
         .count();
     assert_eq!(html.contains("id=\"showinfo\""), hidden > 0);
     assert_eq!(html.matches("finding info hidable").count(), hidden);
+    assert_eq!(html.contains("id=\"infonotes\""), hidden > 0);
     r.findings.push(sparkscope::rules::Finding {
         severity: Severity::Info,
         area: "Test".into(),

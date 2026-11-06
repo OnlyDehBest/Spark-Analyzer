@@ -1997,7 +1997,7 @@ pub fn parse_jvm_args(raw: &str) -> JvmArgs {
     a
 }
 
-fn gb(b: u64) -> String {
+pub(crate) fn gb(b: u64) -> String {
     format!("{:.1} GB", b as f64 / (1u64 << 30) as f64)
 }
 
@@ -2202,28 +2202,17 @@ fn jvm_rules(
             f(pct)
         ));
     }
-    if ev.is_empty() {
+    // senza problemi i valori sono gia' nella sezione "Macchina e risorse"
+    if sol.is_empty() {
         return;
     }
-    let title = if sol.is_empty() {
-        crate::i18n::t(
-            "JVM e macchina: nessun problema evidente",
-            "JVM and machine: no evident problems",
-        )
-        .to_string()
-    } else {
-        crate::i18n::t(
-            "JVM, memoria e CPU da rivedere",
-            "JVM, memory and CPU to review",
-        )
-        .to_string()
-    };
+    let title = crate::i18n::t(
+        "JVM, memoria e CPU da rivedere",
+        "JVM, memory and CPU to review",
+    )
+    .to_string();
     out.push(Finding {
-        severity: if sol.is_empty() {
-            Severity::Info
-        } else {
-            worst
-        },
+        severity: worst,
         area: crate::i18n::t("JVM / Macchina", "JVM / Machine").into(),
         title,
         impact_pct: 0.0,

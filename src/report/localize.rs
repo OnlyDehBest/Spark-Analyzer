@@ -15,6 +15,18 @@ const PAIRS: &[(&str, &str)] = &[
     ("<span>Albero chiamate</span>", "<span>Call tree</span>"),
     ("<span>Entità</span>", "<span>Entities</span>"),
     ("<span>Mondo</span>", "<span>World</span>"),
+    (
+        "<span>Macchina e risorse</span>",
+        "<span>Machine and resources</span>",
+    ),
+    (
+        "</span>Macchina e risorse</h2>",
+        "</span>Machine and resources</h2>",
+    ),
+    (
+        "<th>Risorsa</th><th>Valore</th>",
+        "<th>Resource</th><th>Value</th>",
+    ),
     ("title=\"Tema chiaro/scuro\"", "title=\"Light/dark theme\""),
     ("<h1>Analisi profilo</h1>", "<h1>Profile analysis</h1>"),
     (" · inizio ", " · started "),
@@ -61,6 +73,7 @@ const PAIRS: &[(&str, &str)] = &[
         "mostra anche le note informative (",
         "also show informational notes (",
     ),
+    ("<h3>Note informative (", "<h3>Informational notes ("),
     ("<b>Responsabili:</b>", "<b>Responsible:</b>"),
     ("<h4>Cosa fare</h4>", "<h4>What to do</h4>"),
     (

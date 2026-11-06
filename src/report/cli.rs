@@ -422,7 +422,11 @@ pub fn print(r: &Report, o: &CliOptions) {
         if let Some(pp) = &a.periodic_spikes {
             println!(" {}", p.bold(pp));
         }
-        if a.spikes.iter().take(o.top.min(8)).any(crate::rules::spike_unattributed) {
+        if a.spikes
+            .iter()
+            .take(o.top.min(8))
+            .any(crate::rules::spike_unattributed)
+        {
             println!(" {}", crate::rules::spike_unattributed_note());
         }
     }
@@ -481,6 +485,22 @@ pub fn print(r: &Report, o: &CliOptions) {
                 Cell::new(tm),
                 Cell::new(note),
             ]);
+        }
+        println!("{t}");
+    }
+
+    if !r.meta.machine.is_empty() || !r.meta.resources.is_empty() {
+        println!();
+        println!("{}", p.h2("■ MACCHINA E RISORSE"));
+        let mut t = table(&["", ""]);
+        for (k, v) in &r.meta.machine {
+            t.add_row(vec![Cell::new(k), Cell::new(v)]);
+        }
+        for x in &r.meta.resources {
+            let v = x
+                .pct
+                .map_or(x.value.clone(), |p| format!("{} {}", bar(p, 10), x.value));
+            t.add_row(vec![Cell::new(&x.label), Cell::new(v)]);
         }
         println!("{t}");
     }
