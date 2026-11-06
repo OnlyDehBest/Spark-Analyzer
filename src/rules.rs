@@ -114,33 +114,19 @@ impl<'a> Ctx<'a> {
         }
     }
 
-    fn ms(&self, time: f64) -> String {
-        match self.a.main.busy_per_tick {
-            Some(_) if self.a.main.ticks > 0 => {
-                tf!(
-                    "{} ms/tick",
-                    "{} ms/tick",
-                    f(time / self.a.main.ticks as f64)
-                )
-            }
-            _ => format!("{} {}", f(time), self.a.unit),
-        }
-    }
-
     fn cat_evidence(&self, c: &CatStat) -> Vec<String> {
         let mut ev = vec![tf!(
-            "{}: {}% del tempo attivo del main thread ({})",
-            "{}: {}% of main thread active time ({})",
+            "{}: {} del tempo attivo del main thread",
+            "{}: {} of main thread active time",
             c.label,
-            f(c.pct),
-            self.ms(c.time)
+            pv(c.pct)
         )];
         let ms: Vec<String> = c
             .top_methods
             .iter()
             .take(4)
             .filter(|m| m.pct >= 0.3)
-            .map(|m| format!("{} ({}%)", short(&m.name), f(m.pct)))
+            .map(|m| format!("{} ({})", short(&m.name), pv(m.pct)))
             .collect();
         if !ms.is_empty() {
             ev.push(tf!(
@@ -169,10 +155,10 @@ impl<'a> Ctx<'a> {
             .filter(|o| o.pct >= 0.5)
             .map(|o| {
                 tf!(
-                    "{} ({}% del main thread in questa categoria)",
-                    "{} ({}% of the main thread in this category)",
+                    "{} ({} del main thread in questa categoria)",
+                    "{} ({} of the main thread in this category)",
                     self.p.sources.display_name(&o.name),
-                    f(o.pct)
+                    pv(o.pct)
                 )
             })
             .collect()
@@ -289,6 +275,41 @@ fn is_bool(b: bool) -> impl Fn(&Cfg) -> bool {
 }
 fn neq_text(v: &'static str) -> impl Fn(&Cfg) -> bool {
     move |c: &Cfg| !c.text().eq_ignore_ascii_case(v)
+}
+
+pub const PV_OPEN: char = '⟪';
+pub const PV_CLOSE: char = '⟫';
+
+pub fn pv(pct: f64) -> String {
+    format!("{PV_OPEN}{pct}{PV_CLOSE}")
+}
+
+pub fn render_pv(text: &str, wrap: impl Fn(f64) -> String) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(i) = rest.find(PV_OPEN) {
+        out.push_str(&rest[..i]);
+        let after = &rest[i + PV_OPEN.len_utf8()..];
+        match after.find(PV_CLOSE) {
+            Some(j) => {
+                match after[..j].parse::<f64>() {
+                    Ok(v) => out.push_str(&wrap(v)),
+                    Err(_) => out.push_str(&after[..j]),
+                }
+                rest = &after[j + PV_CLOSE.len_utf8()..];
+            }
+            None => {
+                out.push_str(&rest[i..]);
+                rest = "";
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+pub fn plain_pv(text: &str) -> String {
+    render_pv(text, |v| format!("{}%", f(v)))
 }
 
 pub fn short(method: &str) -> String {
@@ -1469,7 +1490,7 @@ fn category_rules(c: &Ctx, out: &mut Vec<Finding>) {
                     .iter()
                     .take(6)
                     .filter(|e| e.pct >= 0.5)
-                    .map(|e| format!("{} {}%", e.name, f(e.pct)))
+                    .map(|e| format!("{} {}", e.name, pv(e.pct)))
                     .collect();
             if !ents.is_empty() {
                 evidence.push(tf!(
@@ -1485,7 +1506,7 @@ fn category_rules(c: &Ctx, out: &mut Vec<Finding>) {
                     .iter()
                     .take(6)
                     .filter(|e| e.pct >= 0.3)
-                    .map(|e| format!("{} {}%", e.name, f(e.pct)))
+                    .map(|e| format!("{} {}", e.name, pv(e.pct)))
                     .collect();
             if !bes.is_empty() {
                 evidence.push(tf!(
@@ -1525,19 +1546,18 @@ fn plugin_rules(c: &Ctx, out: &mut Vec<Finding>) {
         }
         let name = c.p.sources.display_name(&s.source);
         let mut ev = vec![tf!(
-            "{} è nello stack per il {}% del tempo attivo del main thread ({}), di cui {}% nel suo codice o in chiamate fatte direttamente",
-            "{} is on the stack for {}% of main thread active time ({}), of which {}% in its own code or direct calls",
+            "Tempo del main thread con {} nello stack: {} (di cui {} nel suo codice o in chiamate fatte direttamente)",
+            "Main thread time with {} on the stack: {} (of which {} in its own code or direct calls)",
             name,
-            f(s.incl_pct),
-            c.ms(s.incl_time),
-            f(s.self_pct)
+            pv(s.incl_pct),
+            pv(s.self_pct)
         )];
         let entries: Vec<String> = s
             .top_entries
             .iter()
             .take(5)
             .filter(|e| e.pct >= 0.3)
-            .map(|e| format!("{} [{}] {}%", short(&e.entry), e.context, f(e.pct)))
+            .map(|e| format!("{} [{}] {}", short(&e.entry), e.context, pv(e.pct)))
             .collect();
         if !entries.is_empty() {
             ev.push(tf!(
@@ -1551,7 +1571,7 @@ fn plugin_rules(c: &Ctx, out: &mut Vec<Finding>) {
             .iter()
             .take(4)
             .filter(|m| m.pct >= 0.3)
-            .map(|m| format!("{} {}%", short(&m.name), f(m.pct)))
+            .map(|m| format!("{} {}", short(&m.name), pv(m.pct)))
             .collect();
         if !ms.is_empty() {
             ev.push(tf!(
@@ -1566,10 +1586,10 @@ fn plugin_rules(c: &Ctx, out: &mut Vec<Finding>) {
                 continue;
             }
             ev.push(tf!(
-                "⚠ {}: {}% del main thread",
-                "⚠ {}: {}% of the main thread",
+                "⚠ {}: {} del main thread",
+                "⚠ {}: {} of the main thread",
                 h.name,
-                f(h.pct)
+                pv(h.pct)
             ));
             solutions.push(tf!("{}: il plugin esegue «{}» sul main thread; va spostato in un task asincrono o messo in cache", "{}: the plugin performs “{}” on the main thread; it should be moved to an async task or cached", name, h.name.to_lowercase()));
         }
@@ -1627,10 +1647,10 @@ fn plugin_rules(c: &Ctx, out: &mut Vec<Finding>) {
             .filter(|e| e.pct >= 2.0)
             .map(|e| {
                 format!(
-                    "{} → {} ({}%)",
+                    "{} → {} ({})",
                     e.entry,
                     c.p.sources.display_name(&e.source),
-                    f(e.pct)
+                    pv(e.pct)
                 )
             })
             .collect();

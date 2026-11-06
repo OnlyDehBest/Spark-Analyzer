@@ -240,3 +240,14 @@ fn empty_and_ticked_profiles() {
         .to_string();
     assert!(err.contains("testo"), "{err}");
 }
+
+#[test]
+fn unit_toggle_and_no_raw_tokens() {
+    let r = build();
+    let html = report::html::render(&r);
+    assert!(html.contains("id=\"unitsel\"") && html.contains("data-u=\"ms/tick\""));
+    assert!(html.matches("class=\"pv\"").count() > 50);
+    assert!(!html.contains('⟪') && !html.contains('⟫'));
+    let md = report::markdown::render(&r);
+    assert!(!md.contains('⟪'));
+}

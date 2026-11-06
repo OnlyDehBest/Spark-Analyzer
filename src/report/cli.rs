@@ -195,10 +195,14 @@ pub fn print(r: &Report, o: &CliOptions) {
             impact
         );
         for e in &fnd.evidence {
-            println!("   {} {}", p.dim("•"), e);
+            println!("   {} {}", p.dim("•"), crate::rules::plain_pv(e));
         }
         if !fnd.culprits.is_empty() && fnd.area != crate::i18n::t("Plugin/Mod", "Plugin/Mod") {
-            println!("   {} {}", p.bold("Responsabili:"), fnd.culprits.join(", "));
+            println!(
+                "   {} {}",
+                p.bold("Responsabili:"),
+                crate::rules::plain_pv(&fnd.culprits.join(", "))
+            );
         }
         if !fnd.explanation.is_empty() && fnd.area != crate::i18n::t("Panoramica", "Overview") {
             println!("   {} {}", p.dim("Perché:"), p.dim(&fnd.explanation));

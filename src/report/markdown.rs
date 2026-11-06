@@ -54,10 +54,14 @@ pub fn render(r: &Report) -> String {
         let _ = writeln!(o, "### [{}] {}{}\n", f.severity.label(), f.title, impact);
         let _ = writeln!(o, "_Area: {}_\n", f.area);
         for e in &f.evidence {
-            let _ = writeln!(o, "- {e}");
+            let _ = writeln!(o, "- {}", crate::rules::plain_pv(e));
         }
         if !f.culprits.is_empty() {
-            let _ = writeln!(o, "\n**Responsabili:** {}", f.culprits.join(", "));
+            let _ = writeln!(
+                o,
+                "\n**Responsabili:** {}",
+                crate::rules::plain_pv(&f.culprits.join(", "))
+            );
         }
         if !f.explanation.is_empty() {
             let _ = writeln!(o, "\n{}", f.explanation);

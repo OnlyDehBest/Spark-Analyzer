@@ -230,6 +230,14 @@ fn timeline_svg(r: &Report) -> Option<String> {
     Some(format!("{s}{legend}"))
 }
 
+pub(crate) fn pvh(p: f64) -> String {
+    format!(r#"<span class="pv" data-p="{p}">{}%</span>"#, fmt_num(p))
+}
+
+pub(crate) fn pv_html(escaped: &str) -> String {
+    crate::rules::render_pv(escaped, pvh)
+}
+
 fn pct_bar(p: f64) -> String {
     format!(
         r#"<span class="bar"><i style="width:{:.1}%"></i></span>"#,
@@ -448,6 +456,16 @@ pub fn render(r: &Report) -> String {
             .map(|v| format!(r#"<a class="btn" href="{0}" target="_blank" rel="noopener">{1}Apri nel viewer spark</a>"#, esc(v), icon("external")))
             .unwrap_or_default()
     );
+    if a.unit == "ms" && a.main.busy > 0.0 {
+        let (factor, unit) = match a.main.busy_per_tick {
+            Some(bt) => (bt / 100.0, "ms/tick"),
+            None => (a.main.busy / 100.0, "ms"),
+        };
+        let _ = write!(
+            b,
+            r#"<div class="unitbar"><span class="dim">Mostra i consumi in</span><div class="seg" id="unitsel" data-f="{factor}" data-u="{unit}"><button type="button" data-m="pct" class="on">%</button><button type="button" data-m="ms">{unit}</button></div></div>"#
+        );
+    }
     let _ = write!(b, r#"<section class="stats">{cards}</section>"#);
     if let Some(th) = m.ticked_threshold {
         let _ = write!(
@@ -484,7 +502,7 @@ pub fn render(r: &Report) -> String {
                 ""
             };
         let impact = if f.impact_pct > 0.0 {
-            format!(r#"<span class="imp">{}%</span>"#, fmt_num(f.impact_pct))
+            format!(r#"<span class="imp">{}</span>"#, pvh(f.impact_pct))
         } else {
             String::new()
         };
@@ -499,7 +517,7 @@ pub fn render(r: &Report) -> String {
         if !f.evidence.is_empty() {
             b.push_str("<ul class=\"ev\">");
             for e in &f.evidence {
-                let _ = write!(b, "<li>{}</li>", esc(e));
+                let _ = write!(b, "<li>{}</li>", pv_html(&esc(e)));
             }
             b.push_str("</ul>");
         }
@@ -507,7 +525,7 @@ pub fn render(r: &Report) -> String {
             let _ = write!(
                 b,
                 r#"<p class="cul"><b>Responsabili:</b> {}</p>"#,
-                esc(&f.culprits.join(", "))
+                pv_html(&esc(&f.culprits.join(", ")))
             );
         }
         if !f.explanation.is_empty() {
@@ -544,35 +562,29 @@ pub fn render(r: &Report) -> String {
         );
         let _ = write!(
             b,
-            r#"<table class="sortable"><thead><tr><th>Categoria</th><th class="n">%</th><th></th><th class="n">{}</th><th>Plugin coinvolti</th><th>Metodi principali</th></tr></thead><tbody>"#,
-            if per_tick { "ms/tick" } else { "tempo" }
+            r#"<table class="sortable"><thead><tr><th>Categoria</th><th class="n"><span class="uh">%</span></th><th></th><th>Plugin coinvolti</th><th>Metodi principali</th></tr></thead><tbody>"#
         );
+        let _ = per_tick;
         for c in a.categories.iter().filter(|c| c.pct >= 0.1) {
             let owners: Vec<String> = c
                 .top_owners
                 .iter()
                 .take(3)
                 .filter(|o| o.pct >= 0.1)
-                .map(|o| format!("{} {}%", esc(&o.name), fmt_num(o.pct)))
+                .map(|o| format!("{} {}", esc(&o.name), pvh(o.pct)))
                 .collect();
             let ms: Vec<String> = c
                 .top_methods
                 .iter()
                 .take(3)
-                .map(|x| format!("<code>{}</code> {}%", esc(&short(&x.name)), fmt_num(x.pct)))
+                .map(|x| format!("<code>{}</code> {}", esc(&short(&x.name)), pvh(x.pct)))
                 .collect();
-            let v = if per_tick {
-                fmt_num(c.time / a.main.ticks as f64)
-            } else {
-                fmt_time(c.time, &a.unit)
-            };
             let _ = write!(
                 b,
-                r#"<tr><td>{}</td><td class="n">{}</td><td>{}</td><td class="n">{}</td><td>{}</td><td class="small">{}</td></tr>"#,
+                r#"<tr><td>{}</td><td class="n">{}</td><td>{}</td><td>{}</td><td class="small">{}</td></tr>"#,
                 esc(&c.label),
-                fmt_num(c.pct),
+                pvh(c.pct),
                 pct_bar(c.pct),
-                v,
                 owners.join("<br>"),
                 ms.join("<br>")
             );
@@ -583,7 +595,7 @@ pub fn render(r: &Report) -> String {
                 .buckets
                 .iter()
                 .filter(|x| x.pct >= 0.3)
-                .map(|x| format!("{} <b>{}%</b>", esc(&x.name), fmt_num(x.pct)))
+                .map(|x| format!("{} <b>{}</b>", esc(&x.name), pvh(x.pct)))
                 .collect();
             let _ = write!(
                 b,
@@ -600,7 +612,7 @@ pub fn render(r: &Report) -> String {
         if a.sources.is_empty() {
             b.push_str("<p>Nessun plugin/mod rilevato sul main thread (oppure il profilo non contiene le informazioni sulle sorgenti).</p>");
         } else {
-            b.push_str(r#"<table class="sortable"><thead><tr><th>Plugin</th><th class="n">% nello stack</th><th></th><th class="n">% proprio</th><th>Punti di ingresso</th><th>Avvisi</th></tr></thead><tbody>"#);
+            b.push_str(r#"<table class="sortable"><thead><tr><th>Plugin</th><th class="n">Nello stack</th><th></th><th class="n">Proprio</th><th>Punti di ingresso</th><th>Avvisi</th></tr></thead><tbody>"#);
             for s in a.sources.iter().filter(|s| s.incl_pct >= 0.05) {
                 let entries: Vec<String> = s
                     .top_entries
@@ -608,10 +620,10 @@ pub fn render(r: &Report) -> String {
                     .take(4)
                     .map(|e| {
                         format!(
-                            "<code>{}</code> <span class=\"ctx\">{}</span> {}%",
+                            "<code>{}</code> <span class=\"ctx\">{}</span> {}",
                             esc(&short(&e.entry)),
                             esc(&e.context),
-                            fmt_num(e.pct)
+                            pvh(e.pct)
                         )
                     })
                     .collect();
@@ -621,9 +633,9 @@ pub fn render(r: &Report) -> String {
                     .filter(|h| h.pct >= 0.1)
                     .map(|h| {
                         format!(
-                            "<span class=\"warn\">{} {}%</span>",
+                            "<span class=\"warn\">{} {}</span>",
                             esc(&h.name),
-                            fmt_num(h.pct)
+                            pvh(h.pct)
                         )
                     })
                     .collect();
@@ -631,9 +643,9 @@ pub fn render(r: &Report) -> String {
                     b,
                     r#"<tr><td><b>{}</b></td><td class="n">{}</td><td>{}</td><td class="n">{}</td><td class="small">{}</td><td class="small">{}</td></tr>"#,
                     esc(&s.display),
-                    fmt_num(s.incl_pct),
+                    pvh(s.incl_pct),
                     pct_bar(s.incl_pct),
-                    fmt_num(s.self_pct),
+                    pvh(s.self_pct),
                     entries.join("<br>"),
                     hz.join("<br>")
                 );
@@ -641,14 +653,14 @@ pub fn render(r: &Report) -> String {
             b.push_str("</tbody></table>");
         }
         if !a.events.is_empty() {
-            b.push_str(r#"<h3>Eventi Bukkit</h3><table class="sortable"><thead><tr><th>Evento</th><th>Plugin</th><th class="n">%</th></tr></thead><tbody>"#);
+            b.push_str(r#"<h3>Eventi Bukkit</h3><table class="sortable"><thead><tr><th>Evento</th><th>Plugin</th><th class="n"><span class="uh">%</span></th></tr></thead><tbody>"#);
             for e in a.events.iter().take(40) {
                 let _ = write!(
                     b,
                     r#"<tr><td>{}</td><td>{}</td><td class="n">{}</td></tr>"#,
                     esc(&e.entry),
                     esc(&e.source),
-                    fmt_num(e.pct)
+                    pvh(e.pct)
                 );
             }
             b.push_str("</tbody></table>");
@@ -715,7 +727,7 @@ pub fn render(r: &Report) -> String {
 
         let _ = write!(
             b,
-            r#"<section id="metodi"><h2>Metodi più costosi</h2><input class="tfilter" data-t="mt" placeholder="Filtra…"><table class="sortable" id="mt"><thead><tr><th>Metodo</th><th class="n">% proprio</th><th class="n">% totale</th><th>Sorgente</th></tr></thead><tbody>"#
+            r#"<section id="metodi"><h2>Metodi più costosi</h2><input class="tfilter" data-t="mt" placeholder="Filtra…"><table class="sortable" id="mt"><thead><tr><th>Metodo</th><th class="n">Proprio</th><th class="n">Totale</th><th>Sorgente</th></tr></thead><tbody>"#
         );
         for mm in &a.methods {
             let _ = write!(
@@ -723,21 +735,21 @@ pub fn render(r: &Report) -> String {
                 r#"<tr><td><code title="{}">{}</code></td><td class="n">{}</td><td class="n">{}</td><td>{}</td></tr>"#,
                 esc(&mm.method),
                 esc(&short(&mm.method)),
-                fmt_num(mm.self_pct),
-                fmt_num(mm.incl_pct),
+                pvh(mm.self_pct),
+                pvh(mm.incl_pct),
                 esc(&mm.source.clone().unwrap_or_default())
             );
         }
         b.push_str("</tbody></table>");
-        b.push_str(r#"<h3>Metodi per tempo totale (inclusi i chiamati)</h3><table class="sortable"><thead><tr><th>Metodo</th><th class="n">% totale</th><th class="n">% proprio</th><th>Sorgente</th></tr></thead><tbody>"#);
+        b.push_str(r#"<h3>Metodi per tempo totale (inclusi i chiamati)</h3><table class="sortable"><thead><tr><th>Metodo</th><th class="n">Totale</th><th class="n">Proprio</th><th>Sorgente</th></tr></thead><tbody>"#);
         for mm in a.methods_inclusive.iter().take(40) {
             let _ = write!(
                 b,
                 r#"<tr><td><code title="{}">{}</code></td><td class="n">{}</td><td class="n">{}</td><td>{}</td></tr>"#,
                 esc(&mm.method),
                 esc(&short(&mm.method)),
-                fmt_num(mm.incl_pct),
-                fmt_num(mm.self_pct),
+                pvh(mm.incl_pct),
+                pvh(mm.self_pct),
                 esc(&mm.source.clone().unwrap_or_default())
             );
         }
@@ -751,8 +763,8 @@ pub fn render(r: &Report) -> String {
                 .join(" · ");
             let _ = write!(
                 b,
-                r#"<li><b>{}%</b> <span class="dim">{}</span><div class="stack">{}</div></li>"#,
-                fmt_num(h.pct),
+                r#"<li><b>{}</b> <span class="dim">{}</span><div class="stack">{}</div></li>"#,
+                pvh(h.pct),
                 esc(&tag),
                 h.frames
                     .iter()
@@ -773,7 +785,7 @@ pub fn render(r: &Report) -> String {
         ] {
             let _ = write!(
                 b,
-                r#"<div><h3>{}</h3><table class="sortable"><thead><tr><th>Tipo</th><th class="n">%</th><th></th></tr></thead><tbody>"#,
+                r#"<div><h3>{}</h3><table class="sortable"><thead><tr><th>Tipo</th><th class="n"><span class="uh">%</span></th><th></th></tr></thead><tbody>"#,
                 title
             );
             for e in list.iter().take(25) {
@@ -781,7 +793,7 @@ pub fn render(r: &Report) -> String {
                     b,
                     r#"<tr><td>{}</td><td class="n">{}</td><td>{}</td></tr>"#,
                     esc(&e.name),
-                    fmt_num(e.pct),
+                    pvh(e.pct),
                     pct_bar(e.pct * 2.0)
                 );
             }
@@ -939,7 +951,7 @@ table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font
 .panel>table,.grid2 table,.panel>div>table{background:var(--card2);border:1px solid var(--line);border-radius:6px;overflow:hidden;border-collapse:separate;border-spacing:0}
 code{font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--code);border:1px solid var(--line2);padding:1px 5px;border-radius:4px;word-break:break-all;color:var(--fg)}
 .bar{display:inline-block;width:110px;height:6px;background:var(--code);border-radius:3px;overflow:hidden;vertical-align:middle}.bar i{display:block;height:100%;background:var(--bar);border-radius:3px}
-.ctx{color:var(--muted);font-size:11px}.warn{color:var(--high);font-weight:600}
+.ctx{color:var(--muted);font-size:11px}.unitbar{display:flex;align-items:center;gap:10px;margin:-4px 0 12px;font-size:13px;flex-wrap:wrap}.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--card)}.seg button{border:0;border-radius:0;background:transparent;padding:5px 12px;font-size:12px;font-weight:600;color:var(--muted)}.seg button+button{border-left:1px solid var(--line)}.seg button.on{background:var(--acc);color:#fff}.warn{color:var(--high);font-weight:600}
 .chart{width:100%;height:auto;background:var(--card2);border:1px solid var(--line);border-radius:6px}.chart .grid{stroke:var(--line2)}.chart .budget{stroke:var(--crit);stroke-dasharray:4 4;opacity:.8}.chart .axis{fill:var(--muted);font-size:11px}.chart polyline{fill:none;stroke-width:2}.chart .l1{stroke:var(--high)}.chart .l2{stroke:var(--acc)}.chart .l3{stroke:var(--ok);stroke-dasharray:3 3}.chart circle{fill:var(--high)}.chart circle.sp{fill:var(--crit)}.chart .spikebg{fill:var(--spike)}
 .legend{color:var(--muted);font-size:12px;margin:8px 0 12px;display:flex;gap:6px 14px;flex-wrap:wrap;align-items:center}.legend span{display:inline-block;width:14px;height:3px;vertical-align:middle;margin-right:4px;border-radius:2px}.k1{background:var(--high)}.k2{background:var(--acc)}.k3{background:var(--ok)}.kb{background:var(--crit)}.ks{background:var(--spike);height:10px!important}
 .spike{background:var(--card2);border:1px solid var(--line);border-left:3px solid var(--crit);border-radius:6px;padding:10px 14px;margin:10px 0}.spike h4 small{color:var(--muted);font-weight:400}.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}.grid3 td{padding:4px 6px}
@@ -959,6 +971,7 @@ const JS: &str = r#"
 var docEl=document.documentElement;try{var t=localStorage.getItem('sparkscope-theme');if(t)docEl.dataset.theme=t}catch(e){}
 var tb=document.getElementById('theme');if(tb)tb.addEventListener('click',function(){var n=docEl.dataset.theme==='dark'?'light':'dark';docEl.dataset.theme=n;try{localStorage.setItem('sparkscope-theme',n)}catch(e){}if(window.__redrawFlame)window.__redrawFlame()});
 var lb=document.getElementById('langbtn');if(lb)lb.addEventListener('click',function(){var n=lb.dataset.to;try{localStorage.setItem('sa-lang',n)}catch(e){}if(window.__saRender){window.__saRender(n);return}var u=new URL(location.href);u.searchParams.set('lang',n);location.href=u.toString()});
+var us=document.getElementById('unitsel');if(us){var F=parseFloat(us.dataset.f)||0,U=us.dataset.u;function fm(v){return v>=100?v.toFixed(0):v>=10?v.toFixed(1):v.toFixed(2)}function setUnit(m){us.querySelectorAll('button').forEach(function(x){x.classList.toggle('on',x.dataset.m===m)});document.querySelectorAll('.pv').forEach(function(e){var p=parseFloat(e.dataset.p);e.textContent=m==='ms'?fm(p*F)+' '+U:fm(p)+'%'});document.querySelectorAll('.uh').forEach(function(e){e.textContent=m==='ms'?U:'%'})}us.addEventListener('click',function(e){var bt=e.target.closest('button');if(!bt)return;try{localStorage.setItem('sa-unit',bt.dataset.m)}catch(x){}setUnit(bt.dataset.m)});var su='pct';try{su=localStorage.getItem('sa-unit')||'pct'}catch(x){}if(su!=='pct')setUnit(su)}
 var links=Array.from(document.querySelectorAll('.side nav a'));if('IntersectionObserver' in window){var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){links.forEach(function(l){l.classList.toggle('on',l.getAttribute('href')==='#'+e.target.id)})}})},{rootMargin:'-20% 0px -70% 0px'});document.querySelectorAll('section[id]').forEach(function(s){io.observe(s)})}
 document.body.classList.add('hideinfo');
 var si=document.getElementById('showinfo');if(si)si.addEventListener('change',function(){document.body.classList.toggle('hideinfo',!si.checked)});
