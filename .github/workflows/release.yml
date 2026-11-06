@@ -11,8 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - run: cargo test --all-targets
+      - run: rustup update stable --no-self-update && rustup default stable
+      - run: cargo test --workspace
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -34,14 +34,14 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
+      - shell: bash
+        run: rustup update stable --no-self-update && rustup default stable && rustup target add ${{ matrix.target }}
       - run: cargo build --release --target ${{ matrix.target }}
       - shell: bash
         run: |
           mkdir dist
           cp target/${{ matrix.target }}/release/${{ matrix.bin }} dist/sparkscope-${{ matrix.target }}${{ endsWith(matrix.bin, '.exe') && '.exe' || '' }}
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: dist/*
+      - shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" --repo "${{ github.repository }}" --title "${{ github.ref_name }}" --generate-notes 2>/dev/null || true; gh release upload "${{ github.ref_name }}" dist/* --repo "${{ github.repository }}" --clobber
