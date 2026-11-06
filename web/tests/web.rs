@@ -59,3 +59,23 @@ fn english_report_has_no_italian_chrome() {
             && html.contains("data-to=\"it\"")
     );
 }
+
+#[test]
+fn english_controls_and_headers() {
+    let bytes = fixture::sample().encode_to_vec();
+    let json = sparkscope_web::analyze_to_json(&bytes, "AbCd1234", None, "/", "en").unwrap();
+    let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let html = v["html"].as_str().unwrap();
+    for it in [
+        "Mostra i consumi",
+        ">Nello stack<",
+        ">Proprio<",
+        ">Totale<",
+        "Metodi per tempo",
+    ] {
+        assert!(!html.contains(it), "testo italiano rimasto: {it}");
+    }
+    assert!(
+        html.contains("Show usage as") && html.contains(">On stack<") && html.contains(">Own<")
+    );
+}

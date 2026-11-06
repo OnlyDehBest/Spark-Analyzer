@@ -463,7 +463,8 @@ pub fn render(r: &Report) -> String {
         };
         let _ = write!(
             b,
-            r#"<div class="unitbar"><span class="dim">Mostra i consumi in</span><div class="seg" id="unitsel" data-f="{factor}" data-u="{unit}"><button type="button" data-m="pct" class="on">%</button><button type="button" data-m="ms">{unit}</button></div></div>"#
+            r#"<div class="unitbar"><span class="dim">{}</span><div class="seg" id="unitsel" data-f="{factor}" data-u="{unit}"><button type="button" data-m="pct" class="on">%</button><button type="button" data-m="ms">{unit}</button></div></div>"#,
+            crate::i18n::t("Mostra i consumi in", "Show usage as")
         );
     }
     let _ = write!(b, r#"<section class="stats">{cards}</section>"#);
@@ -612,7 +613,12 @@ pub fn render(r: &Report) -> String {
         if a.sources.is_empty() {
             b.push_str("<p>Nessun plugin/mod rilevato sul main thread (oppure il profilo non contiene le informazioni sulle sorgenti).</p>");
         } else {
-            b.push_str(r#"<table class="sortable"><thead><tr><th>Plugin</th><th class="n">Nello stack</th><th></th><th class="n">Proprio</th><th>Punti di ingresso</th><th>Avvisi</th></tr></thead><tbody>"#);
+            let _ = write!(
+                b,
+                r#"<table class="sortable"><thead><tr><th>Plugin</th><th class="n">{}</th><th></th><th class="n">{}</th><th>Punti di ingresso</th><th>Avvisi</th></tr></thead><tbody>"#,
+                crate::i18n::t("Nello stack", "On stack"),
+                crate::i18n::t("Proprio", "Own")
+            );
             for s in a.sources.iter().filter(|s| s.incl_pct >= 0.05) {
                 let entries: Vec<String> = s
                     .top_entries
@@ -727,7 +733,9 @@ pub fn render(r: &Report) -> String {
 
         let _ = write!(
             b,
-            r#"<section id="metodi"><h2>Metodi più costosi</h2><input class="tfilter" data-t="mt" placeholder="Filtra…"><table class="sortable" id="mt"><thead><tr><th>Metodo</th><th class="n">Proprio</th><th class="n">Totale</th><th>Sorgente</th></tr></thead><tbody>"#
+            r#"<section id="metodi"><h2>Metodi più costosi</h2><input class="tfilter" data-t="mt" placeholder="Filtra…"><table class="sortable" id="mt"><thead><tr><th>Metodo</th><th class="n">{}</th><th class="n">{}</th><th>Sorgente</th></tr></thead><tbody>"#,
+            crate::i18n::t("Proprio", "Own"),
+            crate::i18n::t("Totale", "Total")
         );
         for mm in &a.methods {
             let _ = write!(
@@ -741,7 +749,12 @@ pub fn render(r: &Report) -> String {
             );
         }
         b.push_str("</tbody></table>");
-        b.push_str(r#"<h3>Metodi per tempo totale (inclusi i chiamati)</h3><table class="sortable"><thead><tr><th>Metodo</th><th class="n">Totale</th><th class="n">Proprio</th><th>Sorgente</th></tr></thead><tbody>"#);
+        let _ = write!(
+            b,
+            r#"<h3>Metodi per tempo totale (inclusi i chiamati)</h3><table class="sortable"><thead><tr><th>Metodo</th><th class="n">{}</th><th class="n">{}</th><th>Sorgente</th></tr></thead><tbody>"#,
+            crate::i18n::t("Totale", "Total"),
+            crate::i18n::t("Proprio", "Own")
+        );
         for mm in a.methods_inclusive.iter().take(40) {
             let _ = write!(
                 b,
