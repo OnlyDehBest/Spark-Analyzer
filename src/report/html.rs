@@ -966,11 +966,12 @@ pub fn render(r: &Report) -> String {
         );
     }
     let page = format!(
-        "<!doctype html><html lang=\"it\" data-theme=\"dark\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">{}<title>{}</title><style>{}</style></head><body>{}<script>{}</script></body></html>",
+        "<!doctype html><html lang=\"it\" data-theme=\"dark\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">{}<title>{}</title><style>{}</style></head><body>{}<script>{}{}</script></body></html>",
         FAVICON,
         esc(&title),
         CSS,
         b,
+        ANIM_JS,
         JS
     );
     if crate::i18n::is_en() {
@@ -1034,6 +1035,56 @@ button{padding:7px 12px;border:1px solid var(--line);border-radius:5px;backgroun
 footer{color:var(--muted);font-size:12px;text-align:right;padding:16px 4px 20px}footer span{color:var(--acc)}.filters{margin-bottom:6px;color:var(--muted);font-size:13px}.copy{cursor:copy}
 input[type=checkbox]{accent-color:var(--acc)}
 @media (max-width:900px){.shell{flex-direction:column;padding:0;gap:0}.side{position:sticky;top:0;z-index:10;width:auto;align-self:stretch;flex:none;height:auto;flex-direction:row;align-items:center;border-radius:0;border-width:0 0 1px;padding:8px 12px;gap:10px}.brand{border:0;padding:0}.brand span:last-child{display:none}.status{margin:0;white-space:nowrap}.side nav{flex-direction:row;border:0;margin:0;padding:0;overflow-x:auto;flex:1}.side nav a span{display:none}.side nav a{padding:8px}.sidefoot{border:0;padding:0;background:none;margin:0}.srv{display:none}.content{padding:14px 16px 0}h1{font-size:22px}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.stat{padding:10px;gap:10px}.si{width:34px;height:34px}.sv{font-size:16px}th,td{padding:6px}.bar{width:60px}.panel{padding:12px}}
+
+@keyframes sa-rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes sa-fade{from{opacity:0}to{opacity:1}}
+@keyframes sa-grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes sa-draw{from{stroke-dashoffset:var(--len,3000)}to{stroke-dashoffset:0}}
+@keyframes sa-pop{0%{transform:scale(.6);opacity:0}70%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}
+@keyframes sa-pulse{0%,100%{box-shadow:0 0 0 3px rgba(250,82,82,.2)}50%{box-shadow:0 0 0 7px rgba(250,82,82,.05)}}
+@keyframes sa-glow{0%,100%{filter:drop-shadow(0 2px 6px rgba(77,171,247,.35))}50%{filter:drop-shadow(0 2px 12px rgba(112,72,232,.6))}}
+body{transition:background-color .25s ease,color .25s ease}
+.panel,.stat,.side,.finding,.spike,.ritem,.sidefoot,table,.chart,#fwrap{transition:background-color .25s ease,border-color .25s ease,transform .2s ease,box-shadow .2s ease}
+.top{animation:sa-fade .4s ease both}
+.stat{animation:sa-rise .45s cubic-bezier(.2,.7,.2,1) both}
+.stats .stat:nth-child(1){animation-delay:.02s}.stats .stat:nth-child(2){animation-delay:.06s}.stats .stat:nth-child(3){animation-delay:.1s}.stats .stat:nth-child(4){animation-delay:.14s}.stats .stat:nth-child(5){animation-delay:.18s}.stats .stat:nth-child(6){animation-delay:.22s}.stats .stat:nth-child(7){animation-delay:.26s}.stats .stat:nth-child(8){animation-delay:.3s}
+.stat:hover{transform:translateY(-2px);box-shadow:0 6px 18px rgba(0,0,0,.25);border-color:var(--muted)}
+.stat .si{transition:transform .2s ease}.stat:hover .si{transform:scale(1.08) rotate(-4deg)}
+.js .reveal{opacity:0;transform:translateY(16px)}
+.js .reveal.in{opacity:1;transform:none;transition:opacity .5s ease,transform .5s cubic-bezier(.2,.7,.2,1)}
+.finding{transition:border-color .2s ease,background-color .2s ease,transform .15s ease}.finding summary:hover{transform:translateX(2px)}
+.finding[open] .fb{animation:sa-fade .3s ease both}
+.finding.crit .sev{animation:sa-pop .4s ease both}
+.status.lag i{animation:sa-pulse 1.8s ease-in-out infinite}
+.logo{transition:transform .25s ease}.brand:hover .logo{transform:rotate(-8deg) scale(1.06)}.logo svg{animation:sa-glow 4s ease-in-out infinite}
+.bar i{transform-origin:left center;animation:sa-grow .9s cubic-bezier(.2,.7,.2,1) both}
+.js .reveal:not(.in) .bar i{animation:none;transform:scaleX(0)}
+.chart polyline{stroke-dasharray:var(--len,3000);animation:sa-draw 1.4s ease-out both}
+.js .reveal:not(.in) .chart polyline{animation:none;stroke-dashoffset:var(--len,3000)}
+.chart circle{animation:sa-pop .35s ease both;transform-box:fill-box;transform-origin:center}
+.chart circle:nth-of-type(odd){animation-delay:.3s}.chart circle:nth-of-type(even){animation-delay:.45s}
+.btn,button{transition:background-color .15s ease,border-color .15s ease,transform .1s ease}.btn:active,button:active{transform:scale(.97)}
+.side nav a{transition:background-color .15s ease,color .15s ease,padding-left .15s ease}.side nav a:hover{padding-left:12px}
+.ritem{transition:transform .15s ease,border-color .15s ease}.ritem:hover{transform:translateX(3px)}
+.drop .dicon{transition:transform .25s ease}.drop:hover .dicon,.drop.over .dicon{transform:translateY(-4px)}
+.ctip:not([hidden]){animation:sa-fade .15s ease both}
+.seg button{transition:background-color .2s ease,color .2s ease}
+tbody tr{transition:background-color .12s ease}
+@media print{.js .reveal{opacity:1!important;transform:none!important}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}.js .reveal{opacity:1!important;transform:none!important}.chart polyline{stroke-dashoffset:0!important}.bar i{transform:none!important}}
+"#;
+
+pub(crate) const ANIM_JS: &str = r#"
+(function(){var d=document.documentElement;d.classList.add('js');
+var red=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+document.querySelectorAll('.chart polyline').forEach(function(p){try{var l=Math.ceil(p.getTotalLength())+2;p.style.setProperty('--len',l)}catch(e){}});
+var els=document.querySelectorAll('main section.panel, main .spike');
+if(red||!('IntersectionObserver' in window)){return}
+els.forEach(function(el){var r=el.getBoundingClientRect();if(r.top<window.innerHeight*0.95){return}el.classList.add('reveal')});
+var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}})},{rootMargin:'0px 0px -8% 0px'});
+document.querySelectorAll('.reveal').forEach(function(el){io.observe(el)});
+document.querySelectorAll('.stat .sv').forEach(function(sv){var n=sv.firstChild;if(!n||n.nodeType!==3)return;var txt=n.nodeValue.trim();if(!/^[0-9]+(\.[0-9]+)?$/.test(txt))return;var target=parseFloat(txt),dec=(txt.split('.')[1]||'').length,t0=null;function step(ts){if(!t0)t0=ts;var k=Math.min(1,(ts-t0)/700),v=target*(1-Math.pow(1-k,3));n.nodeValue=v.toFixed(dec);if(k<1)requestAnimationFrame(step)}n.nodeValue=(0).toFixed(dec);requestAnimationFrame(step)});
+})();
 "#;
 
 const JS: &str = r#"
