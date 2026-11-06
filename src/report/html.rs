@@ -1055,7 +1055,7 @@ body{transition:background-color .25s ease,color .25s ease}
 .finding{transition:border-color .2s ease,background-color .2s ease,transform .15s ease}.finding summary:hover{transform:translateX(2px)}
 .finding[open] .fb{animation:sa-fade .3s ease both}
 .finding.crit .sev{animation:sa-pop .4s ease both}
-.status.lag i{animation:sa-pulse 1.8s ease-in-out infinite}
+@keyframes sa-pulse-ok{0%,100%{box-shadow:0 0 0 3px rgba(64,192,87,.25);opacity:1}50%{box-shadow:0 0 0 7px rgba(64,192,87,.05);opacity:.45}}@keyframes sa-pulse-lag{0%,100%{box-shadow:0 0 0 3px rgba(250,82,82,.3);opacity:1}50%{box-shadow:0 0 0 8px rgba(250,82,82,.05);opacity:.4}}.status i{animation:sa-pulse-ok 1.6s ease-in-out infinite}.status.lag i{animation:sa-pulse-lag 1s ease-in-out infinite}
 .logo{transition:transform .25s ease}.brand:hover .logo{transform:rotate(-8deg) scale(1.06)}.logo svg{animation:sa-glow 4s ease-in-out infinite}
 .bar i{transform-origin:left center;animation:sa-grow .9s cubic-bezier(.2,.7,.2,1) both}
 .js .reveal:not(.in) .bar i{animation:none;transform:scaleX(0)}
