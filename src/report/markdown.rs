@@ -207,6 +207,10 @@ pub fn render(r: &Report) -> String {
                     let _ = writeln!(o, "  - plugin: {}", ow.join(", "));
                 }
             }
+            if a.spikes.iter().take(10).any(crate::rules::spike_unattributed) {
+                let _ = writeln!(o, "
+{}", crate::rules::spike_unattributed_note());
+            }
         }
         let _ = writeln!(o, "\n## Percorsi più caldi\n");
         for h in a.hot_paths.iter().take(10) {

@@ -157,6 +157,22 @@ fn spikes_detected_with_autosave_cause() {
 }
 
 #[test]
+fn unattributed_spike_explains_cause_instead_of_empty_lists() {
+    let mut r = build();
+    let note = sparkscope::rules::spike_unattributed_note();
+    assert!(!report::html::render(&r).contains(note));
+    for s in &mut r.analysis.spikes {
+        s.cat_deltas.clear();
+        s.owner_deltas.clear();
+        s.method_deltas.clear();
+    }
+    let html = report::html::render(&r);
+    assert!(html.contains(&note.replace('\'', "&#39;")));
+    assert!(!html.contains("<h5>Categorie cresciute</h5>"));
+    assert!(report::markdown::render(&r).contains(note));
+}
+
+#[test]
 fn findings_cover_main_causes() {
     let r = build();
     let titles: Vec<&str> = r.findings.iter().map(|f| f.title.as_str()).collect();

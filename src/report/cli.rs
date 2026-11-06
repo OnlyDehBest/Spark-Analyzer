@@ -422,6 +422,9 @@ pub fn print(r: &Report, o: &CliOptions) {
         if let Some(pp) = &a.periodic_spikes {
             println!(" {}", p.bold(pp));
         }
+        if a.spikes.iter().take(o.top.min(8)).any(crate::rules::spike_unattributed) {
+            println!(" {}", crate::rules::spike_unattributed_note());
+        }
     }
 
     println!();

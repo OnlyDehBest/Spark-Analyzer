@@ -847,6 +847,9 @@ pub fn render(r: &Report) -> String {
                         unit: &str,
                         f: &dyn Fn(&str) -> String|
              -> String {
+                if ds.is_empty() {
+                    return String::new();
+                }
                 let mut x = format!("<div><h5>{}</h5><table><tbody>", esc(title));
                 for d in ds.iter().take(5) {
                     let _ = write!(
@@ -875,6 +878,13 @@ pub fn render(r: &Report) -> String {
                 format!("<code>{}</code>", esc(&short(n)))
             }));
             b.push_str("</div></div>");
+        }
+        if a.spikes.iter().take(8).any(crate::rules::spike_unattributed) {
+            let _ = write!(
+                b,
+                r#"<p class="note">{}</p>"#,
+                esc(crate::rules::spike_unattributed_note())
+            );
         }
         b.push_str("</section>");
 

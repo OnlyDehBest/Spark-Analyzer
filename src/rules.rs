@@ -1791,7 +1791,13 @@ fn spike_rules(c: &Ctx, out: &mut Vec<Finding>) {
     }
     let n = c.a.spikes.len();
     let total = c.a.windows.len();
-    let mut solutions = vec![crate::i18n::t("Confronta le categorie in crescita con le sezioni dedicate qui sotto: sono la causa più probabile del picco", "Compare the growing categories with the dedicated sections below: they are the most likely cause of the spike").to_string()];
+    let unattributed = c.a.spikes.iter().take(5).all(spike_unattributed);
+    let mut solutions = Vec::new();
+    if unattributed {
+        ev.push(spike_unattributed_note().into());
+    } else {
+        solutions.push(crate::i18n::t("Confronta le categorie in crescita con le sezioni dedicate qui sotto: sono la causa più probabile del picco", "Compare the growing categories with the dedicated sections below: they are the most likely cause of the spike").to_string());
+    }
     if c.a.periodic_spikes.is_some() {
         solutions.push(crate::i18n::t("Picchi periodici: controlla autosave (chunks.max-auto-save-chunks-per-tick), backup automatici e task dei plugin con timer fisso", "Periodic spikes: check autosave (chunks.max-auto-save-chunks-per-tick), automatic backups and plugin tasks with fixed timers").into());
     }
@@ -1806,6 +1812,18 @@ fn spike_rules(c: &Ctx, out: &mut Vec<Finding>) {
         solutions,
         culprits: Vec::new(),
     });
+}
+
+/// Spike causato da pochi tick lenti: le medie per minuto non cambiano e i delta restano vuoti.
+pub fn spike_unattributed(s: &crate::analysis::Spike) -> bool {
+    s.cat_deltas.is_empty() && s.owner_deltas.is_empty() && s.method_deltas.is_empty()
+}
+
+pub fn spike_unattributed_note() -> &'static str {
+    crate::i18n::t(
+        "Nessuna categoria, plugin o metodo è cresciuto in media nel minuto: il lag è concentrato in pochi tick isolati (un singolo blocco lungo), quindi il confronto per minuto non riesce ad attribuirlo. Cause tipiche: pausa del garbage collector, salvataggio di mondo/chunk, backup o un task di plugin a timer fisso. Cosa fare: controlla che l'heap non sia quasi pieno (sezione GC/memoria), confronta l'intervallo con autosave e backup, poi registra solo i tick lenti con /spark profiler start --only-ticks-over 100 --timeout 600 per vedere il colpevole.",
+        "No category, plugin or method grew on average over the minute: the lag is concentrated in a few isolated ticks (a single long stall), so the per-minute comparison cannot attribute it. Typical causes: a garbage collector pause, world/chunk saving, a backup or a plugin task on a fixed timer. What to do: check that the heap is not nearly full (GC/memory section), compare the interval with autosave and backups, then record only the slow ticks with /spark profiler start --only-ticks-over 100 --timeout 600 to see the culprit.",
+    )
 }
 
 pub fn window_label(w: &crate::analysis::WindowStat) -> String {
