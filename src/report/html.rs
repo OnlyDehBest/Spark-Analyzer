@@ -424,7 +424,7 @@ pub fn render(r: &Report) -> String {
     };
     let _ = write!(
         b,
-        r#"<div class="shell"><aside class="side"><div class="brand"><span class="logo">{}</span><span>Spark-Analyzer</span></div><div class="status {}"><i></i>{}</div><nav>{nav}</nav><div class="sidefoot"><div class="srv"><b>{}</b><span>{}</span></div><button id="langbtn" class="ghost lang" data-to="{}" title="Lingua / Language">{}</button><button id="theme" class="ghost" title="Tema chiaro/scuro">{}</button></div></aside><main class="content">"#,
+        r#"<div class="shell"><aside class="side"><a class="brand" id="brandlink" href="./" title="Home"><span class="logo">{}</span><span>Spark-Analyzer</span></a><div class="status {}"><i></i>{}</div><nav>{nav}</nav><div class="sidefoot"><div class="srv"><b>{}</b><span>{}</span></div><button id="langbtn" class="ghost lang" data-to="{}" title="Lingua / Language">{}</button><button id="theme" class="ghost" title="Tema chiaro/scuro">{}</button></div></aside><main class="content">"#,
         LOGO_SVG,
         if lag { "lag" } else { "okk" },
         if lag { "In lag" } else { "Stabile" },
@@ -917,7 +917,7 @@ pub(crate) const CSS: &str = r#"
 a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
 .shell{display:flex;gap:12px;padding:8px;min-height:100vh}
 .side{position:sticky;top:8px;align-self:flex-start;width:224px;flex:0 0 224px;height:calc(100vh - 16px);background:var(--side);border:1px solid var(--line);border-radius:8px;display:flex;flex-direction:column;padding:10px}
-.brand{display:flex;align-items:center;gap:10px;font-weight:700;color:var(--hd);font-size:15px;padding:6px 6px 12px;border-bottom:1px solid var(--line2)}
+.brand{text-decoration:none!important;display:flex;align-items:center;gap:10px;font-weight:700;color:var(--hd);font-size:15px;padding:6px 6px 12px;border-bottom:1px solid var(--line2)}
 .logo{display:grid;place-items:center;width:32px;height:32px;flex:none;filter:drop-shadow(0 2px 6px rgba(77,171,247,.35))}.logo svg{display:block}
 .status{display:flex;align-items:center;gap:8px;margin:12px 6px 8px;font-size:12px;color:var(--muted)}.status i{width:10px;height:10px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px rgba(64,192,87,.18)}.status.lag i{background:var(--crit);box-shadow:0 0 0 3px rgba(250,82,82,.2)}
 .side nav{display:flex;flex-direction:column;gap:2px;margin-top:4px;padding-top:8px;border-top:1px solid var(--line2);overflow:auto}
@@ -970,6 +970,7 @@ const JS: &str = r#"
 (function(){
 var docEl=document.documentElement;try{var t=localStorage.getItem('sparkscope-theme');if(t)docEl.dataset.theme=t}catch(e){}
 var tb=document.getElementById('theme');if(tb)tb.addEventListener('click',function(){var n=docEl.dataset.theme==='dark'?'light':'dark';docEl.dataset.theme=n;try{localStorage.setItem('sparkscope-theme',n)}catch(e){}if(window.__redrawFlame)window.__redrawFlame()});
+var bl=document.getElementById('brandlink'),nb=document.querySelector('.actions a.btn.sec');if(bl&&nb)bl.href=nb.getAttribute('href');
 var lb=document.getElementById('langbtn');if(lb)lb.addEventListener('click',function(){var n=lb.dataset.to;try{localStorage.setItem('sa-lang',n)}catch(e){}if(window.__saRender){window.__saRender(n);return}var u=new URL(location.href);u.searchParams.set('lang',n);location.href=u.toString()});
 var us=document.getElementById('unitsel');if(us){var F=parseFloat(us.dataset.f)||0,U=us.dataset.u;function fm(v){return v>=100?v.toFixed(0):v>=10?v.toFixed(1):v.toFixed(2)}function setUnit(m){us.querySelectorAll('button').forEach(function(x){x.classList.toggle('on',x.dataset.m===m)});document.querySelectorAll('.pv').forEach(function(e){var p=parseFloat(e.dataset.p);e.textContent=m==='ms'?fm(p*F)+' '+U:fm(p)+'%'});document.querySelectorAll('.uh').forEach(function(e){e.textContent=m==='ms'?U:'%'})}us.addEventListener('click',function(e){var bt=e.target.closest('button');if(!bt)return;try{localStorage.setItem('sa-unit',bt.dataset.m)}catch(x){}setUnit(bt.dataset.m)});var su='pct';try{su=localStorage.getItem('sa-unit')||'pct'}catch(x){}if(su!=='pct')setUnit(su)}
 var links=Array.from(document.querySelectorAll('.side nav a'));if('IntersectionObserver' in window){var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){links.forEach(function(l){l.classList.toggle('on',l.getAttribute('href')==='#'+e.target.id)})}})},{rootMargin:'-20% 0px -70% 0px'});document.querySelectorAll('section[id]').forEach(function(s){io.observe(s)})}
