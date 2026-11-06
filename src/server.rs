@@ -1,9 +1,12 @@
 use std::collections::HashMap;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Result, anyhow};
+use flate2::Compression;
+use flate2::read::GzDecoder;
+use flate2::write::GzEncoder;
 use tiny_http::{Header, Method, Request, Response, Server};
 
 use crate::i18n::{self, Lang};
@@ -23,7 +26,7 @@ struct Stored {
     bytes: Arc<Vec<u8>>,
     name: String,
     key: Option<String>,
-    cache: HashMap<(Lang, String), String>,
+    cache: HashMap<(Lang, String), Arc<Vec<u8>>>,
 }
 
 struct State {
@@ -71,7 +74,12 @@ pub fn serve(o: ServeOptions) -> Result<()> {
     let state = Arc::new(State {
         bytebin: o.bytebin,
         reports: Mutex::new(Vec::new()),
-        counter: AtomicU64::new(1),
+        // id unici anche dopo un riavvio: le pagine /r/ restano in cache del browser
+        counter: AtomicU64::new(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(1, |d| d.as_secs()),
+        ),
     });
     for req in server.incoming_requests() {
         let st = Arc::clone(&state);
@@ -84,9 +92,46 @@ fn header(k: &str, v: &str) -> Header {
     Header::from_bytes(k.as_bytes(), v.as_bytes()).expect("header valido")
 }
 
-fn html_resp(body: String) -> Response<std::io::Cursor<Vec<u8>>> {
-    Response::from_data(body.into_bytes())
+type Resp = Response<std::io::Cursor<Vec<u8>>>;
+
+fn gzip(b: &[u8]) -> Vec<u8> {
+    let mut e = GzEncoder::new(Vec::new(), Compression::default());
+    let _ = e.write_all(b);
+    e.finish().unwrap_or_default()
+}
+
+fn text_resp(data: Vec<u8>, gz: bool) -> Resp {
+    let r = Response::from_data(data)
         .with_header(header("Content-Type", "text/html; charset=utf-8"))
+        .with_header(header("Vary", "Accept-Encoding"));
+    if gz {
+        r.with_header(header("Content-Encoding", "gzip"))
+    } else {
+        r
+    }
+}
+
+fn html_resp(body: String, gz: bool) -> Resp {
+    text_resp(
+        if gz {
+            gzip(body.as_bytes())
+        } else {
+            body.into_bytes()
+        },
+        gz,
+    )
+}
+
+fn page_resp(cached: &[u8], gz: bool) -> Resp {
+    let mut plain = Vec::new();
+    if !gz {
+        let _ = GzDecoder::new(cached).read_to_end(&mut plain);
+    }
+    text_resp(if gz { cached.to_vec() } else { plain }, gz)
+}
+
+fn final_page(html: &str) -> Arc<Vec<u8>> {
+    Arc::new(gzip(with_actions(html).as_bytes()))
 }
 
 fn json_resp(code: u16, v: serde_json::Value) -> Response<std::io::Cursor<Vec<u8>>> {
@@ -143,8 +188,14 @@ fn handle(mut req: Request, st: &State) {
     let _guard = i18n::scoped(lang);
     let path = url.split('?').next().unwrap_or("/").to_string();
     let method = req.method().clone();
+    let gz = req
+        .headers()
+        .iter()
+        .any(|h| h.field.equiv("Accept-Encoding") && h.value.as_str().contains("gzip"));
     let resp = match (method, path.as_str()) {
-        (Method::Get, "/") => html_resp(index_page(st)),
+        (Method::Get, "/") => {
+            html_resp(index_page(st), gz).with_header(header("Cache-Control", "no-cache"))
+        }
         (Method::Get, "/favicon.ico") => Response::from_data(Vec::new()).with_status_code(204),
         (Method::Post, "/api/link") => {
             let mut body = String::new();
@@ -184,16 +235,18 @@ fn handle(mut req: Request, st: &State) {
         (Method::Get, p) if p.starts_with("/r/") => {
             let id = p[3..].trim_end_matches('/').to_string();
             match report_html(st, &id, lang, &query_param(&url, "w").unwrap_or_default()) {
-                Some(Ok(h)) => html_resp(with_actions(&h)),
-                Some(Err(e)) => html_resp(format!(
-                    "<pre>{}</pre>",
-                    crate::report::html::esc(&format!("{e:#}"))
-                ))
+                Some(Ok(h)) => {
+                    page_resp(&h, gz).with_header(header("Cache-Control", "private, max-age=3600"))
+                }
+                Some(Err(e)) => html_resp(
+                    format!("<pre>{}</pre>", crate::report::html::esc(&format!("{e:#}"))),
+                    gz,
+                )
                 .with_status_code(500),
-                None => html_resp(not_found()).with_status_code(404),
+                None => html_resp(not_found(), gz).with_status_code(404),
             }
         }
-        _ => html_resp(not_found()).with_status_code(404),
+        _ => html_resp(not_found(), gz).with_status_code(404),
     };
     let _ = req.respond(resp);
 }
@@ -213,13 +266,13 @@ fn render(bytes: &[u8], name: &str, key: Option<&str>, windows: &str) -> Result<
     Ok(webui::render_report(&r, heap_report.as_ref()))
 }
 
-fn report_html(st: &State, id: &str, lang: Lang, windows: &str) -> Option<Result<String>> {
+fn report_html(st: &State, id: &str, lang: Lang, windows: &str) -> Option<Result<Arc<Vec<u8>>>> {
     let ck = (lang, windows.to_string());
     let (bytes, name, key) = {
         let reports = st.reports.lock().unwrap_or_else(|e| e.into_inner());
         let r = reports.iter().find(|r| r.id == id)?;
         if let Some(h) = r.cache.get(&ck) {
-            return Some(Ok(h.clone()));
+            return Some(Ok(Arc::clone(h)));
         }
         (Arc::clone(&r.bytes), r.name.clone(), r.key.clone())
     };
@@ -227,11 +280,12 @@ fn report_html(st: &State, id: &str, lang: Lang, windows: &str) -> Option<Result
         Ok(o) => o,
         Err(e) => return Some(Err(e)),
     };
+    let page = final_page(&out.html);
     let mut reports = st.reports.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(r) = reports.iter_mut().find(|r| r.id == id) {
-        r.cache.insert(ck, out.html.clone());
+        r.cache.insert(ck, Arc::clone(&page));
     }
-    Some(Ok(out.html))
+    Some(Ok(page))
 }
 
 fn api_result(r: Result<String>) -> Response<std::io::Cursor<Vec<u8>>> {
@@ -249,7 +303,7 @@ fn store(st: &State, bytes: Vec<u8>, name: String, key: Option<String>) -> Resul
         (bytes.len() as u64 ^ n.wrapping_mul(2_654_435_761)) & 0xffff
     );
     let mut cache = HashMap::new();
-    cache.insert((i18n::lang(), String::new()), out.html);
+    cache.insert((i18n::lang(), String::new()), final_page(&out.html));
     let mut reports = st.reports.lock().unwrap_or_else(|e| e.into_inner());
     reports.insert(
         0,
@@ -309,5 +363,22 @@ mod tests {
     fn decode() {
         assert_eq!(super::percent_decode("a%20b%2Fc+d"), "a b/c d");
         assert_eq!(super::percent_decode("100%"), "100%");
+    }
+
+    #[test]
+    fn gzip_negotiation() {
+        let gz = super::gzip(b"<p>ciao</p>");
+        let has = |r: &super::Resp| {
+            r.headers()
+                .iter()
+                .any(|h| h.field.equiv("Content-Encoding"))
+        };
+        assert!(has(&super::page_resp(&gz, true)));
+        let plain = super::page_resp(&gz, false);
+        assert!(!has(&plain));
+        assert!(
+            has(&super::html_resp("x".into(), true)) && !has(&super::html_resp("x".into(), false))
+        );
+        assert_eq!(plain.data_length(), Some(11));
     }
 }

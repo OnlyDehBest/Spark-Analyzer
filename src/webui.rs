@@ -294,7 +294,7 @@ pub fn static_index() -> String {
     } else {
         "./"
     };
-    shell(&Page {
+    let page = shell(&Page {
         crumb: t("Nuova analisi", "New analysis"),
         lang_switch: other,
         title: t(
@@ -310,7 +310,12 @@ pub fn static_index() -> String {
             "analisi eseguita nel tuo browser",
             "analysis runs in your browser",
         ),
-    })
+    });
+    page.replacen(
+        "</head>",
+        r#"<link rel="modulepreload" href="./pkg/sparkscope_web.js"><link rel="preload" href="./pkg/sparkscope_web_bg.wasm" as="fetch" type="application/wasm" crossorigin></head>"#,
+        1,
+    )
 }
 
 pub const EXTRA_CSS: &str = r#"
@@ -369,7 +374,8 @@ function showRecent(){var l=loadRecent();if(!l.length)return;var side='<div clas
 var HOME=location.pathname;
 var last=null;
 var CUR=M.lang;
-function render(bytes,name,key,lang,win){lang=lang||CUR;CUR=lang;last={bytes:bytes,name:name,key:key,win:win||null};return ready.then(function(){var res=JSON.parse(analyze(bytes,name,key||undefined,HOME,lang,win||undefined));if(key){try{var u=new URL(location.href);u.searchParams.set('p',key);if(win)u.searchParams.set('w',win);else u.searchParams.delete('w');history.replaceState(null,'',u.toString())}catch(e){}}if(key)saveRecent({key:key,title:res.title,detail:res.detail,bad:res.bad});setTimeout(function(){document.open();document.write(res.html);document.close();window.scrollTo(0,0)},0)})}
+var cache={};
+function render(bytes,name,key,lang,win){lang=lang||CUR;CUR=lang;if(!last||last.bytes!==bytes||Object.keys(cache).length>8)cache={};last={bytes:bytes,name:name,key:key,win:win||null};return ready.then(function(){var ck=lang+'|'+(win||''),res=cache[ck]||(cache[ck]=JSON.parse(analyze(bytes,name,key||undefined,HOME,lang,win||undefined)));if(key){try{var u=new URL(location.href);u.searchParams.set('p',key);if(win)u.searchParams.set('w',win);else u.searchParams.delete('w');history.replaceState(null,'',u.toString())}catch(e){}}if(key)saveRecent({key:key,title:res.title,detail:res.detail,bad:res.bad});setTimeout(function(){document.open();document.write(res.html);document.close();window.scrollTo(0,0)},0)})}
 window.__saRender=function(l){if(!last)return;render(last.bytes,last.name,last.key,l,last.win).catch(function(e){alert(e.message||String(e))})};
 window.__saFilter=function(w){if(!last)return;render(last.bytes,last.name,last.key,CUR,w||null).catch(function(e){alert(e.message||String(e))})};
 function runKey(key){start(M.downloadingKey.replace('{k}',key));fetch('https://spark-usercontent.lucko.me/'+encodeURIComponent(key)).then(function(r){if(r.status===404)throw new Error(M.notFound);if(!r.ok)throw new Error(M.httpFail.replace('{s}',r.status));return r.arrayBuffer()}).then(function(b){bt.textContent=M.analyzing;return render(new Uint8Array(b),key,key,null,new URLSearchParams(location.search).get('w'))}).catch(function(e){fail(e.message||String(e))})}
