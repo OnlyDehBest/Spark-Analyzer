@@ -67,6 +67,40 @@ pub fn load(input: &str, bytebin: &str) -> Result<Loaded> {
     })
 }
 
+pub fn load_bytes(bytes: &[u8], name: &str) -> Result<Loaded> {
+    let lower = name.to_ascii_lowercase();
+    let hint = if lower.ends_with(".sparkprofile") {
+        Hint::Sampler
+    } else if lower.ends_with(".sparkheap") {
+        Hint::Heap
+    } else if lower.ends_with(".sparkhealth") {
+        Hint::Health
+    } else {
+        Hint::Unknown
+    };
+    let payload = decode(bytes, hint)?;
+    Ok(Loaded {
+        payload,
+        origin: name.to_string(),
+        viewer_url: None,
+    })
+}
+
+pub fn load_link(input: &str, bytebin: &str) -> Result<Loaded> {
+    let key = extract_key(input).ok_or_else(|| {
+        anyhow!(
+            "'{input}' non è un link o codice spark valido (es. https://spark.lucko.me/AbCd1234)"
+        )
+    })?;
+    let (bytes, hint) = download(bytebin, &key)?;
+    let payload = decode(&bytes, hint)?;
+    Ok(Loaded {
+        payload,
+        origin: format!("{}{}", normalize_base(bytebin), key),
+        viewer_url: Some(format!("https://spark.lucko.me/{key}")),
+    })
+}
+
 pub fn extract_key(input: &str) -> Option<String> {
     let trimmed = input.trim();
     let without_scheme = trimmed

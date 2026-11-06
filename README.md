@@ -47,6 +47,22 @@ Oppure `cargo install --path .`
 
 ## Uso
 
+### Dal sito (il modo più semplice)
+
+Avvia `sparkscope` senza argomenti (su Windows basta un doppio clic su `sparkscope.exe`).
+Si apre il browser su `http://127.0.0.1:8085`: incolla il link del profilo spark oppure
+trascina il file `.sparkprofile` / `.sparkheap` / `.sparkhealth` e il report si apre da solo.
+Dal report puoi scaricarlo in HTML o Markdown; le analisi recenti restano in elenco finché
+sparkscope è aperto. Tutto gira sul tuo computer.
+
+```sh
+sparkscope                  # come sparkscope serve
+sparkscope serve --port 9000 --no-open
+sparkscope serve --host 0.0.0.0   # raggiungibile da altri dispositivi della rete (es. su una VPS)
+```
+
+### Da terminale
+
 ```sh
 # analisi da link del viewer (o solo il codice)
 sparkscope analyze https://spark.lucko.me/AbCd1234

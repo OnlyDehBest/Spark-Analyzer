@@ -11,6 +11,8 @@ pub mod heap;
 pub mod loader;
 pub mod model;
 pub mod patterns;
+pub mod pipeline;
 pub mod proto;
 pub mod report;
 pub mod rules;
+pub mod server;

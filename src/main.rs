@@ -4,10 +4,9 @@ use std::path::PathBuf;
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand};
 
-use sparkscope::loader::{self, DEFAULT_BYTEBIN, Payload};
-use sparkscope::model::Profile;
-use sparkscope::report::{self, Report, cli::CliOptions};
-use sparkscope::{analysis, diff, heap};
+use sparkscope::loader::{self, DEFAULT_BYTEBIN};
+use sparkscope::report::{self, cli::CliOptions};
+use sparkscope::{diff, heap};
 
 #[derive(Parser)]
 #[command(
@@ -17,7 +16,7 @@ use sparkscope::{analysis, diff, heap};
 )]
 struct Cli {
     #[command(subcommand)]
-    cmd: Cmd,
+    cmd: Option<Cmd>,
 }
 
 #[derive(Args, Clone)]
@@ -33,6 +32,23 @@ struct Common {
 
 #[derive(Subcommand)]
 enum Cmd {
+    #[command(
+        about = "Avvia il sito locale: incolli il link o trascini il file e si apre il report (predefinito se avvii senza argomenti)"
+    )]
+    Serve {
+        #[arg(long, default_value_t = 8085, help = "Porta del sito")]
+        port: u16,
+        #[arg(
+            long,
+            default_value = "127.0.0.1",
+            help = "Indirizzo su cui ascoltare (0.0.0.0 per renderlo raggiungibile dalla rete)"
+        )]
+        host: String,
+        #[arg(long, help = "Non aprire il browser automaticamente")]
+        no_open: bool,
+        #[arg(long, default_value = DEFAULT_BYTEBIN, help = "URL del server bytebin da cui scaricare i profili")]
+        bytebin: String,
+    },
     #[command(
         about = "Analizza un profilo (link spark.lucko.me, codice o file .sparkprofile/.sparkheap/.sparkhealth)"
     )]
@@ -97,57 +113,9 @@ enum Cmd {
     },
 }
 
-fn load_report(
-    input: &str,
-    common: &Common,
-) -> Result<(Report, Option<Profile>, Option<heap::HeapReport>)> {
+fn load_report(input: &str, common: &Common) -> Result<sparkscope::pipeline::Built> {
     let loaded = loader::load(input, &common.bytebin)?;
-    let kind = loaded.payload.kind();
-    match loaded.payload {
-        Payload::Sampler(s) => {
-            let mut p = Profile::from_proto(*s);
-            if let Some(t) = &common.thread
-                && !p.select_thread(t)
-            {
-                let names: Vec<&str> = p.threads.iter().map(|t| t.name.as_str()).collect();
-                bail!(
-                    "thread '{t}' non trovato. Disponibili: {}",
-                    names.join(", ")
-                );
-            }
-            let a = analysis::analyze(&p);
-            let r = report::build(&p, a, &loaded.origin, loaded.viewer_url, kind);
-            Ok((r, Some(p), None))
-        }
-        Payload::Health(h) => {
-            let p = Profile::from_health(*h);
-            let a = analysis::analyze(&p);
-            let r = report::build(&p, a, &loaded.origin, loaded.viewer_url, kind);
-            Ok((r, None, None))
-        }
-        Payload::Heap(h) => {
-            let hm = h.metadata.clone().unwrap_or_default();
-            let hr = heap::analyze(&h);
-            let health = sparkscope::proto::HealthData {
-                metadata: Some(sparkscope::proto::HealthMetadata {
-                    creator: hm.creator,
-                    platform_metadata: hm.platform_metadata,
-                    platform_statistics: hm.platform_statistics,
-                    system_statistics: hm.system_statistics,
-                    generated_time: hm.generated_time,
-                    server_configurations: hm.server_configurations,
-                    sources: hm.sources,
-                    extra_platform_metadata: hm.extra_platform_metadata,
-                    metrics: hm.metrics,
-                }),
-                ..Default::default()
-            };
-            let p = Profile::from_health(health);
-            let a = analysis::analyze(&p);
-            let r = report::build(&p, a, &loaded.origin, loaded.viewer_url, kind);
-            Ok((r, None, Some(hr)))
-        }
-    }
+    sparkscope::pipeline::build(loaded, common.thread.as_deref())
 }
 
 fn write_file(path: &PathBuf, content: &str, what: &str) -> Result<()> {
@@ -159,7 +127,26 @@ fn write_file(path: &PathBuf, content: &str, what: &str) -> Result<()> {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    match cli.cmd {
+    let cmd = cli.cmd.unwrap_or(Cmd::Serve {
+        port: 8085,
+        host: "127.0.0.1".into(),
+        no_open: false,
+        bytebin: DEFAULT_BYTEBIN.into(),
+    });
+    match cmd {
+        Cmd::Serve {
+            port,
+            host,
+            no_open,
+            bytebin,
+        } => {
+            sparkscope::server::serve(sparkscope::server::ServeOptions {
+                host,
+                port,
+                open: !no_open,
+                bytebin,
+            })?;
+        }
         Cmd::Analyze {
             input,
             common,
