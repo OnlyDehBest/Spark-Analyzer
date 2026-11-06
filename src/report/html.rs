@@ -1183,7 +1183,7 @@ body{transition:background-color .25s ease,color .25s ease}
 .seg button{transition:background-color .2s ease,color .2s ease}
 tbody tr{transition:background-color .12s ease}
 @media print{.js .reveal{opacity:1!important;transform:none!important}}
-@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}.js .reveal{opacity:1!important;transform:none!important}.chart polyline{stroke-dashoffset:0!important}.bar i{transform:none!important}}
+@media (prefers-reduced-motion:reduce){.stat{animation-name:sa-fade}.bar i,.chart polyline,.chart circle,.finding.crit .sev{animation:none!important}.chart polyline{stroke-dashoffset:0!important}.bar i,.js .reveal,.stat:hover,.stat:hover .si,.finding summary:hover,.brand:hover .logo,.ritem:hover,.drop:hover .dicon,.drop.over .dicon,.btn:active,button:active{transform:none!important}.js .reveal.in{transition:opacity .5s ease}}
 
 body{font-family:Inter,"Inter Variable",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:14px;letter-spacing:-.005em}
 .mono,th,code,.area,.sv small,.sl,.legend,.chart .axis,.ctx,.note code,.ritem div span,h5,.seg button,.sev{font-family:"JetBrains Mono","IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
@@ -1245,11 +1245,11 @@ try{if(localStorage.getItem('sa-noside')==='1')document.body.classList.add('nosi
 var red=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 document.querySelectorAll('.chart polyline').forEach(function(p){try{var l=Math.ceil(p.getTotalLength())+2;p.style.setProperty('--len',l)}catch(e){}});
 var els=document.querySelectorAll('main section.panel, main .spike');
-if(red||!('IntersectionObserver' in window)){return}
+if(!('IntersectionObserver' in window)){return}
 els.forEach(function(el){var r=el.getBoundingClientRect();if(r.top<window.innerHeight*0.95){return}el.classList.add('reveal')});
 var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}})},{rootMargin:'0px 0px -8% 0px'});
 document.querySelectorAll('.reveal').forEach(function(el){io.observe(el)});
-document.querySelectorAll('.stat .sv').forEach(function(sv){var n=sv.firstChild;if(!n||n.nodeType!==3)return;var txt=n.nodeValue.trim();if(!/^[0-9]+(\.[0-9]+)?$/.test(txt))return;var target=parseFloat(txt),dec=(txt.split('.')[1]||'').length,t0=null;function step(ts){if(!t0)t0=ts;var k=Math.min(1,(ts-t0)/700),v=target*(1-Math.pow(1-k,3));n.nodeValue=v.toFixed(dec);if(k<1)requestAnimationFrame(step)}n.nodeValue=(0).toFixed(dec);requestAnimationFrame(step)});
+if(!red)document.querySelectorAll('.stat .sv').forEach(function(sv){var n=sv.firstChild;if(!n||n.nodeType!==3)return;var txt=n.nodeValue.trim();if(!/^[0-9]+(\.[0-9]+)?$/.test(txt))return;var target=parseFloat(txt),dec=(txt.split('.')[1]||'').length,t0=null;function step(ts){if(!t0)t0=ts;var k=Math.min(1,(ts-t0)/700),v=target*(1-Math.pow(1-k,3));n.nodeValue=v.toFixed(dec);if(k<1)requestAnimationFrame(step)}n.nodeValue=(0).toFixed(dec);requestAnimationFrame(step)});
 })();
 "#;
 
