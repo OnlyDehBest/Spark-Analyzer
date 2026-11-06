@@ -446,11 +446,24 @@ pub fn render(r: &Report) -> String {
         );
     }
 
-    let _ = write!(
-        b,
-        r#"<section id="diagnosi"><h2>Diagnosi</h2><div class="filters"><label><input type="checkbox" id="showinfo"> mostra anche le note informative</label></div>"#
-    );
+    let hidable = r
+        .findings
+        .iter()
+        .filter(|f| f.severity == Severity::Info && f.area != "Panoramica")
+        .count();
+    b.push_str(r#"<section id="diagnosi"><h2>Diagnosi</h2>"#);
+    if hidable > 0 {
+        let _ = write!(
+            b,
+            r#"<div class="filters"><label><input type="checkbox" id="showinfo"> mostra anche le note informative ({hidable})</label></div>"#
+        );
+    }
     for f in &r.findings {
+        let hide = if f.severity == Severity::Info && f.area != "Panoramica" {
+            " hidable"
+        } else {
+            ""
+        };
         let open = if f.severity <= Severity::Alto || f.area == "Panoramica" {
             " open"
         } else {
@@ -463,7 +476,7 @@ pub fn render(r: &Report) -> String {
         };
         let _ = write!(
             b,
-            r#"<details class="finding {}"{open}><summary><span class="sev">{}</span><span class="ft">{}</span><span class="area">{}</span>{impact}</summary><div class="fb">"#,
+            r#"<details class="finding {}{hide}"{open}><summary><span class="sev">{}</span><span class="ft">{}</span><span class="area">{}</span>{impact}</summary><div class="fb">"#,
             sev_class(f.severity),
             f.severity.label(),
             esc(&f.title),
@@ -901,7 +914,7 @@ h3{font-size:14px;color:var(--hd);margin:18px 0 8px;font-weight:600}h4{margin:12
 .crit .sev{color:var(--crit);background:rgba(250,82,82,.15)}.high .sev{color:var(--high);background:rgba(253,126,20,.15)}.med .sev{color:var(--med);background:rgba(250,176,5,.15)}.low .sev{color:var(--low);background:rgba(77,171,247,.15)}
 .ft{font-weight:600;color:var(--hd);flex:1;min-width:200px}.area{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em;background:var(--code);border:1px solid var(--line);padding:1px 8px;border-radius:10px}.imp{font-weight:700;color:var(--hd);font-variant-numeric:tabular-nums}
 .fb{padding:0 16px 14px;border-top:1px solid var(--line2)}.ev{margin:10px 0 0;padding-left:18px}.ev li{margin:3px 0}.why{color:var(--muted)}.cul{margin:8px 0}.sol{padding-left:20px}.sol li{margin:5px 0}.sol ul{margin:6px 0;padding-left:16px}
-body.hideinfo .finding.info:not(:first-of-type){display:none}
+body.hideinfo .finding.hidable{display:none}
 table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:13px}th,td{padding:8px 10px;border-bottom:1px solid var(--line2);text-align:left;vertical-align:top}th{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;cursor:pointer;user-select:none;border-bottom:1px solid var(--line)}tbody tr:hover{background:rgba(127,127,127,.06)}tr:last-child td{border-bottom:0}.n{text-align:right;white-space:nowrap}.small{font-size:12px}.dim{color:var(--muted)}
 .panel>table,.grid2 table,.panel>div>table{background:var(--card2);border:1px solid var(--line);border-radius:6px;overflow:hidden;border-collapse:separate;border-spacing:0}
 code{font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--code);border:1px solid var(--line2);padding:1px 5px;border-radius:4px;word-break:break-all;color:var(--fg)}

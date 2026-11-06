@@ -172,3 +172,28 @@ fn diff_detects_improvement() {
     let d = sparkscope::diff::diff(&a, &b);
     assert!(d.categories.iter().all(|r| r.delta.abs() < 1e-6));
 }
+
+#[test]
+fn info_toggle_only_when_there_are_hidden_notes() {
+    let mut r = build();
+    let html = report::html::render(&r);
+    let hidden = r
+        .findings
+        .iter()
+        .filter(|f| f.severity == Severity::Info && f.area != "Panoramica")
+        .count();
+    assert_eq!(html.contains("id=\"showinfo\""), hidden > 0);
+    assert_eq!(html.matches("finding info hidable").count(), hidden);
+    r.findings.push(sparkscope::rules::Finding {
+        severity: Severity::Info,
+        area: "Test".into(),
+        title: "nota".into(),
+        impact_pct: 0.0,
+        evidence: vec![],
+        explanation: String::new(),
+        solutions: vec![],
+        culprits: vec![],
+    });
+    let html = report::html::render(&r);
+    assert!(html.contains(&format!("note informative ({})", hidden + 1)));
+}
