@@ -969,12 +969,7 @@ pub fn render(r: &Report) -> String {
         b.push_str("</p>");
     }
     b.push_str("</section>");
-    let _ = write!(
-        b,
-        r#"<footer><span>Spark-Analyzer</span> v{} · sorgente: {}</footer></main></div>"#,
-        env!("CARGO_PKG_VERSION"),
-        esc(&m.origin)
-    );
+    b.push_str("</main></div>");
 
     for (id, ic) in [
         ("diagnosi", "clipboard"),
