@@ -243,6 +243,16 @@ pub fn analyze(p: &Profile) -> Analysis {
     let thread = &p.threads[main_idx];
     let w = thread.windows;
     let idle_mask = idle_mask(thread);
+    let mut idle_sub = vec![0.0f64; thread.nodes.len()];
+    for (i, n) in thread.nodes.iter().enumerate() {
+        if idle_mask[i] && n.parent.is_none_or(|q| !idle_mask[q as usize]) {
+            let mut cur = n.parent;
+            while let Some(q) = cur {
+                idle_sub[q as usize] += n.total;
+                cur = thread.node(q).parent;
+            }
+        }
+    }
 
     let mut strings = Interner::new();
     let mut methods = Interner::new();
@@ -333,6 +343,7 @@ pub fn analyze(p: &Profile) -> Analysis {
         let mid = node_method_id[id as usize];
 
         let idle = idle_mask[id as usize];
+        let active = node.total - idle_sub[id as usize];
 
         let mut own_cat = patterns::categorize(node);
         if let (Some(oc), Some(pc)) = (own_cat, st.cat) {
@@ -396,7 +407,7 @@ pub fn analyze(p: &Profile) -> Analysis {
             let first_owner = *owner_depth.get(&s).unwrap_or(&0) == 0;
             *owner_depth.entry(s).or_insert(0) += 1;
             if !idle && first_owner {
-                *owner_incl.entry(s).or_insert(0.0) += node.total;
+                *owner_incl.entry(s).or_insert(0.0) += active;
             }
             if !idle && st.owner != Some(s) {
                 let ctx_label = match ctx {
@@ -431,7 +442,7 @@ pub fn analyze(p: &Profile) -> Analysis {
             }
         }
         if !idle && first_method {
-            *method_incl.entry(mid).or_insert(0.0) += node.total;
+            *method_incl.entry(mid).or_insert(0.0) += active;
         }
         if !idle
             && let Some(c) = own_cat

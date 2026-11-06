@@ -39,6 +39,28 @@ fn idle_is_excluded_and_packets_are_kept() {
 }
 
 #[test]
+fn inclusive_methods_exclude_idle_wait() {
+    let r = build();
+    let a = &r.analysis;
+    for m in &a.methods_inclusive {
+        assert!(
+            m.incl_time <= a.main.busy + 1e-6 && m.incl_pct <= 100.0 + 1e-6,
+            "{} {} > busy {}",
+            m.method,
+            m.incl_time,
+            a.main.busy
+        );
+    }
+    let wait = a
+        .methods_inclusive
+        .iter()
+        .find(|m| m.method.contains("waitForTasks"))
+        .map(|m| m.incl_pct)
+        .unwrap_or(0.0);
+    assert!(wait < 1.0, "l'attesa idle non e' un hotspot: {wait}");
+}
+
+#[test]
 fn paper_tick_wait_is_idle_not_blocking() {
     let bytes = fixture::sample_paper_wait().encode_to_vec();
     let data = sparkscope::proto::SamplerData::decode(&*bytes).unwrap();
@@ -172,6 +194,64 @@ fn findings_cover_main_causes() {
             .evidence
             .iter()
             .any(|e| e.contains("x=200") && e.contains("z=-632"))
+    );
+}
+
+#[test]
+fn config_advice_keeps_farms_working() {
+    let r = build();
+    let sols: Vec<&String> = r.findings.iter().flat_map(|f| &f.solutions).collect();
+    assert!(
+        sols.iter().all(|s| !s.contains("hopper-amount =")),
+        "hopper-amount vanilla (1) non va alzato: cambia la portata degli hopper"
+    );
+    let cfg = r
+        .findings
+        .iter()
+        .find(|f| f.area == "Configurazione")
+        .unwrap();
+    assert!(
+        cfg.solutions
+            .iter()
+            .all(|s| !s.contains("nerf-spawner-mobs")),
+        "nerf-spawner-mobs rompe le farm: solo se gli spawner pesano"
+    );
+    assert!(
+        sols.iter()
+            .filter(|s| s.contains("redstone-implementation"))
+            .all(|s| !s.contains("stesso comportamento")),
+        "ALTERNATE_CURRENT non e' identico al vanilla"
+    );
+}
+
+#[test]
+fn jvm_advice_matches_gc_and_java_version() {
+    let jvm = |args: &str| {
+        let mut data = fixture::sample();
+        let java = data
+            .metadata
+            .as_mut()
+            .and_then(|m| m.system_statistics.as_mut())
+            .and_then(|s| s.java.as_mut())
+            .unwrap();
+        java.vm_args = args.into();
+        let p = Profile::from_proto(data);
+        let a = analysis::analyze(&p);
+        let r = report::build(&p, a, "test", None, "profilo CPU (sampler)");
+        r.findings
+            .into_iter()
+            .find(|f| f.area == "JVM / Macchina")
+            .unwrap()
+            .solutions
+    };
+    let z = jvm("-Xmx16G -XX:+UseZGC");
+    assert!(z.iter().any(|s| s.contains("-XX:+ZGenerational")), "{z:?}");
+    assert!(z.iter().any(|s| s.contains("-Xms")), "-Xms assente: {z:?}");
+    let ok = jvm("-Xms16G -Xmx16G -XX:+UseZGC -XX:+ZGenerational");
+    assert!(
+        ok.iter()
+            .all(|s| !s.contains("ZGenerational") && !s.contains("-Xms")),
+        "{ok:?}"
     );
 }
 

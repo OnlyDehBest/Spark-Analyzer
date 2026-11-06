@@ -468,6 +468,15 @@ fn overview(c: &Ctx, out: &mut Vec<Finding>) {
 
 type Tr = (&'static str, &'static str);
 
+const MERGE_ITEM: Tr = (
+    "3.5 (gli item vicini si uniscono a scatti e possono unirsi attraverso i muri: valuta fixes.fix-items-merging-through-walls: true in Paper)",
+    "3.5 (nearby items visibly jump together and can merge through walls: consider fixes.fix-items-merging-through-walls: true in Paper)",
+);
+const MERGE_EXP: Tr = (
+    "4.0 (le sfere di XP si uniscono da più lontano, nessuna XP persa)",
+    "4.0 (XP orbs merge from further away, no XP is lost)",
+);
+
 fn tr(x: Tr) -> &'static str {
     crate::i18n::t(x.0, x.1)
 }
@@ -498,12 +507,12 @@ const CAT_RULES: &[CatRule] = &[
                 "Reduce the number of entities: limit animals per chunk with a plugin (e.g. a per-chunk entity limiter) and check the most crowded chunks listed in the World section",
             ),
             (
-                "Abbassa gli entity-activation-range in spigot.yml così le entità lontane dai giocatori vengono aggiornate meno spesso",
-                "Lower entity-activation-range in spigot.yml so entities far from players are updated less often",
+                "Abbassa gli entity-activation-range in spigot.yml (es. animals 16, monsters 24, misc 8, water 8, villagers 16; range fino a 32): le entità lontane vengono aggiornate meno spesso. Attenzione: farm e recinti lontani dal punto AFK rallentano",
+                "Lower entity-activation-range in spigot.yml (e.g. animals 16, monsters 24, misc 8, water 8, villagers 16; range up to 32): distant entities are updated less often. Warning: farms and pens far from the AFK spot slow down",
             ),
             (
-                "Abbassa simulation-distance in server.properties (le entità oltre questa distanza non vengono aggiornate)",
-                "Lower simulation-distance in server.properties (entities beyond this distance are not ticked)",
+                "Abbassa simulation-distance in server.properties (6, range 5-8): le entità oltre questa distanza non vengono aggiornate. Attenzione: anche colture, farm e redstone oltre questa distanza sono ferme",
+                "Lower simulation-distance in server.properties (6, range 5-8): entities beyond this distance are not ticked. Warning: crops, farms and redstone beyond it are frozen too",
             ),
         ],
     },
@@ -520,12 +529,12 @@ const CAT_RULES: &[CatRule] = &[
         ),
         solutions: &[
             (
-                "Su Pufferfish/Purpur attiva DAB (dynamic activation of brain) per ridurre la frequenza dell'AI dei mob lontani",
-                "On Pufferfish/Purpur enable DAB (dynamic activation of brain) to reduce how often distant mobs run their AI",
+                "Su Pufferfish/Purpur attiva DAB (dynamic activation of brain) per ridurre la frequenza dell'AI dei mob lontani (i mob lontani reagiscono più lentamente, quelli vicini restano normali)",
+                "On Pufferfish/Purpur enable DAB (dynamic activation of brain) to reduce how often distant mobs run their AI (distant mobs react more slowly, nearby ones stay normal)",
             ),
             (
-                "Riduci entity-activation-range in spigot.yml e tick-inactive-villagers: false",
-                "Lower entity-activation-range in spigot.yml and set tick-inactive-villagers: false",
+                "Riduci entity-activation-range in spigot.yml e imposta tick-inactive-villagers: false (attenzione: iron farm e breeder di villager si fermano senza un giocatore vicino)",
+                "Lower entity-activation-range in spigot.yml and set tick-inactive-villagers: false (warning: iron farms and villager breeders stop without a nearby player)",
             ),
             (
                 "Limita i mob negli allevamenti e nelle farm: mob in spazi stretti continuano a cercare target e percorsi",
@@ -566,12 +575,12 @@ const CAT_RULES: &[CatRule] = &[
         ),
         solutions: &[
             (
-                "Su Purpur attiva mobs.villager.lobotomize.enabled: true (i villager bloccati smettono di calcolare l'AI)",
-                "On Purpur enable mobs.villager.lobotomize.enabled: true (stuck villagers stop running their AI)",
+                "Su Purpur attiva mobs.villager.lobotomize.enabled: true: i villager intrappolati smettono di calcolare l'AI. I trade restano, ma breeding e farm di colture con villager smettono di funzionare",
+                "On Purpur enable mobs.villager.lobotomize.enabled: true: trapped villagers stop running their AI. Trades still work, but breeding and villager crop farms stop working",
             ),
             (
-                "Imposta tick-inactive-villagers: false in spigot.yml",
-                "Set tick-inactive-villagers: false in spigot.yml",
+                "Imposta tick-inactive-villagers: false in spigot.yml (attenzione: iron farm, breeder e farm di villager si fermano quando nessun giocatore è nel range di attivazione)",
+                "Set tick-inactive-villagers: false in spigot.yml (warning: iron farms, breeders and villager farms stop when no player is within activation range)",
             ),
             (
                 "Limita il numero di villager per chunk e spezza le trading hall troppo grandi",
@@ -592,12 +601,12 @@ const CAT_RULES: &[CatRule] = &[
         ),
         solutions: &[
             (
-                "Riduci il massimo di collisioni per tick (collisions.max-entity-collisions in paper-world-defaults.yml, es. 2)",
-                "Reduce the max collisions per tick (collisions.max-entity-collisions in paper-world-defaults.yml, e.g. 2)",
+                "Riduci il massimo di collisioni per tick (collisions.max-entity-collisions in paper-world-defaults.yml, 2, range 2-4): i mob si spingono meno, le farm che sfruttano la spinta tra mob rallentano",
+                "Reduce the max collisions per tick (collisions.max-entity-collisions in paper-world-defaults.yml, 2, range 2-4): mobs push each other less, farms relying on mob pushing slow down",
             ),
             (
-                "Abbassa la gamerule maxEntityCramming (es. /gamerule maxEntityCramming 8)",
-                "Lower the maxEntityCramming gamerule (e.g. /gamerule maxEntityCramming 8)",
+                "Abbassa la gamerule maxEntityCramming (es. /gamerule maxEntityCramming 16, vanilla 24). Attenzione: i mob oltre il limite nello stesso blocco muoiono (recinti affollati, farm a cramming)",
+                "Lower the maxEntityCramming gamerule (e.g. /gamerule maxEntityCramming 16, vanilla 24). Warning: mobs beyond the limit in one block die (crowded pens, cramming farms)",
             ),
             (
                 "Cerca farm di mob o allevamenti con entità ammassate: vedi i chunk con più entità nella sezione Mondo",
@@ -618,12 +627,12 @@ const CAT_RULES: &[CatRule] = &[
         ),
         solutions: &[
             (
-                "Aumenta merge-radius in spigot.yml (item 3.5, exp 4.0) per unire gli item vicini",
-                "Increase merge-radius in spigot.yml (item 3.5, exp 4.0) to merge nearby items",
+                "Aumenta merge-radius in spigot.yml (item 3.5, exp 4.0; range 2.5-4) per unire gli item vicini: gli item si uniscono a scatti e possono unirsi attraverso i muri",
+                "Increase merge-radius in spigot.yml (item 3.5, exp 4.0; range 2.5-4) to merge nearby items: items visibly jump together and can merge through walls",
             ),
             (
-                "Riduci il despawn degli item comuni con entities.spawning.alt-item-despawn-rate in paper-world-defaults.yml",
-                "Despawn common items sooner with entities.spawning.alt-item-despawn-rate in paper-world-defaults.yml",
+                "Fai sparire prima gli item comuni (cobblestone, netherrack, ...) con entities.spawning.alt-item-despawn-rate in paper-world-defaults.yml: gli item elencati a terra spariscono prima di 5 minuti",
+                "Despawn common items (cobblestone, netherrack, ...) sooner with entities.spawning.alt-item-despawn-rate in paper-world-defaults.yml: listed items on the ground vanish before 5 minutes",
             ),
             (
                 "Verifica le farm che lasciano cadere item a terra e aggiungi hopper/raccolta o limitale",
@@ -666,12 +675,12 @@ const CAT_RULES: &[CatRule] = &[
         ),
         solutions: &[
             (
-                "Imposta hopper.disable-move-event: true in paper-world-defaults.yml se nessun plugin usa InventoryMoveItemEvent",
-                "Set hopper.disable-move-event: true in paper-world-defaults.yml if no plugin uses InventoryMoveItemEvent",
+                "Imposta hopper.disable-move-event: true in paper-world-defaults.yml solo se nessun plugin usa InventoryMoveItemEvent: plugin di protezione, lock di casse e shop non potranno più bloccare gli hopper",
+                "Set hopper.disable-move-event: true in paper-world-defaults.yml only if no plugin uses InventoryMoveItemEvent: protection, chest-lock and shop plugins will no longer be able to block hoppers",
             ),
             (
-                "Aumenta ticks-per.hopper-transfer e hopper-amount in spigot.yml (es. 8 tick e 8 item: stessa velocità media, meno controlli)",
-                "Increase ticks-per.hopper-transfer and hopper-amount in spigot.yml (e.g. 8 ticks and 8 items: same average speed, fewer checks)",
+                "In spigot.yml porta ticks-per.hopper-check a 8 (range 1-8; meno controlli = meno MSPT) e lascia ticks-per.hopper-transfer 8 e hopper-amount 1 (vanilla). Attenzione: hopper-check alto rallenta la raccolta di item dall'alto e può rompere hopper clock e sorter basati sul timing",
+                "In spigot.yml set ticks-per.hopper-check to 8 (range 1-8; fewer checks = lower MSPT) and keep ticks-per.hopper-transfer 8 and hopper-amount 1 (vanilla). Warning: a high hopper-check slows item pickup from above and can break hopper clocks and timing-based sorters",
             ),
             (
                 "Sostituisci le catene lunghe di hopper con water stream o limita gli hopper per chunk",
@@ -689,12 +698,12 @@ const CAT_RULES: &[CatRule] = &[
         ),
         solutions: &[
             (
-                "Imposta tick-rates.mob-spawner: 2 o più in paper-world-defaults.yml",
-                "Set tick-rates.mob-spawner: 2 or higher in paper-world-defaults.yml",
+                "Imposta tick-rates.mob-spawner: 2 in paper-world-defaults.yml (range 1-4): meno tick degli spawner = meno MSPT, ma valori alti riducono la resa delle farm a spawner",
+                "Set tick-rates.mob-spawner: 2 in paper-world-defaults.yml (range 1-4): fewer spawner ticks = lower MSPT, but high values reduce spawner farm output",
             ),
             (
-                "Attiva nerf-spawner-mobs: true in spigot.yml (i mob degli spawner non hanno AI)",
-                "Enable nerf-spawner-mobs: true in spigot.yml (spawner mobs have no AI)",
+                "Attiva nerf-spawner-mobs: true in spigot.yml: i mob degli spawner non hanno AI né movimento. Attenzione: rompe le farm in cui i mob devono camminare o cadere da soli verso il kill point",
+                "Enable nerf-spawner-mobs: true in spigot.yml: spawner mobs have no AI or movement. Warning: it breaks farms where mobs must walk or drop on their own to the kill point",
             ),
             (
                 "Se usi un plugin per spawner impilati, verifica le sue impostazioni di stack",
@@ -715,8 +724,8 @@ const CAT_RULES: &[CatRule] = &[
         ),
         solutions: &[
             (
-                "Imposta misc.redstone-implementation: ALTERNATE_CURRENT in paper-world-defaults.yml (stesso comportamento, molto meno aggiornamenti)",
-                "Set misc.redstone-implementation: ALTERNATE_CURRENT in paper-world-defaults.yml (same behaviour, far fewer updates)",
+                "Imposta misc.redstone-implementation: ALTERNATE_CURRENT in paper-world-defaults.yml (molti meno aggiornamenti di blocchi). Attenzione: l'ordine degli aggiornamenti non è vanilla e alcuni circuiti tecnici sensibili all'ordine possono rompersi; provalo su una copia del mondo",
+                "Set misc.redstone-implementation: ALTERNATE_CURRENT in paper-world-defaults.yml (far fewer block updates). Warning: the update order is not vanilla and some order-sensitive technical contraptions may break; test it on a copy of the world",
             ),
             (
                 "Individua i clock di redstone sempre attivi e usa un plugin che limita/disattiva i clock troppo veloci",
@@ -760,8 +769,8 @@ const CAT_RULES: &[CatRule] = &[
         ),
         solutions: &[
             (
-                "Abbassa simulation-distance in server.properties (es. 6) mantenendo la view-distance per la visuale",
-                "Lower simulation-distance in server.properties (e.g. 6) while keeping view-distance for visuals",
+                "Abbassa simulation-distance in server.properties (6, range 5-8) mantenendo la view-distance per la visuale. Attenzione: colture, farm e redstone oltre questa distanza sono ferme",
+                "Lower simulation-distance in server.properties (6, range 5-8) while keeping view-distance for visuals. Warning: crops, farms and redstone beyond it are frozen",
             ),
             (
                 "Verifica che la gamerule randomTickSpeed sia 3 (valore vanilla)",
@@ -786,16 +795,16 @@ const CAT_RULES: &[CatRule] = &[
         ),
         solutions: &[
             (
-                "Aumenta ticks-per.monster-spawns in bukkit.yml (es. 10) e riduci spawn-limits",
-                "Increase ticks-per.monster-spawns in bukkit.yml (e.g. 10) and reduce spawn-limits",
+                "Aumenta ticks-per.monster-spawns in bukkit.yml (10, range 4-10) e riduci spawn-limits (es. monsters 50): meno tentativi di spawn e meno mob, quindi le mob farm producono meno",
+                "Increase ticks-per.monster-spawns in bukkit.yml (10, range 4-10) and reduce spawn-limits (e.g. monsters 50): fewer spawn attempts and fewer mobs, so mob farms produce less",
             ),
             (
                 "Imposta entities.spawning.per-player-mob-spawns: true in paper-world-defaults.yml",
                 "Set entities.spawning.per-player-mob-spawns: true in paper-world-defaults.yml",
             ),
             (
-                "Abbassa mob-spawn-range in spigot.yml (es. 6) e la simulation-distance",
-                "Lower mob-spawn-range in spigot.yml (e.g. 6) and the simulation-distance",
+                "Abbassa mob-spawn-range in spigot.yml (6 chunk, non oltre la simulation-distance) e la simulation-distance: i mob nascono più vicini ai giocatori",
+                "Lower mob-spawn-range in spigot.yml (6 chunks, not above simulation-distance) and the simulation-distance: mobs spawn closer to players",
             ),
         ],
     },
@@ -842,8 +851,8 @@ const CAT_RULES: &[CatRule] = &[
                 "Pregenerate the world with Chunky and set a world border, so chunks don't have to be generated on the fly",
             ),
             (
-                "Imposta chunks.prevent-moving-into-unloaded-chunks: true in paper-world-defaults.yml",
-                "Set chunks.prevent-moving-into-unloaded-chunks: true in paper-world-defaults.yml",
+                "Imposta chunks.prevent-moving-into-unloaded-chunks: true in paper-world-defaults.yml (chi vola veloce con elytra viene fermato al bordo dei chunk non caricati)",
+                "Set chunks.prevent-moving-into-unloaded-chunks: true in paper-world-defaults.yml (fast elytra flyers are stopped at the edge of unloaded chunks)",
             ),
             (
                 "Usa dischi SSD/NVMe: il caricamento da disco lento allunga ogni attesa",
@@ -868,8 +877,8 @@ const CAT_RULES: &[CatRule] = &[
                 "Pregenerate the world with Chunky (e.g. /chunky radius 10000) and set a world border",
             ),
             (
-                "Se la generazione avviene per mappe del tesoro o delfini, disattiva environment.treasure-maps.find-already-discovered o le mappe del tesoro (paper-world-defaults.yml)",
-                "If generation is caused by treasure maps or dolphins, disable environment.treasure-maps.find-already-discovered or treasure maps (paper-world-defaults.yml)",
+                "Se la generazione avviene per mappe del tesoro o delfini, imposta environment.treasure-maps.find-already-discovered.villager-trade e loot-tables a true (le mappe possono puntare a tesori già trovati) o disattiva environment.treasure-maps.enabled (paper-world-defaults.yml)",
+                "If generation is caused by treasure maps or dolphins, set environment.treasure-maps.find-already-discovered.villager-trade and loot-tables to true (maps may point to already found treasure) or disable environment.treasure-maps.enabled (paper-world-defaults.yml)",
             ),
             (
                 "Limita i giocatori che esplorano a grande velocità (elytra) con un limite di velocità o pregenerazione",
@@ -894,8 +903,8 @@ const CAT_RULES: &[CatRule] = &[
                 "Set chunks.max-auto-save-chunks-per-tick: 8 in paper-world-defaults.yml to spread out autosave",
             ),
             (
-                "Imposta sync-chunk-writes=false in server.properties",
-                "Set sync-chunk-writes=false in server.properties",
+                "Imposta sync-chunk-writes=false in server.properties (rischio: con crash o blackout si perdono le ultime modifiche ai chunk; tieni backup regolari)",
+                "Set sync-chunk-writes=false in server.properties (risk: on a crash or power loss the latest chunk changes are lost; keep regular backups)",
             ),
             (
                 "Controlla backup e plugin che chiamano World#save o /save-all frequentemente",
@@ -966,12 +975,12 @@ const CAT_RULES: &[CatRule] = &[
         ),
         solutions: &[
             (
-                "Abbassa entity-tracking-range in spigot.yml (es. players 48, animals 32, monsters 32, misc 16)",
-                "Lower entity-tracking-range in spigot.yml (e.g. players 48, animals 32, monsters 32, misc 16)",
+                "Abbassa entity-tracking-range in spigot.yml (es. players 48, animals 32, monsters 32, misc 16; range players 48-64): entità e giocatori diventano visibili solo entro questa distanza, conta per il PvP con archi",
+                "Lower entity-tracking-range in spigot.yml (e.g. players 48, animals 32, monsters 32, misc 16; range players 48-64): entities and players become visible only within this distance, which matters for bow PvP",
             ),
             (
-                "Abbassa entity-broadcast-range-percentage in server.properties (es. 75)",
-                "Lower entity-broadcast-range-percentage in server.properties (e.g. 75)",
+                "Abbassa entity-broadcast-range-percentage in server.properties (75, range 50-100): le entità compaiono più tardi avvicinandosi",
+                "Lower entity-broadcast-range-percentage in server.properties (75, range 50-100): entities appear later as you approach",
             ),
             (
                 "Riduci il numero di entità nelle aree affollate",
@@ -989,8 +998,8 @@ const CAT_RULES: &[CatRule] = &[
         ),
         solutions: &[
             (
-                "Abbassa view-distance (o usa send-view-distance più alta della simulation-distance)",
-                "Lower view-distance (or use a send-view-distance higher than simulation-distance)",
+                "Abbassa view-distance (8, range 6-10: i giocatori vedono meno lontano) e tieni simulation-distance più bassa (es. 6)",
+                "Lower view-distance (8, range 6-10: players see less far) and keep simulation-distance lower (e.g. 6)",
             ),
             (
                 "Controlla i plugin che agiscono su ogni giocatore ad ogni tick (scoreboard, tablist, boss bar)",
@@ -1299,6 +1308,22 @@ const CAT_RULES: &[CatRule] = &[
 ];
 
 fn category_rules(c: &Ctx, out: &mut Vec<Finding>) {
+    let villager_range = crate::i18n::t(
+        "16 (range 16-32; i villager lontani dal giocatore lavorano e si riproducono più lentamente)",
+        "16 (range 16-32; villagers far from the player work and breed more slowly)",
+    );
+    let villager_inactive = crate::i18n::t(
+        "false (attenzione: iron farm, breeder e farm di villager si fermano senza un giocatore nel range)",
+        "false (warning: iron farms, breeders and villager crop farms stop without a player in range)",
+    );
+    let sim_distance = crate::i18n::t(
+        "6 (range 5-8; oltre questa distanza colture, farm e redstone sono ferme)",
+        "6 (range 5-8; beyond this distance crops, farms and redstone are frozen)",
+    );
+    let collisions = crate::i18n::t(
+        "2 (range 2-4; i mob si spingono meno, le farm che usano la spinta tra mob rallentano)",
+        "2 (range 2-4; mobs push each other less, farms relying on mob pushing slow down)",
+    );
     for rule in CAT_RULES {
         let Some(cs) = c.cat(rule.cat) else { continue };
         if cs.pct < rule.min {
@@ -1308,17 +1333,45 @@ fn category_rules(c: &Ctx, out: &mut Vec<Finding>) {
         let mut cfg: Vec<Option<String>> = Vec::new();
         match rule.cat {
             Cat::EntityTick | Cat::MobAi => {
-                cfg.push(c.spigot("entity-activation-range.animals", "16", gt(16.0)));
-                cfg.push(c.spigot("entity-activation-range.monsters", "24", gt(24.0)));
-                cfg.push(c.spigot("entity-activation-range.misc", "8", gt(8.0)));
-                cfg.push(c.spigot("entity-activation-range.water", "8", gt(8.0)));
-                cfg.push(c.spigot("entity-activation-range.villagers", "16", gt(16.0)));
-                cfg.push(c.spigot("tick-inactive-villagers", "false", is_bool(true)));
-                cfg.push(c.props("simulation-distance", "6", gt(6.0)));
+                cfg.push(c.spigot("entity-activation-range.animals", crate::i18n::t("16 (range 16-32; oltre il range gli animali tickano di rado: farm e recinti lontani dal giocatore rallentano)", "16 (range 16-32; beyond the range animals tick rarely: farms and pens far from the player slow down)"), gt(16.0)));
+                cfg.push(c.spigot(
+                    "entity-activation-range.monsters",
+                    crate::i18n::t(
+                        "24 (range 24-32; le mob farm lontane dal punto AFK producono meno)",
+                        "24 (range 24-32; mob farms far from the AFK spot produce less)",
+                    ),
+                    gt(24.0),
+                ));
+                cfg.push(c.spigot(
+                    "entity-activation-range.misc",
+                    crate::i18n::t(
+                        "8 (range 8-16; item e minecart lontani si muovono a scatti)",
+                        "8 (range 8-16; distant items and minecarts move in bursts)",
+                    ),
+                    gt(8.0),
+                ));
+                cfg.push(c.spigot(
+                    "entity-activation-range.water",
+                    crate::i18n::t(
+                        "8 (range 8-16; rallenta le farm di mob acquatici)",
+                        "8 (range 8-16; slows water mob farms)",
+                    ),
+                    gt(8.0),
+                ));
+                cfg.push(c.spigot(
+                    "entity-activation-range.villagers",
+                    villager_range,
+                    gt(16.0),
+                ));
+                cfg.push(c.spigot("tick-inactive-villagers", villager_inactive, is_bool(true)));
+                cfg.push(c.props("simulation-distance", sim_distance, gt(6.0)));
                 cfg.push(c.paper(
                     "entities.armor-stands.tick",
                     Some("armor-stands-tick"),
-                    "false",
+                    crate::i18n::t(
+                        "false (gli armor stand non vengono più spinti da acqua e piston)",
+                        "false (armor stands are no longer pushed by water and pistons)",
+                    ),
                     is_bool(true),
                 ));
                 if c.cfg.is_pufferfish() || c.cfg.is_purpur() {
@@ -1326,7 +1379,10 @@ fn category_rules(c: &Ctx, out: &mut Vec<Finding>) {
                         c.cfg.get("pufferfish.yml", "dab.enabled"),
                         "pufferfish.yml",
                         "dab.enabled",
-                        "true",
+                        crate::i18n::t(
+                            "true (i mob lontani dai giocatori reagiscono più lentamente)",
+                            "true (mobs far from players react more slowly)",
+                        ),
                         is_bool(false),
                     ));
                 }
@@ -1340,33 +1396,37 @@ fn category_rules(c: &Ctx, out: &mut Vec<Finding>) {
                         ),
                         "purpur.yml",
                         "world-settings.default.mobs.villager.lobotomize.enabled",
-                        "true",
+                        crate::i18n::t("true (i villager intrappolati smettono di pensare: niente breeding né raccolto, i trade restano)", "true (trapped villagers stop thinking: no breeding or farming, trades still work)"),
                         is_bool(false),
                     ));
                 }
-                cfg.push(c.spigot("tick-inactive-villagers", "false", is_bool(true)));
-                cfg.push(c.spigot("entity-activation-range.villagers", "16", gt(16.0)));
+                cfg.push(c.spigot("tick-inactive-villagers", villager_inactive, is_bool(true)));
+                cfg.push(c.spigot(
+                    "entity-activation-range.villagers",
+                    villager_range,
+                    gt(16.0),
+                ));
             }
             Cat::Collisions => {
                 cfg.push(c.paper(
                     "collisions.max-entity-collisions",
                     Some("max-entity-collisions"),
-                    "2",
+                    collisions,
                     gt(2.0),
                 ));
-                cfg.push(c.spigot("max-entity-collisions", "2", gt(2.0)));
+                cfg.push(c.spigot("max-entity-collisions", collisions, gt(2.0)));
             }
             Cat::ItemsXp => {
-                cfg.push(c.spigot("merge-radius.item", "3.5", lt(3.5)));
-                cfg.push(c.spigot("merge-radius.exp", "4.0", lt(4.0)));
+                cfg.push(c.spigot("merge-radius.item", tr(MERGE_ITEM), lt(3.5)));
+                cfg.push(c.spigot("merge-radius.exp", tr(MERGE_EXP), lt(4.0)));
             }
             Cat::Hoppers => {
                 cfg.push(c.paper(
                     "hopper.disable-move-event",
                     Some("hopper.disable-move-event"),
                     crate::i18n::t(
-                        "true (se nessun plugin lo usa)",
-                        "true (if no plugin uses it)",
+                        "true (solo se nessun plugin usa InventoryMoveItemEvent: protezioni, lock e shop non bloccano più gli hopper)",
+                        "true (only if no plugin uses InventoryMoveItemEvent: protections, locks and shops no longer block hoppers)",
                     ),
                     is_bool(false),
                 ));
@@ -1376,18 +1436,27 @@ fn category_rules(c: &Ctx, out: &mut Vec<Finding>) {
                     "true",
                     is_bool(false),
                 ));
-                cfg.push(c.spigot("ticks-per.hopper-transfer", "8", lt(8.0)));
-                cfg.push(c.spigot("hopper-amount", "8", lt(8.0)));
-                cfg.push(c.spigot("ticks-per.hopper-check", "8", lt(8.0)));
+                cfg.push(c.spigot(
+                    "ticks-per.hopper-transfer",
+                    crate::i18n::t(
+                        "8 (vanilla; più basso = hopper più veloci ma più costosi)",
+                        "8 (vanilla; lower = faster but costlier hoppers)",
+                    ),
+                    lt(8.0),
+                ));
+                cfg.push(c.spigot("ticks-per.hopper-check", crate::i18n::t("8 (range 1-8; rallenta la raccolta dall'alto, può rompere hopper clock e sorter a timing)", "8 (range 1-8; slows pickup from above, may break hopper clocks and timing sorters)"), lt(8.0)));
             }
             Cat::Spawners => {
                 cfg.push(c.paper(
                     "tick-rates.mob-spawner",
                     Some("mob-spawner-tick-rate"),
-                    "2",
+                    crate::i18n::t(
+                        "2 (range 1-4; valori alti riducono la resa delle farm a spawner)",
+                        "2 (range 1-4; high values reduce spawner farm output)",
+                    ),
                     lt(2.0),
                 ));
-                cfg.push(c.spigot("nerf-spawner-mobs", "true", is_bool(false)));
+                cfg.push(c.spigot("nerf-spawner-mobs", crate::i18n::t("true (i mob degli spawner senza AI: rompe le farm in cui devono camminare)", "true (spawner mobs without AI: breaks farms where they must walk)"), is_bool(false)));
             }
             Cat::Redstone | Cat::ScheduledTicks => {
                 cfg.push(c.paper(
@@ -1398,7 +1467,7 @@ fn category_rules(c: &Ctx, out: &mut Vec<Finding>) {
                 ));
             }
             Cat::ChunkTick => {
-                cfg.push(c.props("simulation-distance", "6", gt(6.0)));
+                cfg.push(c.props("simulation-distance", sim_distance, gt(6.0)));
             }
             Cat::MobSpawning => {
                 cfg.push(c.paper(
@@ -1407,18 +1476,25 @@ fn category_rules(c: &Ctx, out: &mut Vec<Finding>) {
                     "true",
                     is_bool(false),
                 ));
-                cfg.push(c.bukkit("ticks-per.monster-spawns", "10", lt(10.0)));
-                cfg.push(c.bukkit("spawn-limits.monsters", "50", gt(50.0)));
+                cfg.push(c.bukkit(
+                    "ticks-per.monster-spawns",
+                    crate::i18n::t(
+                        "10 (range 4-10; meno tentativi di spawn: le mob farm producono meno)",
+                        "10 (range 4-10; fewer spawn attempts: mob farms produce less)",
+                    ),
+                    lt(10.0),
+                ));
+                cfg.push(c.bukkit("spawn-limits.monsters", crate::i18n::t("50 (range 40-70, vanilla 70; meno mob per giocatore, le mob farm producono meno)", "50 (range 40-70, vanilla 70; fewer mobs per player, mob farms produce less)"), gt(50.0)));
                 cfg.push(c.bukkit("spawn-limits.animals", "8", gt(10.0)));
                 cfg.push(c.bukkit("spawn-limits.water-animals", "3", gt(5.0)));
                 cfg.push(c.bukkit("spawn-limits.ambient", "1", gt(3.0)));
-                cfg.push(c.spigot("mob-spawn-range", "6", gt(6.0)));
+                cfg.push(c.spigot("mob-spawn-range", crate::i18n::t("6 (in chunk, non oltre simulation-distance; i mob nascono più vicini ai giocatori)", "6 (in chunks, not above simulation-distance; mobs spawn closer to players)"), gt(6.0)));
             }
             Cat::ChunkLoadSync | Cat::ChunkGen => {
                 cfg.push(c.paper(
                     "chunks.prevent-moving-into-unloaded-chunks",
                     Some("prevent-moving-into-unloaded-chunks"),
-                    "true",
+                    crate::i18n::t("true (chi vola veloce con elytra viene fermato al bordo dei chunk non caricati)", "true (fast elytra flyers are stopped at the edge of unloaded chunks)"),
                     is_bool(false),
                 ));
                 let treasure = c.method_pct(|m| {
@@ -1435,13 +1511,23 @@ fn category_rules(c: &Ctx, out: &mut Vec<Finding>) {
                 cfg.push(c.paper(
                     "chunks.max-auto-save-chunks-per-tick",
                     Some("max-auto-save-chunks-per-tick"),
-                    "8",
+                    crate::i18n::t(
+                        "8 (range 6-12; il salvataggio si spalma su più tick)",
+                        "8 (range 6-12; saving is spread over more ticks)",
+                    ),
                     gt(8.0),
                 ));
-                cfg.push(c.props("sync-chunk-writes", "false", is_bool(true)));
+                cfg.push(c.props("sync-chunk-writes", crate::i18n::t("false (rischio: con crash o blackout si perdono le ultime modifiche ai chunk; fai backup)", "false (risk: on a crash or power loss the latest chunk changes are lost; keep backups)"), is_bool(true)));
             }
             Cat::ChunkSystem => {
-                cfg.push(c.props("view-distance", "8", gt(10.0)));
+                cfg.push(c.props(
+                    "view-distance",
+                    crate::i18n::t(
+                        "8 (range 6-10; i giocatori vedono meno lontano)",
+                        "8 (range 6-10; players see less far)",
+                    ),
+                    gt(10.0),
+                ));
                 cfg.push(c.paper(
                     "chunks.delay-chunk-unloads-by",
                     Some("delay-chunk-unloads-by"),
@@ -1450,7 +1536,7 @@ fn category_rules(c: &Ctx, out: &mut Vec<Finding>) {
                 ));
             }
             Cat::EntityTracking => {
-                cfg.push(c.spigot("entity-tracking-range.players", "48", gt(48.0)));
+                cfg.push(c.spigot("entity-tracking-range.players", crate::i18n::t("48 (range 48-64; i giocatori si vedono solo entro questa distanza, conta per PvP con archi)", "48 (range 48-64; players see each other only within this distance, matters for bow PvP)"), gt(48.0)));
                 cfg.push(c.spigot("entity-tracking-range.animals", "32", gt(32.0)));
                 cfg.push(c.spigot("entity-tracking-range.monsters", "32", gt(32.0)));
                 cfg.push(c.spigot("entity-tracking-range.misc", "16", gt(16.0)));
@@ -1963,9 +2049,7 @@ fn jvm_rules(
             );
             bump(Severity::Medio, &mut worst);
         }
-        if let Some(s) = args.xms
-            && s != x
-        {
+        if args.xms != Some(x) {
             sol.push(
                 crate::i18n::t("Imposta -Xms uguale a -Xmx: evita che la JVM ridimensioni l'heap durante il gioco", "Set -Xms equal to -Xmx: it prevents the JVM from resizing the heap during gameplay")
                     .into(),
@@ -1979,7 +2063,16 @@ fn jvm_rules(
             bump(Severity::Alto, &mut worst);
         }
         Some("G1") | None if !args.aikar => {
-            sol.push(crate::i18n::t("Usa i flag di Aikar per G1 (vedi docs.papermc.io → Aikar's flags) oppure, con heap ≥ 12 GB e Java 21+, -XX:+UseZGC -XX:+ZGenerational", "Use Aikar's flags for G1 (see docs.papermc.io → Aikar's flags) or, with heap ≥ 12 GB and Java 21+, -XX:+UseZGC -XX:+ZGenerational").into());
+            let zgc = if major.is_some_and(|m| m >= 23) {
+                "-XX:+UseZGC"
+            } else {
+                "-XX:+UseZGC -XX:+ZGenerational"
+            };
+            sol.push(tf!("Usa i flag di Aikar per G1 (docs.papermc.io → Aikar's flags; con heap oltre 12 GB usa la variante per heap grandi: G1NewSizePercent=40, G1MaxNewSizePercent=50, G1HeapRegionSize=16M, G1ReservePercent=15, InitiatingHeapOccupancyPercent=20). In alternativa ZGC ({}) ha pause quasi nulle ma consuma più CPU e RAM: conviene solo con Java 21+, heap ≥ 12 GB e core liberi", "Use Aikar's flags for G1 (docs.papermc.io → Aikar's flags; with a heap above 12 GB use the large-heap variant: G1NewSizePercent=40, G1MaxNewSizePercent=50, G1HeapRegionSize=16M, G1ReservePercent=15, InitiatingHeapOccupancyPercent=20). Alternatively ZGC ({}) has near-zero pauses but uses more CPU and RAM: only worth it with Java 21+, heap ≥ 12 GB and spare cores", zgc));
+            bump(Severity::Basso, &mut worst);
+        }
+        Some("ZGC") if matches!(major, Some(21 | 22)) && !args.raw.contains("+ZGenerational") => {
+            sol.push(crate::i18n::t("ZGC su Java 21-22 senza -XX:+ZGenerational usa la modalità non generazionale, con cicli di GC più frequenti: aggiungi -XX:+ZGenerational (su Java 23+ è il default)", "ZGC on Java 21-22 without -XX:+ZGenerational runs in non-generational mode, with more frequent GC cycles: add -XX:+ZGenerational (it is the default on Java 23+)").into());
             bump(Severity::Basso, &mut worst);
         }
         _ => {}
@@ -2282,62 +2375,104 @@ fn config_rules(c: &Ctx, out: &mut Vec<Finding>) {
     items.push(c.props(
         "sync-chunk-writes",
         crate::i18n::t(
-            "false (scritture chunk sincrone rallentano il salvataggio)",
-            "false (synchronous chunk writes slow down saving)",
+            "false (le scritture sincrone bloccano il salvataggio; rischio: con crash o blackout si perdono le ultime modifiche ai chunk)",
+            "false (synchronous writes stall saving; risk: on a crash or power loss the latest chunk changes are lost)",
         ),
         is_bool(true),
     ));
-    items.push(c.props("view-distance", "8-10", gt(12.0)));
-    items.push(c.props("simulation-distance", "6-8", gt(10.0)));
-    items.push(c.props("network-compression-threshold", "256", |v: &Cfg| {
-        v.num().map(|n| (0.0..64.0).contains(&n)).unwrap_or(false)
-    }));
+    items.push(c.props(
+        "view-distance",
+        crate::i18n::t(
+            "8-10 (i giocatori vedono meno lontano)",
+            "8-10 (players see less far)",
+        ),
+        gt(12.0),
+    ));
+    items.push(c.props(
+        "simulation-distance",
+        crate::i18n::t(
+            "6-8 (oltre questa distanza colture, farm e redstone sono ferme)",
+            "6-8 (beyond this distance crops, farms and redstone are frozen)",
+        ),
+        gt(10.0),
+    ));
+    items.push(c.props(
+        "network-compression-threshold",
+        crate::i18n::t(
+            "256 (meno CPU per comprimere, un po' più di banda)",
+            "256 (less CPU spent compressing, slightly more bandwidth)",
+        ),
+        |v: &Cfg| v.num().map(|n| (0.0..64.0).contains(&n)).unwrap_or(false),
+    ));
     if c.cfg.is_paper() {
         items.push(c.paper(
             "chunks.max-auto-save-chunks-per-tick",
             Some("max-auto-save-chunks-per-tick"),
-            "8",
+            crate::i18n::t(
+                "8 (range 6-12; il salvataggio si spalma su più tick)",
+                "8 (range 6-12; saving is spread over more ticks)",
+            ),
             gt(24.0),
         ));
         items.push(c.paper(
             "chunks.prevent-moving-into-unloaded-chunks",
             Some("prevent-moving-into-unloaded-chunks"),
-            "true",
+            crate::i18n::t(
+                "true (chi vola veloce con elytra viene fermato al bordo dei chunk non caricati)",
+                "true (fast elytra flyers are stopped at the edge of unloaded chunks)",
+            ),
             is_bool(false),
         ));
         items.push(c.paper(
             "misc.redstone-implementation",
             Some("redstone-implementation"),
-            "ALTERNATE_CURRENT",
+            crate::i18n::t("ALTERNATE_CURRENT (ordine degli aggiornamenti non vanilla: prova prima i circuiti tecnici)", "ALTERNATE_CURRENT (non-vanilla update order: test technical contraptions first)"),
             |v: &Cfg| v.text().eq_ignore_ascii_case("VANILLA"),
         ));
         items.push(c.paper(
             "environment.optimize-explosions",
             Some("optimize-explosions"),
-            "true",
+            crate::i18n::t(
+                "true (calcolo dei danni da esplosione in cache, risultato quasi identico)",
+                "true (cached explosion damage calculation, nearly identical result)",
+            ),
             is_bool(false),
         ));
         items.push(c.paper(
             "collisions.max-entity-collisions",
             Some("max-entity-collisions"),
-            "2-4",
+            crate::i18n::t(
+                "2-4 (i mob si spingono meno, le farm che usano la spinta tra mob rallentano)",
+                "2-4 (mobs push each other less, farms relying on mob pushing slow down)",
+            ),
             gt(8.0),
         ));
     }
     if c.cfg.has("spigot.yml") {
-        items.push(c.spigot("merge-radius.item", "3.5", |v: &Cfg| {
+        items.push(c.spigot("merge-radius.item", tr(MERGE_ITEM), |v: &Cfg| {
             v.num().map(|n| n < 1.0).unwrap_or(false)
         }));
-        items.push(c.spigot("merge-radius.exp", "4.0", |v: &Cfg| {
+        items.push(c.spigot("merge-radius.exp", tr(MERGE_EXP), |v: &Cfg| {
             v.num().map(|n| n < 1.0).unwrap_or(false)
         }));
-        items.push(c.spigot("entity-activation-range.monsters", "24", gt(32.0)));
-        items.push(c.spigot("nerf-spawner-mobs", "true", is_bool(false)));
+        items.push(c.spigot(
+            "entity-activation-range.monsters",
+            crate::i18n::t(
+                "24-32 (le mob farm lontane dal punto AFK producono meno)",
+                "24-32 (mob farms far from the AFK spot produce less)",
+            ),
+            gt(32.0),
+        ));
     }
     if c.cfg.has("bukkit.yml") {
-        items.push(c.bukkit("ticks-per.monster-spawns", "4-10", |v: &Cfg| {
-            v.num().map(|n| n <= 1.0).unwrap_or(false)
-        }));
+        items.push(c.bukkit(
+            "ticks-per.monster-spawns",
+            crate::i18n::t(
+                "4-10 (meno tentativi di spawn: le mob farm producono meno)",
+                "4-10 (fewer spawn attempts: mob farms produce less)",
+            ),
+            |v: &Cfg| v.num().map(|n| n <= 1.0).unwrap_or(false),
+        ));
     }
     let lines: Vec<String> = items.into_iter().flatten().collect();
     let mut ev = vec![tf!(
