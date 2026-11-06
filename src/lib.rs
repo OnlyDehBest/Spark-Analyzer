@@ -1,0 +1,12 @@
+#![allow(clippy::needless_range_loop, clippy::unnecessary_sort_by, clippy::redundant_guards)]
+
+pub mod analysis;
+pub mod config;
+pub mod diff;
+pub mod heap;
+pub mod loader;
+pub mod model;
+pub mod patterns;
+pub mod proto;
+pub mod report;
+pub mod rules;

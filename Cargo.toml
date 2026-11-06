@@ -1,0 +1,39 @@
+[package]
+name = "sparkscope"
+version = "0.1.0"
+edition = "2024"
+description = "Analisi approfondita dei profili spark (Minecraft) per trovare la causa del lag e le soluzioni"
+license = "GPL-3.0-only"
+readme = "README.md"
+keywords = ["minecraft", "spark", "profiler", "lag", "paper"]
+categories = ["command-line-utilities", "development-tools::profiling"]
+
+[[bin]]
+name = "sparkscope"
+path = "src/main.rs"
+
+[lib]
+name = "sparkscope"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4.6", features = ["derive"] }
+comfy-table = "8"
+flate2 = "1"
+inferno = { version = "0.12", default-features = false }
+owo-colors = { version = "4", features = ["supports-colors"] }
+prost = "0.14"
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ureq = { version = "3", default-features = false, features = ["rustls", "gzip"] }
+
+[build-dependencies]
+prost-build = "0.14"
+protox = "0.10"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

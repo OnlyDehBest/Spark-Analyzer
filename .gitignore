@@ -1,0 +1,8 @@
+/target
+*.sparkprofile
+*.sparkheap
+*.sparkhealth
+report*.html
+report*.md
+report*.json
+flame*.svg
