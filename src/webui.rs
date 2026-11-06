@@ -76,6 +76,7 @@ pub fn with_static_actions(html: &str, home: &str) -> String {
 }
 
 pub struct Page<'a> {
+    pub crumb: &'a str,
     pub lang_switch: &'a str,
     pub title: &'a str,
     pub side_extra: &'a str,
@@ -93,7 +94,7 @@ pub fn shell(p: &Page) -> String {
         format!(r#"<script type="module">{}</script>"#, p.module_script)
     };
     format!(
-        r#"<!doctype html><html lang="{}" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">{}<title>{}</title><style>{}{}</style></head><body><div class="shell"><aside class="side"><a class="brand" href="{}" title="Home"><span class="logo">{}</span><span>Spark-Analyzer</span></a><nav><a class="on" href="{}">{}<span>{}</span></a></nav>{}<div class="sidefoot"><div class="srv"><b>Spark-Analyzer</b><span>v{}</span></div><button id="langbtn" class="ghost lang" data-to="{}" data-href="{}" title="Lingua / Language">{}</button><button id="theme" class="ghost" title="{}">{}</button></div></aside><main class="content">{}</main></div><script>{}{}{}{}</script>{}</body></html>"#,
+        r#"<!doctype html><html lang="{}" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">{}<title>{}</title><style>{}{}</style></head><body><div class="shell"><aside class="side"><a class="brand" href="{}" title="Home"><span class="logo">{}</span><span>Spark-Analyzer</span></a><nav><a class="on" href="{}">{}<span>{}</span></a></nav>{}<div class="sidefoot"><div class="srv"><b>Spark-Analyzer</b><span>v{}</span></div><button id="langbtn" class="ghost lang" data-to="{}" data-href="{}" title="Lingua / Language">{}</button><button id="theme" class="ghost" title="{}">{}</button></div></aside><main class="content">{}{}</main></div><script>{}{}{}{}</script>{}</body></html>"#,
         crate::i18n::lang().code(),
         FAVICON,
         esc(p.title),
@@ -111,6 +112,7 @@ pub fn shell(p: &Page) -> String {
         crate::report::html::lang_to().to_ascii_uppercase(),
         crate::i18n::t("Tema chiaro/scuro", "Light/dark theme"),
         icon("moon"),
+        crate::report::html::topbar(p.crumb, None),
         p.main,
         THEME_JS,
         ANIM_JS,
@@ -223,6 +225,7 @@ pub fn local_index(recent: &[Recent]) -> String {
     );
     let switch = format!("/?lang={}", crate::report::html::lang_to());
     shell(&Page {
+        crumb: t("Nuova analisi", "New analysis"),
         lang_switch: &switch,
         title: t(
             "Spark-Analyzer — nuova analisi",
@@ -253,6 +256,7 @@ pub fn local_not_found() -> String {
         t("Torna alla pagina iniziale", "Back to the home page")
     );
     shell(&Page {
+        crumb: t("Report non trovato", "Report not found"),
         lang_switch: "/",
         title: t("Spark-Analyzer — non trovato", "Spark-Analyzer — not found"),
         side_extra: "",
@@ -291,6 +295,7 @@ pub fn static_index() -> String {
         "./"
     };
     shell(&Page {
+        crumb: t("Nuova analisi", "New analysis"),
         lang_switch: other,
         title: t(
             "Spark-Analyzer — analisi profili spark",
