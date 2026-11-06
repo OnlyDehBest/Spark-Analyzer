@@ -15,4 +15,6 @@ pub mod pipeline;
 pub mod proto;
 pub mod report;
 pub mod rules;
+#[cfg(feature = "cli")]
 pub mod server;
+pub mod webui;

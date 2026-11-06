@@ -1305,12 +1305,21 @@ dependencies = [
  "prost",
  "prost-build",
  "protox",
- "regex",
  "serde",
  "serde_json",
  "tiny_http",
  "ureq",
  "webbrowser",
+]
+
+[[package]]
+name = "sparkscope-web"
+version = "0.1.0"
+dependencies = [
+ "prost",
+ "serde_json",
+ "sparkscope",
+ "wasm-bindgen",
 ]
 
 [[package]]

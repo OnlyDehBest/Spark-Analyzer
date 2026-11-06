@@ -47,7 +47,16 @@ Oppure `cargo install --path .`
 
 ## Uso
 
-### Dal sito (il modo più semplice)
+### Online, senza installare nulla
+
+Il sito viene pubblicato automaticamente su GitHub Pages a ogni push su `main`.
+Apri il sito, incolla il link spark oppure trascina il file e il report si apre: l'analisi
+gira nel browser (WebAssembly), il file non viene caricato su nessun server.
+
+Puoi anche aprire un profilo direttamente con un link: `https://<sito>/?p=AbCd1234`
+(il codice è quello finale del link `spark.lucko.me/AbCd1234`).
+
+### Sito locale (exe)
 
 Avvia `sparkscope` senza argomenti (su Windows basta un doppio clic su `sparkscope.exe`).
 Si apre il browser su `http://127.0.0.1:8085`: incolla il link del profilo spark oppure

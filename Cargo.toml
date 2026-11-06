@@ -1,3 +1,6 @@
+[workspace]
+members = [".", "web"]
+
 [package]
 name = "sparkscope"
 version = "0.1.0"
@@ -11,6 +14,11 @@ categories = ["command-line-utilities", "development-tools::profiling"]
 [[bin]]
 name = "sparkscope"
 path = "src/main.rs"
+required-features = ["cli"]
+
+[features]
+default = ["cli"]
+cli = ["dep:ureq", "dep:tiny_http", "dep:webbrowser", "dep:comfy-table", "dep:owo-colors", "dep:inferno", "dep:clap"]
 
 [lib]
 name = "sparkscope"
@@ -18,18 +26,17 @@ path = "src/lib.rs"
 
 [dependencies]
 anyhow = "1"
-clap = { version = "4.6", features = ["derive"] }
-comfy-table = "8"
+clap = { version = "4.6", features = ["derive"], optional = true }
+comfy-table = { version = "8", optional = true }
 flate2 = "1"
-inferno = { version = "0.12", default-features = false }
-owo-colors = { version = "4", features = ["supports-colors"] }
+inferno = { version = "0.12", default-features = false, optional = true }
+owo-colors = { version = "4", features = ["supports-colors"], optional = true }
 prost = "0.14"
-regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tiny_http = "0.12"
-ureq = { version = "3", default-features = false, features = ["rustls", "gzip"] }
-webbrowser = "1"
+tiny_http = { version = "0.12", optional = true }
+ureq = { version = "3", default-features = false, features = ["rustls", "gzip"], optional = true }
+webbrowser = { version = "1", optional = true }
 
 [build-dependencies]
 prost-build = "0.14"

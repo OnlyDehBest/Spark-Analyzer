@@ -1,3 +1,5 @@
+#![cfg_attr(not(feature = "cli"), allow(unused_imports, dead_code))]
+
 use std::io::Read;
 use std::path::Path;
 
@@ -38,6 +40,7 @@ pub struct Loaded {
     pub viewer_url: Option<String>,
 }
 
+#[cfg(feature = "cli")]
 pub fn load(input: &str, bytebin: &str) -> Result<Loaded> {
     let path = Path::new(input);
     if path.exists() {
@@ -86,6 +89,7 @@ pub fn load_bytes(bytes: &[u8], name: &str) -> Result<Loaded> {
     })
 }
 
+#[cfg(feature = "cli")]
 pub fn load_link(input: &str, bytebin: &str) -> Result<Loaded> {
     let key = extract_key(input).ok_or_else(|| {
         anyhow!(
@@ -136,6 +140,7 @@ fn normalize_base(base: &str) -> String {
     }
 }
 
+#[cfg(feature = "cli")]
 fn download(bytebin: &str, key: &str) -> Result<(Vec<u8>, Hint)> {
     let url = format!("{}{}", normalize_base(bytebin), key);
     let agent: ureq::Agent = ureq::Agent::config_builder()
