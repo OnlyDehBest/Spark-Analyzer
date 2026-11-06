@@ -294,6 +294,36 @@ pub fn diagnose(a: &Analysis, p: &Profile) -> Vec<Finding> {
     let ctx = Ctx::new(a, p);
     let mut out: Vec<Finding> = Vec::new();
     overview(&ctx, &mut out);
+    if p.meta.interval > 0 && a.main.total <= 0.0 {
+        let mut ev = vec![format!(
+            "Thread registrati: {}",
+            p.threads.iter().filter(|t| t.total > 0.0).count()
+        )];
+        if let Some(th) = p.ticked_threshold() {
+            ev.push(format!("Il profilo è stato avviato con --only-ticks-over {th}: nessun tick ha superato {th} ms durante la registrazione"));
+        }
+        if let Some(td) = p.meta.thread_dumper.as_ref() {
+            if !td.patterns.is_empty() || !td.ids.is_empty() {
+                ev.push(format!(
+                    "Filtro thread attivo: {:?} {:?}",
+                    td.patterns, td.ids
+                ));
+            }
+        }
+        out.push(Finding {
+            severity: Severity::Info,
+            area: "Panoramica".into(),
+            title: "Il profilo non contiene campioni del main thread".into(),
+            impact_pct: 0.0,
+            evidence: ev,
+            explanation: "Senza campioni non è possibile dire dove va il tempo. Restano valide le sezioni su JVM, mondo e configurazione.".into(),
+            solutions: vec![
+                "Se hai usato --only-ticks-over, abbassa la soglia (es. 60) o registra mentre il lag è in corso".into(),
+                "Per un profilo completo usa /spark profiler start --timeout 300 senza filtri".into(),
+            ],
+            culprits: Vec::new(),
+        });
+    }
     if p.mode == Mode::Execution {
         category_rules(&ctx, &mut out);
         plugin_rules(&ctx, &mut out);

@@ -197,3 +197,46 @@ fn info_toggle_only_when_there_are_hidden_notes() {
     let html = report::html::render(&r);
     assert!(html.contains(&format!("note informative ({})", hidden + 1)));
 }
+
+#[test]
+fn empty_and_ticked_profiles() {
+    let mut data = fixture::sample();
+    data.threads.clear();
+    if let Some(m) = data.metadata.as_mut() {
+        m.data_aggregator = Some(sparkscope::proto::sampler_metadata::DataAggregator {
+            r#type: 1,
+            thread_grouper: 0,
+            tick_length_threshold: 100,
+            number_of_included_ticks: 0,
+        });
+    }
+    let bytes = data.encode_to_vec();
+    let loaded = sparkscope::loader::load_bytes(&bytes, "AbCd1234")
+        .expect("un profilo senza campioni va riconosciuto");
+    let (r, _, _) = sparkscope::pipeline::build(loaded, None).unwrap();
+    assert!(
+        r.findings
+            .iter()
+            .any(|f| f.title.contains("non contiene campioni"))
+    );
+    report::html::render(&r);
+
+    let mut data = fixture::sample();
+    if let Some(m) = data.metadata.as_mut() {
+        m.data_aggregator = Some(sparkscope::proto::sampler_metadata::DataAggregator {
+            r#type: 1,
+            thread_grouper: 0,
+            tick_length_threshold: 50,
+            number_of_included_ticks: 111,
+        });
+    }
+    let p = Profile::from_proto(data);
+    let a = analysis::analyze(&p);
+    assert_eq!(a.main.ticks, 111);
+
+    let err = sparkscope::loader::load_bytes(b"<html>Not Found</html>", "x")
+        .err()
+        .unwrap()
+        .to_string();
+    assert!(err.contains("testo"), "{err}");
+}

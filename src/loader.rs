@@ -196,23 +196,68 @@ fn decode(raw: &[u8], hint: Hint) -> Result<Payload> {
         Hint::Health => return Ok(Payload::Health(Box::new(HealthData::decode(&*bytes)?))),
         Hint::Unknown => {}
     }
-    if let Ok(s) = SamplerData::decode(&*bytes)
-        && !s.threads.is_empty()
-        && s.metadata.is_some()
-    {
-        return Ok(Payload::Sampler(Box::new(s)));
+    let mut errors: Vec<String> = Vec::new();
+    match SamplerData::decode(&*bytes) {
+        Ok(s) if s.metadata.is_some() && (!s.threads.is_empty() || looks_like_sampler(&s)) => {
+            return Ok(Payload::Sampler(Box::new(s)));
+        }
+        Ok(_) => errors.push("sampler: nessun dato".into()),
+        Err(e) => errors.push(format!("sampler: {e}")),
     }
-    if let Ok(h) = HeapData::decode(&*bytes)
-        && !h.entries.is_empty()
-    {
-        return Ok(Payload::Heap(Box::new(h)));
+    match HeapData::decode(&*bytes) {
+        Ok(h) if !h.entries.is_empty() => return Ok(Payload::Heap(Box::new(h))),
+        Ok(_) => errors.push("heap: nessun dato".into()),
+        Err(e) => errors.push(format!("heap: {e}")),
     }
-    if let Ok(h) = HealthData::decode(&*bytes)
-        && h.metadata.is_some()
-    {
-        return Ok(Payload::Health(Box::new(h)));
+    match HealthData::decode(&*bytes) {
+        Ok(h) if h.metadata.is_some() => return Ok(Payload::Health(Box::new(h))),
+        Ok(_) => errors.push("health: nessun dato".into()),
+        Err(e) => errors.push(format!("health: {e}")),
     }
-    bail!("formato non riconosciuto: non sembra un file spark (sampler, heap o health)")
+    bail!("{}", describe_unknown(raw, &bytes, &errors))
+}
+
+fn looks_like_sampler(s: &SamplerData) -> bool {
+    let m = s
+        .metadata
+        .as_ref()
+        .map(|m| m.start_time > 0 || m.interval > 0 || m.platform_metadata.is_some());
+    m.unwrap_or(false)
+}
+
+fn describe_unknown(raw: &[u8], bytes: &[u8], errors: &[String]) -> String {
+    let head: Vec<String> = bytes.iter().take(16).map(|b| format!("{b:02x}")).collect();
+    let printable = bytes
+        .iter()
+        .take(200)
+        .filter(|b| b.is_ascii_graphic() || **b == b' ' || **b == b'\n')
+        .count();
+    let mut msg = String::from(
+        "formato non riconosciuto: non sembra un profilo spark (sampler, heap o health).",
+    );
+    if bytes.is_empty() {
+        msg.push_str(" Il contenuto è vuoto: il link potrebbe essere scaduto.");
+    } else if printable * 10 >= bytes.len().min(200) * 9 {
+        let text: String =
+            String::from_utf8_lossy(&bytes[..bytes.len().min(160)]).replace('\n', " ");
+        msg.push_str(&format!(
+            " Il contenuto è testo, non un profilo: «{}»",
+            text.trim()
+        ));
+    } else {
+        msg.push_str(&format!(
+            " Dettagli: {} byte{}, inizio {}; {}.",
+            bytes.len(),
+            if raw.len() != bytes.len() {
+                format!(" ({} compressi)", raw.len())
+            } else {
+                String::new()
+            },
+            head.join(" "),
+            errors.join("; ")
+        ));
+    }
+    msg
 }
 
 #[cfg(test)]

@@ -524,7 +524,7 @@ pub fn analyze(p: &Profile) -> Analysis {
     let total = thread.total;
     let busy = (total - idle_total).max(0.0);
     let pct = |v: f64| if busy > 0.0 { v / busy * 100.0 } else { 0.0 };
-    let ticks = p.meta.number_of_ticks;
+    let ticks = p.effective_ticks();
 
     let name_of = |i: u32| strings.names[i as usize].clone();
     let mname = |i: u32| methods.names[i as usize].clone();

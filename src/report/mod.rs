@@ -120,7 +120,7 @@ pub fn build(
         players: ps.map(|s| s.player_count).unwrap_or(0),
         plugin_count: plugins.len(),
         threads: p.threads.len(),
-        ticks: m.number_of_ticks,
+        ticks: p.effective_ticks(),
         tps,
         mspt_mean: mspt.map(|x| x.mean),
         mspt_p95: mspt.map(|x| x.percentile95),

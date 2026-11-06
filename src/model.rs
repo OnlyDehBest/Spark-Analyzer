@@ -237,6 +237,18 @@ impl Profile {
         for t in data.threads {
             threads.push(build_thread(t, window_ids.len()));
         }
+        if threads.is_empty() {
+            let w = window_ids.len().max(1);
+            threads.push(Thread {
+                name: "Server thread".into(),
+                nodes: Vec::new(),
+                roots: Vec::new(),
+                windows: w,
+                node_times: Vec::new(),
+                total: 0.0,
+                window_totals: vec![0.0; w],
+            });
+        }
         threads.sort_by(|a, b| {
             b.total
                 .partial_cmp(&a.total)
@@ -287,6 +299,15 @@ impl Profile {
             Mode::Execution => self.meta.interval as f64 / 1000.0,
             _ => self.meta.interval as f64,
         }
+    }
+
+    pub fn effective_ticks(&self) -> i32 {
+        if let Some(agg) = self.meta.data_aggregator.as_ref() {
+            if agg.r#type == 1 && agg.number_of_included_ticks > 0 {
+                return agg.number_of_included_ticks;
+            }
+        }
+        self.meta.number_of_ticks
     }
 
     pub fn ticked_threshold(&self) -> Option<i64> {
