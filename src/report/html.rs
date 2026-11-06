@@ -302,8 +302,8 @@ fn pct_bar(p: f64) -> String {
     )
 }
 
-pub(crate) const LOGO_SVG: &str = r##"<svg viewBox="0 0 32 32" width="32" height="32" aria-hidden="true"><defs><linearGradient id="sa-g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4dabf7"/><stop offset="1" stop-color="#7048e8"/></linearGradient></defs><rect width="32" height="32" rx="8" fill="url(#sa-g)"/><circle cx="14" cy="14" r="7.6" fill="rgba(255,255,255,.12)" stroke="#fff" stroke-width="2.3"/><path d="M19.7 19.7L25.2 25.2" stroke="#fff" stroke-width="3" stroke-linecap="round"/><path d="M8.6 14.6h2.3l1.5-3.4l2.3 6.2l1.7-4H19.4" fill="none" stroke="#ffd43b" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>"##;
-pub(crate) const FAVICON: &str = r##"<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"><link rel="icon" href="data:image/svg+xml,%3Csvg viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='sa-g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%234dabf7'/%3E%3Cstop offset='1' stop-color='%237048e8'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23sa-g)'/%3E%3Ccircle cx='14' cy='14' r='7.6' fill='rgba(255,255,255,.12)' stroke='%23fff' stroke-width='2.3'/%3E%3Cpath d='M19.7 19.7L25.2 25.2' stroke='%23fff' stroke-width='3' stroke-linecap='round'/%3E%3Cpath d='M8.6 14.6h2.3l1.5-3.4l2.3 6.2l1.7-4H19.4' fill='none' stroke='%23ffd43b' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">"##;
+pub(crate) const LOGO_SVG: &str = r##"<svg viewBox="0 0 32 32" width="32" height="32" aria-hidden="true"><rect x=".5" y=".5" width="31" height="31" rx="9" style="fill:var(--card3);stroke:var(--line)"/><circle cx="14" cy="14" r="7.2" fill="none" style="stroke:var(--hd)" stroke-width="2.2"/><path d="M19.4 19.4L24.6 24.6" style="stroke:var(--hd)" stroke-width="2.8" stroke-linecap="round"/><path d="M9 14.4h2.1l1.4-3.2l2.2 5.9l1.6-3.8H19" fill="none" style="stroke:var(--ok)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>"##;
+pub(crate) const FAVICON: &str = r##"<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='.5' y='.5' width='31' height='31' rx='9' fill='%231a1a1a' stroke='%23333'/%3E%3Ccircle cx='14' cy='14' r='7.2' fill='none' stroke='%23fafafa' stroke-width='2.2'/%3E%3Cpath d='M19.4 19.4L24.6 24.6' stroke='%23fafafa' stroke-width='2.8' stroke-linecap='round'/%3E%3Cpath d='M9 14.4h2.1l1.4-3.2l2.2 5.9l1.6-3.8H19' fill='none' stroke='%23a3e635' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">"##;
 
 pub(crate) fn topbar(page: &str, viewer: Option<&str>) -> String {
     let right = viewer
@@ -1012,7 +1012,7 @@ a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
 .shell{display:flex;gap:12px;padding:8px;min-height:100vh}
 .side{position:sticky;top:8px;align-self:flex-start;width:224px;flex:0 0 224px;height:calc(100vh - 16px);background:var(--side);border:1px solid var(--line);border-radius:8px;display:flex;flex-direction:column;padding:10px}
 .brand{text-decoration:none!important;display:flex;align-items:center;gap:10px;font-weight:700;color:var(--hd);font-size:15px;padding:6px 6px 12px;border-bottom:1px solid var(--line2)}
-.logo{display:grid;place-items:center;width:32px;height:32px;flex:none;filter:drop-shadow(0 2px 6px rgba(77,171,247,.35))}.logo svg{display:block}
+.logo{display:grid;place-items:center;width:32px;height:32px;flex:none}.logo svg{display:block}
 .status{display:flex;align-items:center;gap:8px;margin:12px 6px 8px;font-size:12px;color:var(--muted)}.status i{width:10px;height:10px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px rgba(64,192,87,.18)}.status.lag i{background:var(--crit);box-shadow:0 0 0 3px rgba(250,82,82,.2)}
 .side nav{display:flex;flex-direction:column;gap:2px;margin-top:4px;padding-top:8px;border-top:1px solid var(--line2);overflow:auto}
 .side nav a{display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:5px;color:var(--fg);font-size:13px}.side nav a:hover{background:var(--card2);text-decoration:none}.side nav a.on{background:var(--accl);color:var(--acc)}.side nav svg{width:16px;height:16px;flex:none;opacity:.85}
@@ -1065,7 +1065,6 @@ input[type=checkbox]{accent-color:var(--acc)}
 @keyframes sa-draw{from{stroke-dashoffset:var(--len,3000)}to{stroke-dashoffset:0}}
 @keyframes sa-pop{0%{transform:scale(.6);opacity:0}70%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}
 @keyframes sa-pulse{0%,100%{box-shadow:0 0 0 3px rgba(250,82,82,.2)}50%{box-shadow:0 0 0 7px rgba(250,82,82,.05)}}
-@keyframes sa-glow{0%,100%{filter:drop-shadow(0 2px 6px rgba(77,171,247,.35))}50%{filter:drop-shadow(0 2px 12px rgba(112,72,232,.6))}}
 body{transition:background-color .25s ease,color .25s ease}
 .panel,.stat,.side,.finding,.spike,.ritem,.sidefoot,table,.chart,#fwrap{transition:background-color .25s ease,border-color .25s ease,transform .2s ease,box-shadow .2s ease}
 .top{animation:sa-fade .4s ease both}
@@ -1079,7 +1078,7 @@ body{transition:background-color .25s ease,color .25s ease}
 .finding[open] .fb{animation:sa-fade .3s ease both}
 .finding.crit .sev{animation:sa-pop .4s ease both}
 @keyframes sa-pulse-ok{0%,100%{box-shadow:0 0 0 3px rgba(64,192,87,.25);opacity:1}50%{box-shadow:0 0 0 7px rgba(64,192,87,.05);opacity:.45}}@keyframes sa-pulse-lag{0%,100%{box-shadow:0 0 0 3px rgba(250,82,82,.3);opacity:1}50%{box-shadow:0 0 0 8px rgba(250,82,82,.05);opacity:.4}}.status i{animation:sa-pulse-ok 1.6s ease-in-out infinite}.status.lag i{animation:sa-pulse-lag 1s ease-in-out infinite}
-.logo{transition:transform .25s ease}.brand:hover .logo{transform:rotate(-8deg) scale(1.06)}.logo svg{animation:sa-glow 4s ease-in-out infinite}
+.logo{transition:transform .25s ease}.brand:hover .logo{transform:rotate(-8deg) scale(1.06)}
 .bar i{transform-origin:left center;animation:sa-grow .9s cubic-bezier(.2,.7,.2,1) both}
 .js .reveal:not(.in) .bar i{animation:none;transform:scaleX(0)}
 .chart polyline{stroke-dasharray:var(--len,3000);animation:sa-draw 1.4s ease-out both}
