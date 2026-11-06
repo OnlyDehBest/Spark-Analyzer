@@ -333,13 +333,14 @@ fn overview(c: &Ctx, out: &mut Vec<Finding>) {
     }
     if let Some(ps) = c.p.meta.platform_statistics.as_ref()
         && let Some(m) = ps.mspt.as_ref().and_then(|m| m.last1m.as_ref())
-            && m.max > 0.0 {
-                ev.push(format!(
-                    "MSPT 95° percentile {} ms, massimo {} ms",
-                    f(m.percentile95),
-                    f(m.max)
-                ));
-            }
+        && m.max > 0.0
+    {
+        ev.push(format!(
+            "MSPT 95° percentile {} ms, massimo {} ms",
+            f(m.percentile95),
+            f(m.max)
+        ));
+    }
     if let Some(b) = c.a.main.busy_per_tick {
         ev.push(format!(
             "Lavoro medio del main thread misurato dal profilo: {} ms/tick su {} tick",
@@ -1362,10 +1363,12 @@ fn jvm_rules(
     if let Some(x) = args.xmx {
         ev.push(format!("Heap massimo (-Xmx): {}", gb(x)));
         if let Some((_, total)) = phys
-            && total > 0 && x as f64 > total as f64 * 0.9 {
-                sol.push(format!("-Xmx ({}) è quasi tutta la RAM della macchina ({}): lascia almeno 1-2 GB al sistema per evitare swap", gb(x), gb(total)));
-                bump(Severity::Alto, &mut worst);
-            }
+            && total > 0
+            && x as f64 > total as f64 * 0.9
+        {
+            sol.push(format!("-Xmx ({}) è quasi tutta la RAM della macchina ({}): lascia almeno 1-2 GB al sistema per evitare swap", gb(x), gb(total)));
+            bump(Severity::Alto, &mut worst);
+        }
         if x < (3u64 << 30) {
             sol.push(
                 "Heap sotto i 3 GB: con più giocatori il GC sarà molto frequente; valuta 6-10 GB"
@@ -1374,10 +1377,14 @@ fn jvm_rules(
             bump(Severity::Medio, &mut worst);
         }
         if let Some(s) = args.xms
-            && s != x {
-                sol.push("Imposta -Xms uguale a -Xmx: evita che la JVM ridimensioni l'heap durante il gioco".into());
-                bump(Severity::Basso, &mut worst);
-            }
+            && s != x
+        {
+            sol.push(
+                "Imposta -Xms uguale a -Xmx: evita che la JVM ridimensioni l'heap durante il gioco"
+                    .into(),
+            );
+            bump(Severity::Basso, &mut worst);
+        }
     }
     match args.gc.as_deref() {
         Some("Parallel") | Some("Serial") | Some("CMS") => {
@@ -1397,11 +1404,12 @@ fn jvm_rules(
         ));
     }
     if let Some((used, total)) = swap
-        && used > (256u64 << 20) {
-            ev.push(format!("Swap in uso: {} su {}", gb(used), gb(total)));
-            sol.push("La macchina sta usando lo swap: riduci la RAM assegnata o aggiungi memoria, lo swap causa pause enormi del GC".into());
-            bump(Severity::Alto, &mut worst);
-        }
+        && used > (256u64 << 20)
+    {
+        ev.push(format!("Swap in uso: {} su {}", gb(used), gb(total)));
+        sol.push("La macchina sta usando lo swap: riduci la RAM assegnata o aggiungi memoria, lo swap causa pause enormi del GC".into());
+        bump(Severity::Alto, &mut worst);
+    }
     if let Some(cpu) = sys.cpu.as_ref() {
         let proc1 = cpu.process_usage.as_ref().map(|u| u.last1m).unwrap_or(0.0);
         let sys1 = cpu.system_usage.as_ref().map(|u| u.last1m).unwrap_or(0.0);
@@ -1472,15 +1480,16 @@ fn jvm_rules(
     if let Some(mem) = ps
         .and_then(|p| p.memory.as_ref())
         .and_then(|m| m.heap.as_ref())
-        && mem.max > 0 {
-            let pct = mem.used as f64 / mem.max as f64 * 100.0;
-            ev.push(format!(
-                "Heap in uso: {} su {} ({}%)",
-                gb(mem.used as u64),
-                gb(mem.max as u64),
-                f(pct)
-            ));
-        }
+        && mem.max > 0
+    {
+        let pct = mem.used as f64 / mem.max as f64 * 100.0;
+        ev.push(format!(
+            "Heap in uso: {} su {} ({}%)",
+            gb(mem.used as u64),
+            gb(mem.max as u64),
+            f(pct)
+        ));
+    }
     if ev.is_empty() {
         return;
     }
@@ -1596,11 +1605,11 @@ fn world_rules(ps: Option<&crate::proto::PlatformStatistics>, out: &mut Vec<Find
             "maxEntityCramming"
                 if vals
                     .iter()
-                    .any(|v| v.parse::<i32>().map(|n| n > 24 || n == 0).unwrap_or(false))
-                => {
-                    ev.push(format!("Gamerule maxEntityCramming: {:?}", gr.world_values));
-                    sol.push("maxEntityCramming alto o disattivato permette ammassi enormi di mob: riportalo a 24 o meno".into());
-                }
+                    .any(|v| v.parse::<i32>().map(|n| n > 24 || n == 0).unwrap_or(false)) =>
+            {
+                ev.push(format!("Gamerule maxEntityCramming: {:?}", gr.world_values));
+                sol.push("maxEntityCramming alto o disattivato permette ammassi enormi di mob: riportalo a 24 o meno".into());
+            }
             _ => {}
         }
     }

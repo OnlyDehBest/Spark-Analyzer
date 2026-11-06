@@ -158,17 +158,21 @@ fn decode(raw: &[u8], hint: Hint) -> Result<Payload> {
         Hint::Unknown => {}
     }
     if let Ok(s) = SamplerData::decode(&*bytes)
-        && !s.threads.is_empty() && s.metadata.is_some() {
-            return Ok(Payload::Sampler(Box::new(s)));
-        }
+        && !s.threads.is_empty()
+        && s.metadata.is_some()
+    {
+        return Ok(Payload::Sampler(Box::new(s)));
+    }
     if let Ok(h) = HeapData::decode(&*bytes)
-        && !h.entries.is_empty() {
-            return Ok(Payload::Heap(Box::new(h)));
-        }
+        && !h.entries.is_empty()
+    {
+        return Ok(Payload::Heap(Box::new(h)));
+    }
     if let Ok(h) = HealthData::decode(&*bytes)
-        && h.metadata.is_some() {
-            return Ok(Payload::Health(Box::new(h)));
-        }
+        && h.metadata.is_some()
+    {
+        return Ok(Payload::Health(Box::new(h)));
+    }
     bail!("formato non riconosciuto: non sembra un file spark (sampler, heap o health)")
 }
 

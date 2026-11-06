@@ -1,4 +1,8 @@
-#![allow(clippy::needless_range_loop, clippy::unnecessary_sort_by, clippy::redundant_guards)]
+#![allow(
+    clippy::needless_range_loop,
+    clippy::unnecessary_sort_by,
+    clippy::redundant_guards
+)]
 
 pub mod analysis;
 pub mod config;

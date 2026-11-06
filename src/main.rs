@@ -107,13 +107,14 @@ fn load_report(
         Payload::Sampler(s) => {
             let mut p = Profile::from_proto(*s);
             if let Some(t) = &common.thread
-                && !p.select_thread(t) {
-                    let names: Vec<&str> = p.threads.iter().map(|t| t.name.as_str()).collect();
-                    bail!(
-                        "thread '{t}' non trovato. Disponibili: {}",
-                        names.join(", ")
-                    );
-                }
+                && !p.select_thread(t)
+            {
+                let names: Vec<&str> = p.threads.iter().map(|t| t.name.as_str()).collect();
+                bail!(
+                    "thread '{t}' non trovato. Disponibili: {}",
+                    names.join(", ")
+                );
+            }
             let a = analysis::analyze(&p);
             let r = report::build(&p, a, &loaded.origin, loaded.viewer_url, kind);
             Ok((r, Some(p), None))

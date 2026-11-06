@@ -316,9 +316,10 @@ pub fn analyze(p: &Profile) -> Analysis {
                 *d -= 1;
             }
             if let Some(src) = node_source[st.node as usize]
-                && let Some(d) = owner_depth.get_mut(&src) {
-                    *d -= 1;
-                }
+                && let Some(d) = owner_depth.get_mut(&src)
+            {
+                *d -= 1;
+            }
             entity_stack.pop();
             be_stack.pop();
             label_stack.pop();
@@ -368,10 +369,12 @@ pub fn analyze(p: &Profile) -> Analysis {
             _ => st.ctx,
         };
         let mut event_caller = st.event_caller;
-        if own_cat == Some(Cat::PluginEvents) && st.cat != Some(Cat::PluginEvents)
-            && let Some(par) = node.parent {
-                event_caller = Some(strings.id(&thread.node(par).short_label()));
-            }
+        if own_cat == Some(Cat::PluginEvents)
+            && st.cat != Some(Cat::PluginEvents)
+            && let Some(par) = node.parent
+        {
+            event_caller = Some(strings.id(&thread.node(par).short_label()));
+        }
 
         let ent = patterns::entity_type(node)
             .map(|s| strings.id(&s))
@@ -427,12 +430,13 @@ pub fn analyze(p: &Profile) -> Analysis {
         }
         if !idle
             && let Some(c) = own_cat
-                && st.cat != Some(c) {
-                    let e = cat_entry_best.entry(c).or_insert((id, 0.0));
-                    if node.total > e.1 {
-                        *e = (id, node.total);
-                    }
-                }
+            && st.cat != Some(c)
+        {
+            let e = cat_entry_best.entry(c).or_insert((id, 0.0));
+            if node.total > e.1 {
+                *e = (id, node.total);
+            }
+        }
 
         let self_t = thread.self_time(id);
         if self_t > 0.0 {

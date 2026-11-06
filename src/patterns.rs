@@ -538,9 +538,10 @@ pub fn categorize(node: &Node) -> Option<Cat> {
         || outer == "BoundTickingBlockEntity"
         || outer == "RebindableTickingBlockEntityWrapper"
         || outer == "BlockEntityTickInvoker")
-        && (method.contains("tick") || method.contains("Tick") || method.starts_with("lambda$")) {
-            return Some(Cat::BlockEntities);
-        }
+        && (method.contains("tick") || method.contains("Tick") || method.starts_with("lambda$"))
+    {
+        return Some(Cat::BlockEntities);
+    }
 
     match (outer, method) {
         (

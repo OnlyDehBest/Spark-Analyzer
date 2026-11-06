@@ -129,18 +129,20 @@ impl ServerConfig {
     pub fn paper_world(&self, path: &str, legacy: Option<&str>) -> Option<Found> {
         if let Some(root) = self.files.get("paper/")
             && let Some(wd) = root.get("world-defaults.yml")
-                && let Some(v) = Self::lookup(wd, path)
-                    && let Some(c) = to_cfg(v) {
-                        return Some(Found {
-                            file: "config/paper-world-defaults.yml".into(),
-                            path: path.into(),
-                            value: c,
-                        });
-                    }
+            && let Some(v) = Self::lookup(wd, path)
+            && let Some(c) = to_cfg(v)
+        {
+            return Some(Found {
+                file: "config/paper-world-defaults.yml".into(),
+                path: path.into(),
+                value: c,
+            });
+        }
         if let Some(l) = legacy
-            && let Some(f) = self.get("paper.yml", &format!("world-settings.default.{l}")) {
-                return Some(f);
-            }
+            && let Some(f) = self.get("paper.yml", &format!("world-settings.default.{l}"))
+        {
+            return Some(f);
+        }
         None
     }
 

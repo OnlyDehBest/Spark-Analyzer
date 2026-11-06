@@ -131,9 +131,10 @@ impl SourceResolver {
         }
         let outer = outer_class(&node.class);
         if outer != node.class
-            && let Some(s) = self.class_sources.get(outer) {
-                return Some(s);
-            }
+            && let Some(s) = self.class_sources.get(outer)
+        {
+            return Some(s);
+        }
         None
     }
 
