@@ -15,7 +15,7 @@ fn analyze_produces_standalone_report() {
     .unwrap();
     let v: serde_json::Value = serde_json::from_str(&json).unwrap();
     let html = v["html"].as_str().unwrap();
-    assert!(html.contains("id=\"dlh\"") && html.contains("id=\"mdsrc\""));
+    assert!(html.contains("Nuova analisi") && !html.contains("id=\"dlh\""));
     assert!(html.contains("href=\"/Spark-Analyzer/\""));
     assert!(html.contains("https://spark.lucko.me/AbCd1234"));
     assert_eq!(v["bad"], true);

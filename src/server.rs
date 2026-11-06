@@ -173,7 +173,7 @@ fn handle(mut req: Request, st: &State) {
             let reports = st.reports.lock().unwrap_or_else(|e| e.into_inner());
             match reports.iter().find(|r| r.id == id) {
                 Some(r) => match kind {
-                    "" => html_resp(with_actions(&r.html, &r.id)),
+                    "" => html_resp(with_actions(&r.html)),
                     "html" => Response::from_data(r.html.clone().into_bytes())
                         .with_header(header("Content-Type", "text/html; charset=utf-8"))
                         .with_header(header(
@@ -245,14 +245,12 @@ fn not_found() -> String {
     webui::local_not_found()
 }
 
-fn with_actions(html: &str, id: &str) -> String {
+fn with_actions(html: &str) -> String {
     html.replacen(
         r#"<div class="actions">"#,
         &format!(
-            r#"<div class="actions"><a class="btn sec" href="/">{}Nuova analisi</a><a class="btn sec" href="/r/{id}/html">{}HTML</a><a class="btn sec" href="/r/{id}/md">{}Markdown</a>"#,
-            icon("plus"),
-            icon("download"),
-            icon("download")
+            r#"<div class="actions"><a class="btn sec" href="/">{}Nuova analisi</a>"#,
+            icon("plus")
         ),
         1,
     )

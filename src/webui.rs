@@ -65,20 +65,13 @@ pub fn render_report(r: &Report, heap_report: Option<&HeapReport>) -> Rendered {
 
 const HEAP_CSS: &str = "pre.heap{margin:0;background:var(--code);border:1px solid var(--line);border-radius:6px;padding:12px;overflow:auto;font:12px ui-monospace,Menlo,Consolas,monospace}";
 
-pub fn with_static_actions(html: &str, markdown: &str, home: &str) -> String {
+pub fn with_static_actions(html: &str, home: &str) -> String {
     let buttons = format!(
-        r#"<div class="actions"><a class="btn sec" href="{}">{}Nuova analisi</a><button class="btn sec" id="dlh">{}HTML</button><button class="btn sec" id="dlm">{}Markdown</button>"#,
+        r#"<div class="actions"><a class="btn sec" href="{}">{}Nuova analisi</a>"#,
         esc(home),
-        icon("plus"),
-        icon("download"),
-        icon("download")
-    );
-    let md = markdown.replace("</", "<\\/");
-    let script = format!(
-        r#"<script type="text/plain" id="mdsrc">{md}</script><script>(function(){{function dl(n,t,c){{var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([c],{{type:t}}));a.download=n;document.body.appendChild(a);a.click();setTimeout(function(){{URL.revokeObjectURL(a.href);a.remove()}},500)}}var h=document.getElementById('dlh'),m=document.getElementById('dlm');if(h)h.addEventListener('click',function(){{dl('spark-analyzer-report.html','text/html','<!doctype html>'+document.documentElement.outerHTML)}});if(m)m.addEventListener('click',function(){{dl('spark-analyzer-report.md','text/markdown',document.getElementById('mdsrc').textContent.replace(/<\\\//g,'</'))}})}})();</script></body>"#
+        icon("plus")
     );
     html.replacen(r#"<div class="actions">"#, &buttons, 1)
-        .replacen("</body>", &script, 1)
 }
 
 pub struct Page<'a> {

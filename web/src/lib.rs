@@ -15,7 +15,7 @@ pub fn analyze_to_json(
     }
     let (report, _, heap) = pipeline::build(loaded, None).map_err(|e| format!("{e:#}"))?;
     let out = webui::render_report(&report, heap.as_ref());
-    let html = webui::with_static_actions(&out.html, &out.markdown, home);
+    let html = webui::with_static_actions(&out.html, home);
     Ok(serde_json::json!({
         "html": html,
         "title": out.title,
