@@ -962,6 +962,7 @@ pub fn is_server_idle_marker(node: &Node) -> bool {
             | "runTasksTillTickEnd"
             | "managedBlockUntilNextTick"
             | "waitUntilNextTickWithSleep"
+            | "recordTaskExecutionTimeWhileWaiting"
     ) || matches!(
         outer,
         "SchedulerThreadPool" | "TickRegionScheduler" | "TickThread"

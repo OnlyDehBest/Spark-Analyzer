@@ -118,7 +118,7 @@ const MOB: &str = "net.minecraft.world.entity.Mob";
 const SCC: &str = "net.minecraft.server.level.ServerChunkCache";
 const BEL: &str = "net.minecraft.util.thread.BlockableEventLoop";
 
-fn server_thread() -> ThreadNode {
+fn server_thread(paper_wait: bool) -> ThreadNode {
     let idle_w = |busy: [f64; WINDOWS]| {
         let mut w = [0.0; WINDOWS];
         for i in 0..WINDOWS {
@@ -454,24 +454,38 @@ fn server_thread() -> ThreadNode {
         self_w: idle_w(busy),
         kids: Vec::new(),
     };
-    let wait = n(
-        MS,
-        "waitUntilNextTick",
-        vec![n(
+    let wait = if paper_wait {
+        n(
             MS,
-            "managedBlock",
+            "recordTaskExecutionTimeWhileWaiting",
             vec![
                 tasks,
                 chain(
-                    &[
-                        (BEL, "waitForTasks"),
-                        ("java.util.concurrent.locks.LockSupport", "parkNanos"),
-                    ],
+                    &[("java.util.concurrent.locks.LockSupport", "parkNanos")],
                     idle,
                 ),
             ],
-        )],
-    );
+        )
+    } else {
+        n(
+            MS,
+            "waitUntilNextTick",
+            vec![n(
+                MS,
+                "managedBlock",
+                vec![
+                    tasks,
+                    chain(
+                        &[
+                            (BEL, "waitForTasks"),
+                            ("java.util.concurrent.locks.LockSupport", "parkNanos"),
+                        ],
+                        idle,
+                    ),
+                ],
+            )],
+        )
+    };
     let root = chain(
         &[("java.lang.Thread", "run"), (MS, "lambda$spin$2")],
         n(MS, "runServer", vec![tick_server, wait]),
@@ -561,6 +575,14 @@ fn src(name: &str, version: &str) -> PluginOrModMetadata {
 }
 
 pub fn sample() -> SamplerData {
+    sample_with(false)
+}
+
+pub fn sample_paper_wait() -> SamplerData {
+    sample_with(true)
+}
+
+fn sample_with(paper_wait: bool) -> SamplerData {
     let start = 1_762_420_000_000i64;
     let mut windows = BTreeMap::new();
     let ids: Vec<i32> = (0..WINDOWS as i32).map(|i| 29_373_000 + i).collect();
@@ -634,7 +656,7 @@ pub fn sample() -> SamplerData {
     ] {
         class_sources.insert(c.to_string(), s.to_string());
     }
-    let mut threads = vec![server_thread()];
+    let mut threads = vec![server_thread(paper_wait)];
     threads.extend(other_threads());
     SamplerData {
         metadata: Some(SamplerMetadata {

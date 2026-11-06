@@ -39,6 +39,28 @@ fn idle_is_excluded_and_packets_are_kept() {
 }
 
 #[test]
+fn paper_tick_wait_is_idle_not_blocking() {
+    let bytes = fixture::sample_paper_wait().encode_to_vec();
+    let data = sparkscope::proto::SamplerData::decode(&*bytes).unwrap();
+    let p = Profile::from_proto(data);
+    let a = analysis::analyze(&p);
+    let r = report::build(&p, a, "test", None, "profilo CPU (sampler)");
+    let blocking: f64 = r
+        .analysis
+        .categories
+        .iter()
+        .filter(|c| c.cat == Cat::Blocking)
+        .map(|c| c.pct)
+        .sum();
+    assert!(
+        blocking < 1.0,
+        "l'attesa tra un tick e l'altro in recordTaskExecutionTimeWhileWaiting e' idle: {blocking}"
+    );
+    let per_tick = r.analysis.main.busy / r.analysis.main.ticks as f64;
+    assert!(per_tick > 30.0 && per_tick < 60.0, "{per_tick}");
+}
+
+#[test]
 fn sync_chunk_wait_is_attributed_to_plugin() {
     let r = build();
     let c = r
