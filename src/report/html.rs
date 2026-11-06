@@ -531,10 +531,17 @@ pub fn render(r: &Report) -> String {
             m.plugin_count,
             if m.comment.is_empty() { String::new() } else { format!(" · «{}»", m.comment) }
         )),
-        m.viewer_url
-            .as_ref()
-            .map(|v| format!(r#"<a class="btn" href="{0}" target="_blank" rel="noopener">{1}Apri nel viewer spark</a>"#, esc(v), icon("external")))
-            .unwrap_or_default()
+        format!(
+            r#"<button type="button" class="btn sec" id="copylink" hidden data-ok="{}" data-label="{}">{}<span>{}</span></button>{}"#,
+            crate::i18n::t("Link copiato!", "Link copied!"),
+            crate::i18n::t("Copia link", "Copy link"),
+            icon("link"),
+            crate::i18n::t("Copia link", "Copy link"),
+            m.viewer_url
+                .as_ref()
+                .map(|v| format!(r#"<a class="btn" href="{0}" target="_blank" rel="noopener">{1}Apri nel viewer spark</a>"#, esc(v), icon("external")))
+                .unwrap_or_default()
+        )
     );
     if a.unit == "ms" && a.main.busy > 0.0 {
         let (factor, unit) = match a.main.busy_per_tick {
@@ -1114,7 +1121,7 @@ body.noside .side{margin-left:-249px}
 h1{font-size:36px;font-weight:700;letter-spacing:-.025em}.sub{font-size:15px;margin-top:8px}
 .top{margin-bottom:22px}
 .btn{background:var(--hd);color:var(--bg);border-radius:10px;padding:9px 16px}.btn:hover{background:var(--fg)}
-.btn.sec{background:var(--card);color:var(--hd);border:1px solid var(--line)}.btn.sec:hover{background:var(--card2);border-color:var(--muted)}
+.btn.sec{background:var(--card);color:var(--hd);border:1px solid var(--line)}.btn[hidden]{display:none!important}.btn.sec.ok{border-color:var(--ok);color:var(--ok)}.btn.sec:hover{background:var(--card2);border-color:var(--muted)}
 .stats{gap:12px}
 .stat{border-radius:14px;padding:14px;background:var(--card);box-shadow:none}
 .stat:hover{box-shadow:none;border-color:var(--card3)}
@@ -1168,6 +1175,7 @@ const JS: &str = r#"
 var docEl=document.documentElement;try{var t=localStorage.getItem('sparkscope-theme');if(t)docEl.dataset.theme=t}catch(e){}
 var tb=document.getElementById('theme');if(tb)tb.addEventListener('click',function(){var n=docEl.dataset.theme==='dark'?'light':'dark';docEl.dataset.theme=n;try{localStorage.setItem('sparkscope-theme',n)}catch(e){}if(window.__redrawFlame)window.__redrawFlame()});
 var bl=document.getElementById('brandlink'),ch=document.getElementById('crumbhome'),nb=document.querySelector('.actions a.btn.sec');if(nb){if(bl)bl.href=nb.getAttribute('href');if(ch)ch.href=nb.getAttribute('href')}
+var cl=document.getElementById('copylink');if(cl){var sh=null;try{var u=new URL(location.href);if(u.searchParams.get('p')){var k=u.searchParams.get('p');u=new URL(location.href);u.search='?p='+encodeURIComponent(k);u.hash='';sh=u.toString()}else if(/\/r\/[^\/]+/.test(u.pathname)&&u.protocol.indexOf('http')===0){u.hash='';sh=u.toString()}}catch(e){}if(sh){cl.hidden=false;cl.addEventListener('click',function(){function done(){var sp=cl.querySelector('span');sp.textContent=cl.dataset.ok;cl.classList.add('ok');setTimeout(function(){sp.textContent=cl.dataset.label;cl.classList.remove('ok')},1800)}function fallback(){var ta=document.createElement('textarea');ta.value=sh;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();try{document.execCommand('copy')}catch(e){}ta.remove();done()}if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(sh).then(done,fallback)}else{fallback()}})}}
 var lb=document.getElementById('langbtn');if(lb)lb.addEventListener('click',function(){var n=lb.dataset.to;try{localStorage.setItem('sa-lang',n)}catch(e){}if(window.__saRender){window.__saRender(n);return}var u=new URL(location.href);u.searchParams.set('lang',n);location.href=u.toString()});
 var us=document.getElementById('unitsel');if(us){var F=parseFloat(us.dataset.f)||0,U=us.dataset.u;function fm(v){return v>=100?v.toFixed(0):v>=10?v.toFixed(1):v.toFixed(2)}function setUnit(m){us.querySelectorAll('button').forEach(function(x){x.classList.toggle('on',x.dataset.m===m)});document.querySelectorAll('.pv').forEach(function(e){var p=parseFloat(e.dataset.p);e.textContent=m==='ms'?fm(p*F)+' '+U:fm(p)+'%'});document.querySelectorAll('.uh').forEach(function(e){e.textContent=m==='ms'?U:'%'})}us.addEventListener('click',function(e){var bt=e.target.closest('button');if(!bt)return;try{localStorage.setItem('sa-unit',bt.dataset.m)}catch(x){}setUnit(bt.dataset.m)});var su='pct';try{su=localStorage.getItem('sa-unit')||'pct'}catch(x){}if(su!=='pct')setUnit(su)}
 document.querySelectorAll('.chartwrap').forEach(function(cw){var d;try{d=JSON.parse(cw.querySelector('.chartdata').textContent)}catch(e){return}var svg=cw.querySelector('svg'),tip=cw.querySelector('.ctip'),guide=cw.querySelector('.guide'),L=d.labels;function f1(v){return v>=100?v.toFixed(0):v.toFixed(1)}function row(k,v){return '<div class="r"><span>'+L[k]+'</span><span>'+v+'</span></div>'}function show(el){var i=+el.dataset.i,w=d.rows[i];if(!w)return;var h='<b>'+w.t+'</b>';if(d.mspt){h+=row('tps',f1(w.tps))+row('med',f1(w.med)+' ms')+row('max',f1(w.max)+' ms')}if(w.busy>0)h+=row('busy',f1(w.busy)+' ms/tick');if(w.cpu>0)h+=row('cpu',f1(w.cpu)+'%');if(w.pl||w.en){h+=row('pl',w.pl)+row('en',w.en)+row('te',w.te)+row('ch',w.ch)}if(w.spike){h+='<div class="sp">⚠ '+L.spike+': '+w.spike+'</div>';if(w.causes&&w.causes.length)h+='<div class="cs">'+L.causes+': '+w.causes.join(', ')+'</div>'}tip.innerHTML=h;tip.hidden=false;var vb=svg.viewBox.baseVal,sc=svg.clientWidth/vb.width,gx=parseFloat(el.dataset.x);guide.setAttribute('x1',gx);guide.setAttribute('x2',gx);guide.style.display='';svg.querySelectorAll('circle').forEach(function(c){c.classList.toggle('on',+c.dataset.i===i)});var px=gx*sc,tw=tip.offsetWidth,cwW=cw.clientWidth;var left=px+14;if(left+tw>cwW)left=Math.max(0,px-tw-14);tip.style.left=left+'px';tip.style.top='12px'}function hide(){tip.hidden=true;guide.style.display='none';svg.querySelectorAll('circle.on').forEach(function(c){c.classList.remove('on')})}svg.querySelectorAll('.hov').forEach(function(r){r.addEventListener('mouseenter',function(){show(r)});r.addEventListener('click',function(){show(r)})});svg.addEventListener('mouseleave',hide);document.addEventListener('click',function(e){if(!cw.contains(e.target))hide()})});
