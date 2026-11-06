@@ -58,6 +58,9 @@ Puoi anche aprire un profilo direttamente con un link: `https://<sito>/?p=AbCd12
 
 ### Sito locale (exe)
 
+A ogni push su `main` GitHub compila automaticamente gli eseguibili per Windows, Linux e macOS e li pubblica nella release **latest** (pagina *Releases* della repo).
+
+
 Avvia `sparkscope` senza argomenti (su Windows basta un doppio clic su `sparkscope.exe`).
 Si apre il browser su `http://127.0.0.1:8085`: incolla il link del profilo spark oppure
 trascina il file `.sparkprofile` / `.sparkheap` / `.sparkhealth` e il report si apre da solo.

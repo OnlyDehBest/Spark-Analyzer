@@ -5,6 +5,11 @@ on:
     branches: [main]
     tags: ["v*"]
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -14,34 +19,63 @@ jobs:
       - run: rustup update stable --no-self-update && rustup default stable
       - run: cargo test --workspace
 
-  release:
-    if: startsWith(github.ref, 'refs/tags/v')
+  binaries:
     needs: test
+    if: github.event_name != 'pull_request'
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             bin: sparkscope
+            out: spark-analyzer-linux-x64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             bin: sparkscope.exe
+            out: spark-analyzer-windows-x64.exe
           - os: macos-latest
             target: aarch64-apple-darwin
             bin: sparkscope
+            out: spark-analyzer-macos-arm64
     runs-on: ${{ matrix.os }}
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
       - shell: bash
         run: rustup update stable --no-self-update && rustup default stable && rustup target add ${{ matrix.target }}
-      - run: cargo build --release --target ${{ matrix.target }}
+      - run: cargo build --release -p sparkscope --target ${{ matrix.target }}
       - shell: bash
         run: |
           mkdir dist
-          cp target/${{ matrix.target }}/release/${{ matrix.bin }} dist/sparkscope-${{ matrix.target }}${{ endsWith(matrix.bin, '.exe') && '.exe' || '' }}
-      - shell: bash
+          cp target/${{ matrix.target }}/release/${{ matrix.bin }} dist/${{ matrix.out }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.out }}
+          path: dist/${{ matrix.out }}
+
+  publish:
+    needs: binaries
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Pubblica la release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" --repo "${{ github.repository }}" --title "${{ github.ref_name }}" --generate-notes 2>/dev/null || true; gh release upload "${{ github.ref_name }}" dist/* --repo "${{ github.repository }}" --clobber
+          REPO: ${{ github.repository }}
+        run: |
+          ls -la dist
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            tag="${GITHUB_REF_NAME}"
+            gh release create "$tag" dist/* --repo "$REPO" --title "$tag" --generate-notes || gh release upload "$tag" dist/* --repo "$REPO" --clobber
+          else
+            gh release delete latest --repo "$REPO" --yes --cleanup-tag || true
+            gh release create latest dist/* --repo "$REPO" --target "$GITHUB_SHA" --prerelease \
+              --title "Ultima versione (${GITHUB_SHA::7})" \
+              --notes "Compilata automaticamente dall'ultimo commit su main: ${GITHUB_SHA::7}. Scarica il file per il tuo sistema e avvialo: si apre Spark-Analyzer nel browser."
+          fi
