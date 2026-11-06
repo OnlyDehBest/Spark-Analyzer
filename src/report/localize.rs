@@ -98,8 +98,8 @@ const PAIRS: &[(&str, &str)] = &[
         "</span>Trend and lag spikes</h2>",
     ),
     (
-        "Il profilo contiene una sola finestra temporale: registra almeno 3-5 minuti per vedere l'andamento.",
-        "The profile contains a single time window: record at least 3-5 minutes to see the trend.",
+        "Il profilo contiene una sola finestra temporale (spark divide i dati in blocchi da 1 minuto): registra almeno 3-5 minuti per vedere l'andamento e usare il filtro per periodo.",
+        "The profile contains a single time window (spark splits data into 1-minute blocks): record at least 3-5 minutes to see the trend and use the period filter.",
     ),
     (
         "aria-label=\"Timeline MSPT per finestra\"",

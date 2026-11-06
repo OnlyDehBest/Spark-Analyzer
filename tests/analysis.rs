@@ -281,4 +281,9 @@ fn window_filter_recomputes_report() {
         save(&full)
     );
     assert!(r.analysis.main.busy_per_tick.unwrap() > full.analysis.main.busy_per_tick.unwrap());
+    let h_full = report::html::render(&full);
+    assert!(h_full.contains(r#"data-w="2,5,8""#));
+    let h = report::html::render(&r);
+    assert!(h.contains("Solo i lag spike") && h.contains("disabled"));
+    assert!(h.contains("Mostra tutto il profilo"));
 }
