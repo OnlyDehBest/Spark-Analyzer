@@ -1127,7 +1127,7 @@ code{font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:v
 .spike{background:var(--card2);border:1px solid var(--line);border-left:3px solid var(--crit);border-radius:6px;padding:10px 14px;margin:10px 0}.spike h4 small{color:var(--muted);font-weight:400}.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}.grid3 td{padding:4px 6px}
 .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
 .fbar{display:flex;gap:8px;margin-bottom:8px;align-items:center;flex-wrap:wrap}
-input#fsearch,.tfilter{flex:1;min-width:200px;padding:7px 10px;border:1px solid var(--line);border-radius:5px;background:var(--code);color:var(--fg);font:inherit;font-size:13px;outline:none}input#fsearch:focus,.tfilter:focus{border-color:var(--acc)}.tfilter{width:100%;margin-bottom:8px}
+input#fsearch,input#tsearch,.tfilter{flex:1;min-width:200px;padding:7px 10px;border:1px solid var(--line);border-radius:5px;background:var(--code);color:var(--fg);font:inherit;font-size:13px;outline:none}input#fsearch:focus,input#tsearch:focus,.tfilter:focus{border-color:var(--acc)}.tfilter{width:100%;margin-bottom:8px}
 button{padding:7px 12px;border:1px solid var(--line);border-radius:5px;background:var(--card2);color:var(--fg);cursor:pointer;font:inherit;font-size:13px}button:hover{border-color:var(--muted)}#fmatch{color:var(--muted);font-size:12px}
 #fwrap{position:relative;background:var(--card2);border:1px solid var(--line);border-radius:6px;overflow:hidden}#flamec{display:block;width:100%}#ftip{position:absolute;pointer-events:none;background:#101010;color:#f1f1f1;border:1px solid #3a3a3a;padding:6px 8px;border-radius:5px;font-size:12px;display:none;max-width:520px;z-index:3}
 .paths li{margin:8px 0}.stack{margin-top:4px;line-height:1.9}.plist span{display:inline-block;margin:2px 6px 2px 0;padding:2px 9px;border:1px solid var(--line);border-radius:12px;background:var(--card2);font-size:12px}.plist i{color:var(--muted);font-style:normal}
@@ -1217,7 +1217,7 @@ code{border-radius:6px;background:var(--card3);border-color:transparent}
 .k1{background:var(--high)}.k2{background:var(--acc)}.k3{background:var(--ok)}
 .spike{border-radius:14px;background:var(--card2)}
 #fwrap{border-radius:14px;background:var(--card2)}
-input#fsearch,.tfilter{border-radius:12px;padding:11px 14px;background:var(--card);font-size:14px}
+input#fsearch,input#tsearch,.tfilter{border-radius:12px;padding:11px 14px;background:var(--card);font-size:14px}
 .callout{border-radius:12px}
 .ctip{border-radius:12px;background:var(--card2)}
 .plist span{border-radius:8px;background:var(--card2)}
