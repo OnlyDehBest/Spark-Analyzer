@@ -513,6 +513,24 @@ pub fn static_page_name(l: crate::i18n::Lang) -> &'static str {
 }
 
 pub fn static_index() -> String {
+    static_index_versioned("")
+}
+
+pub fn static_index_versioned(version: &str) -> String {
+    let query: String = version
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .take(40)
+        .collect();
+    let suffix = if query.is_empty() {
+        String::new()
+    } else {
+        format!("?v={query}")
+    };
+    static_index_page().replace("__SA_V__", &suffix)
+}
+
+fn static_index_page() -> String {
     let t = crate::i18n::t;
     let main = index_main(
         t(
@@ -547,7 +565,7 @@ pub fn static_index() -> String {
     });
     page.replacen(
         "</head>",
-        r#"<link rel="modulepreload" href="./pkg/sparkscope_web.js"><link rel="preload" href="./pkg/sparkscope_web_bg.wasm" as="fetch" type="application/wasm" crossorigin></head>"#,
+        r#"<link rel="modulepreload" href="./pkg/sparkscope_web.js__SA_V__"><link rel="preload" href="./pkg/sparkscope_web_bg.wasm__SA_V__" as="fetch" type="application/wasm" crossorigin></head>"#,
         1,
     )
 }
@@ -626,7 +644,7 @@ run:function(a,b){start(M.cmpRunning);return fetch('/api/heap/compare?a='+encode
 "#;
 
 const STATIC_JS: &str = r#"
-import init, { analyze, describe_heap, compare_heaps } from './pkg/sparkscope_web.js';
+import init, { analyze, describe_heap, compare_heaps } from './pkg/sparkscope_web.js__SA_V__';
 var OTHER=document.getElementById('langbtn').dataset.href;
 var REDIR=false;try{var pref=localStorage.getItem('sa-lang');if(pref&&pref!==M.lang){REDIR=true;location.replace(OTHER+location.search+location.hash)}}catch(e){}
 if(REDIR)await new Promise(function(){});
@@ -634,7 +652,7 @@ document.getElementById('langbtn').addEventListener('click',function(){try{local
 var busy=document.getElementById('busy'),bt=document.getElementById('busytext'),err=document.getElementById('err');
 function start(t){err.hidden=true;bt.textContent=t;busy.hidden=false}
 function fail(m){busy.hidden=true;err.textContent=m;err.hidden=false}
-var ready=init().catch(function(e){fail(M.wasm+e);throw e});
+var ready=init({module_or_path:'./pkg/sparkscope_web_bg.wasm__SA_V__'}).catch(function(e){fail(M.wasm+e);throw e});
 function extractKey(v){v=v.trim();var m=v.match(/^(?:https?:\/\/)?[^\/\s]+\/([A-Za-z0-9]+)/);if(m)return m[1];return /^[A-Za-z0-9]{4,64}$/.test(v)?v:null}
 var RKEY='sparkscope-recent';
 function loadRecent(){try{return JSON.parse(localStorage.getItem(RKEY)||'[]')}catch(e){return []}}

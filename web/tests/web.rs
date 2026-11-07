@@ -139,3 +139,13 @@ fn home_title_is_spark_resource_analyzer() {
         );
     }
 }
+
+#[test]
+fn static_assets_are_versioned() {
+    let html = sparkscope::webui::static_index_versioned("abc123");
+    assert!(html.contains("./pkg/sparkscope_web.js?v=abc123"));
+    assert!(html.contains("./pkg/sparkscope_web_bg.wasm?v=abc123"));
+    assert!(!html.contains("__SA_V__"));
+    let plain = sparkscope::webui::static_index();
+    assert!(plain.contains("'./pkg/sparkscope_web.js'") && !plain.contains("__SA_V__"));
+}
