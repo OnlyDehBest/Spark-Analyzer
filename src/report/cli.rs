@@ -124,11 +124,15 @@ pub fn print(r: &Report, o: &CliOptions) {
         m.mode
     );
     println!(
-        "{} inizio {} · durata {} · intervallo {} ms · {} tick · {} giocatori · {} plugin/mod",
+        "{} inizio {} · durata {} · intervallo {} · {} tick · {} giocatori · {} plugin/mod",
         p.dim("Profilo: "),
         fmt_utc(m.start_time),
         fmt_duration(m.duration_s),
-        fmt_num(m.interval_ms),
+        if a.unit == "byte" {
+            fmt_time(m.interval_ms, "byte")
+        } else {
+            format!("{} ms", fmt_num(m.interval_ms))
+        },
         m.ticks,
         m.players,
         m.plugin_count
@@ -162,6 +166,18 @@ pub fn print(r: &Report, o: &CliOptions) {
     }
     if !health.is_empty() {
         println!("{} {}", p.dim("Salute:  "), health.join(" · "));
+    }
+    println!();
+    for (i, l) in r.summary.lines.iter().enumerate() {
+        if i == 0 {
+            println!(
+                "{} {}",
+                p.good_bad("●", r.summary.level == "bad"),
+                p.bold(l)
+            );
+        } else {
+            println!("  {l}");
+        }
     }
 
     println!();
@@ -219,6 +235,10 @@ pub fn print(r: &Report, o: &CliOptions) {
         }
     }
 
+    if let Some(al) = &r.alloc {
+        print_alloc(&p, al, o);
+    }
+
     if a.main.total <= 0.0 {
         println!();
         return;
@@ -227,10 +247,15 @@ pub fn print(r: &Report, o: &CliOptions) {
     println!();
     println!(
         "{}",
-        p.h1(&format!(
-            "■ DOVE VA IL TEMPO DEL MAIN THREAD («{}»)",
-            a.main.thread
-        ))
+        p.h1(&if a.unit == "byte" {
+            tf!(
+                "■ ALLOCAZIONI DEL MAIN THREAD PER FASE («{}»)",
+                "■ MAIN THREAD ALLOCATIONS BY PHASE (“{}”)",
+                a.main.thread
+            )
+        } else {
+            format!("■ DOVE VA IL TEMPO DEL MAIN THREAD («{}»)", a.main.thread)
+        })
     );
     println!(
         "{}",
@@ -522,4 +547,85 @@ pub fn print(r: &Report, o: &CliOptions) {
         println!("{t}");
     }
     println!();
+}
+
+fn print_alloc(p: &P, al: &crate::alloc::AllocReport, o: &CliOptions) {
+    let t = crate::i18n::t;
+    let per_s = |pct: f64| {
+        al.rate_bps
+            .map(|r| crate::alloc::fmt_rate(r * pct / 100.0))
+            .unwrap_or_else(|| "-".into())
+    };
+    println!();
+    println!(
+        "{}",
+        p.h1(t("■ ALLOCAZIONI DI MEMORIA", "■ MEMORY ALLOCATIONS"))
+    );
+    println!(
+        "{}",
+        p.dim(&tf!(
+            "{} allocati in {} su tutti i thread · main thread {}%",
+            "{} allocated over {} across all threads · main thread {}%",
+            fmt_time(al.total, "byte"),
+            fmt_duration(al.duration_s),
+            fmt_num(al.main_pct)
+        ))
+    );
+    if !al.sources.is_empty() {
+        let mut tb = table(&["Plugin", "%", "", t("velocità", "rate")]);
+        for s in al.sources.iter().take(o.top.max(10)) {
+            tb.add_row(vec![
+                Cell::new(&s.name),
+                num(s.pct),
+                Cell::new(bar(s.pct, 16)),
+                Cell::new(per_s(s.pct)).set_alignment(CellAlignment::Right),
+            ]);
+        }
+        println!("{tb}");
+    }
+    println!();
+    println!(
+        "{}",
+        p.h2(t("■ PUNTI DI ALLOCAZIONE", "■ ALLOCATION SITES"))
+    );
+    let mut tb = table(&[
+        t("Metodo", "Method"),
+        t("Sorgente", "Source"),
+        t("Tramite", "Via"),
+        "%",
+    ]);
+    for s in al.sites.iter().take(o.top.max(12)) {
+        tb.add_row(vec![
+            Cell::new(short(&s.method)),
+            Cell::new(s.source.as_deref().unwrap_or("-")),
+            Cell::new(s.via.as_deref().unwrap_or("")),
+            num(s.pct),
+        ]);
+    }
+    println!("{tb}");
+    let habits: Vec<_> = al.habits.iter().filter(|h| h.pct >= 0.5).take(8).collect();
+    if !habits.is_empty() {
+        println!();
+        println!(
+            "{}",
+            p.h2(t(
+                "■ SCHEMI CHE CREANO OGGETTI",
+                "■ PATTERNS THAT CREATE OBJECTS"
+            ))
+        );
+        let mut tb = table(&[t("Schema", "Pattern"), "%", t("Chi", "Who")]);
+        for h in habits {
+            let who: Vec<String> = h
+                .owners
+                .iter()
+                .map(|o| format!("{} {}%", o.name, fmt_num(o.pct)))
+                .collect();
+            tb.add_row(vec![
+                Cell::new(&h.label),
+                num(h.pct),
+                Cell::new(who.join(", ")),
+            ]);
+        }
+        println!("{tb}");
+    }
 }

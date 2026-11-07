@@ -215,6 +215,141 @@ pub struct Report {
     pub analysis: Analysis,
     pub hot_chunks: Vec<HotChunk>,
     pub plugins: Vec<(String, String)>,
+    pub alloc: Option<crate::alloc::AllocReport>,
+    pub summary: Summary,
+}
+
+/// Riassunto in cima al report: punteggio, causa principale e primo intervento.
+#[derive(Clone, Debug, Serialize, Default)]
+pub struct Summary {
+    pub score: u32,
+    pub grade: String,
+    pub level: String,
+    pub cause: Option<String>,
+    pub action: Option<String>,
+    pub lines: Vec<String>,
+}
+
+fn clip(s: &str, max: usize) -> String {
+    let s = s.trim();
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    let cut: String = s.chars().take(max).collect();
+    let cut = match cut.rfind(' ') {
+        Some(i) if i > max / 2 => &cut[..i],
+        _ => &cut,
+    };
+    format!("{}…", cut.trim_end_matches([',', ';', ':', '.', ' ']))
+}
+
+pub fn summarize(m: &MetaInfo, a: &Analysis, findings: &[Finding]) -> Summary {
+    let t = crate::i18n::t;
+    let overview = t("Panoramica", "Overview");
+    let profile = t("Profilo", "Profile");
+    let mut score = 100.0f64;
+    if let Some(tps) = m.tps {
+        score -= ((20.0 - tps[0]).max(0.0) * 5.0).min(40.0);
+    }
+    if let Some(load) = a.main.busy_per_tick.or(m.mspt_mean) {
+        score -= ((load - 30.0) * 1.2).clamp(0.0, 35.0);
+    }
+    let exec = a.mode == crate::model::Mode::Execution;
+    if exec && !a.windows.is_empty() {
+        score -= (a.spikes.len() as f64 / a.windows.len() as f64 * 20.0).min(15.0);
+    }
+    if let Some(mx) = m.mspt_max {
+        score -= if mx > 500.0 {
+            8.0
+        } else if mx > 150.0 {
+            4.0
+        } else {
+            0.0
+        };
+    }
+    let relevant = |f: &&Finding| {
+        f.severity < rules::Severity::Info && f.area != overview && f.area != profile
+    };
+    let penalty: f64 = findings
+        .iter()
+        .filter(relevant)
+        .map(|f| match f.severity {
+            rules::Severity::Critico => 8.0,
+            rules::Severity::Alto => 4.0,
+            rules::Severity::Medio => 1.5,
+            _ => 0.5,
+        })
+        .sum();
+    score -= penalty.min(20.0);
+    let score = score.clamp(0.0, 100.0).round() as u32;
+    let (grade, level) = match score {
+        85.. => (t("Ottima", "Good"), "ok"),
+        65.. => (t("Discreta", "Fair"), "wrn"),
+        40.. => (t("Scarsa", "Poor"), "bad"),
+        _ => (t("Critica", "Critical"), "bad"),
+    };
+    let top = findings.iter().find(relevant);
+    let cause = top.map(|f| {
+        let title = rules::plain_pv(&f.title);
+        if f.impact_pct >= 1.0 && !title.contains('%') {
+            format!("{title} ({}%)", fmt_num(f.impact_pct))
+        } else {
+            title
+        }
+    });
+    let action = top
+        .and_then(|f| f.solutions.first())
+        .map(|s| {
+            let s = rules::plain_pv(s);
+            match s.split_once("\n    - ") {
+                Some((head, rest)) => {
+                    let first = rest.split("\n    - ").next().unwrap_or("");
+                    format!("{}: {first}", head.trim_end_matches(':'))
+                }
+                None => s,
+            }
+        })
+        .map(|s| clip(&s, 200));
+    let mut head = tf!(
+        "Salute {score}/100 ({grade})",
+        "Health {score}/100 ({grade})"
+    );
+    if let Some(tps) = m.tps {
+        head.push_str(&format!(" · TPS {}", fmt_num(tps[0])));
+    }
+    if let Some(ms) = m.mspt_mean {
+        head.push_str(&format!(" · MSPT {} ms", fmt_num(ms)));
+    }
+    if exec && !a.windows.is_empty() {
+        head.push_str(&tf!(
+            " · {} lag spike su {} finestre",
+            " · {} lag spikes in {} windows",
+            a.spikes.len(),
+            a.windows.len()
+        ));
+    }
+    let mut lines = vec![head];
+    match &cause {
+        Some(c) => lines.push(tf!("Causa principale: {c}", "Main cause: {c}")),
+        None => lines.push(
+            t(
+                "Nessun problema rilevante trovato nel profilo",
+                "No significant problem found in the profile",
+            )
+            .into(),
+        ),
+    }
+    if let Some(ac) = &action {
+        lines.push(tf!("Primo intervento: {ac}", "First step: {ac}"));
+    }
+    Summary {
+        score,
+        grade: grade.into(),
+        level: level.into(),
+        cause,
+        action,
+        lines,
+    }
 }
 
 pub fn build(
@@ -224,7 +359,12 @@ pub fn build(
     viewer_url: Option<String>,
     kind: &str,
 ) -> Report {
-    let findings = rules::diagnose(&a, p);
+    let mut findings = rules::diagnose(&a, p);
+    let alloc = (p.mode == crate::model::Mode::Allocation).then(|| crate::alloc::analyze(p));
+    if let Some(ar) = &alloc {
+        findings.extend(crate::alloc::findings(ar, p));
+        rules::sort_findings(&mut findings);
+    }
     let m = &p.meta;
     let pm = m.platform_metadata.clone().unwrap_or_default();
     let ps = m.platform_statistics.as_ref();
@@ -248,7 +388,17 @@ pub fn build(
     let meta = MetaInfo {
         machine,
         resources,
-        kind: kind.to_string(),
+        kind: match p.mode {
+            crate::model::Mode::Allocation if kind.contains("sampler") => crate::i18n::t(
+                "profilo allocazioni (sampler)",
+                "allocation profile (sampler)",
+            )
+            .to_string(),
+            crate::model::Mode::Lock if kind.contains("sampler") => {
+                crate::i18n::t("profilo lock (sampler)", "lock profile (sampler)").to_string()
+            }
+            _ => kind.to_string(),
+        },
         origin: origin.to_string(),
         viewer_url,
         platform: format!(
@@ -309,12 +459,15 @@ pub fn build(
             top: h.top,
         })
         .collect();
+    let summary = summarize(&meta, &a, &findings);
     Report {
         meta,
         findings,
         analysis: a,
         hot_chunks,
         plugins,
+        alloc,
+        summary,
     }
 }
 

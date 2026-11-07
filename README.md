@@ -26,6 +26,16 @@ configurazione da cambiare.
 - **Mondo**: chunk con più entità con le coordinate e il comando per teletrasportarsi, gamerule.
 - **Configurazione**: legge `server.properties`, `bukkit.yml`, `spigot.yml`, `paper-world-defaults.yml`,
   `purpur.yml`, `pufferfish.yml` inclusi nel profilo e suggerisce i valori da cambiare.
+- **Allocazioni** (profili `--alloc`): memoria allocata e velocità (MB/s) su tutti i thread, plugin che
+  allocano di più, punti di allocazione (il metodo del plugin o del server e la classe Java che crea
+  l'oggetto), schemi di codice riconosciuti (stringhe, Stream, boxing, Location/Vector, copie di
+  ItemStack, collezioni, regex…) con il consiglio per ognuno e il collegamento con il GC.
+- **Punteggio di salute**: in cima al report un voto da 0 a 100 calcolato da TPS, MSPT, lag spike e
+  gravità dei problemi, con causa principale e primo intervento in tre righe (pulsante *Copia riassunto*
+  per incollarlo su Discord o in un ticket).
+- **Comando consigliato**: se il profilo non basta a vedere la causa (troppo corto, lag a picchi in un
+  profilo normale, pochi tick sopra la soglia di `--only-ticks-over`, nessun giocatore online, GC
+  molto attivo, profilo di allocazione su un server in lag) propone il comando `/spark` esatto da rilanciare.
 - **Heap summary** (`.sparkheap`) e **health report** (`.sparkhealth`).
 - **Confronto** tra due profili (prima/dopo una modifica).
 
@@ -116,6 +126,7 @@ Opzioni utili: `--top N` (righe per tabella), `--all` (mostra anche le note info
 ```sh
 cargo test
 cargo run --example gen_fixture -- sample.sparkprofile   # profilo sintetico realistico
+cargo run --example gen_fixture -- alloc.sparkprofile --alloc   # profilo di allocazione sintetico
 sparkscope analyze sample.sparkprofile --html sample.html
 ```
 

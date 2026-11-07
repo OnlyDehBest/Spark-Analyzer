@@ -150,18 +150,122 @@ impl<'a> Ctx<'a> {
     }
 
     fn culprits(&self, c: &CatStat) -> Vec<String> {
+        if c.top_owners.iter().all(|o| o.pct < 0.5)
+            && let Some(u) = self.unknown_code(c)
+        {
+            return vec![tf!(
+                "codice non associato a un plugin: {u}",
+                "code not mapped to a plugin: {u}"
+            )];
+        }
         c.top_owners
             .iter()
             .filter(|o| o.pct >= 0.5)
             .map(|o| {
+                let sites: Vec<String> = c
+                    .culprit_sites
+                    .iter()
+                    .filter(|s| s.source == o.name && s.pct >= o.pct * 0.15)
+                    .take(2)
+                    .map(|s| short(&s.method))
+                    .collect();
+                let name = self.p.sources.display_name(&o.name);
+                let name = if sites.is_empty() {
+                    name
+                } else {
+                    format!("{name} → {}", sites.join(", "))
+                };
                 tf!(
                     "{} ({} del main thread in questa categoria)",
                     "{} ({} of the main thread in this category)",
-                    self.p.sources.display_name(&o.name),
+                    name,
                     pv(o.pct)
                 )
             })
             .collect()
+    }
+
+    /// Plugin responsabili di una categoria con il loro metodo, es. «EconomyShop 2.4.1 (ShopRepository.saveBalances)».
+    fn who(&self, c: &CatStat) -> Option<String> {
+        let mut names: Vec<String> = Vec::new();
+        for o in c.top_owners.iter().filter(|o| o.pct >= 0.5).take(3) {
+            let sites: Vec<String> = c
+                .culprit_sites
+                .iter()
+                .filter(|s| s.source == o.name && s.pct >= o.pct * 0.15)
+                .take(2)
+                .map(|s| short(&s.method))
+                .collect();
+            let name = self.p.sources.display_name(&o.name);
+            names.push(if sites.is_empty() {
+                name
+            } else {
+                format!("{name} ({})", sites.join(", "))
+            });
+        }
+        match names.len() {
+            0 => None,
+            1 => names.pop(),
+            _ => {
+                let last = names.pop().unwrap_or_default();
+                Some(format!(
+                    "{} {} {last}",
+                    names.join(", "),
+                    crate::i18n::t("e", "and")
+                ))
+            }
+        }
+    }
+
+    /// Codice in un pacchetto non associato a nessun plugin (classi non riconosciute da spark).
+    fn unknown_code(&self, c: &CatStat) -> Option<String> {
+        let m = c.unknown_sites.iter().find(|m| m.pct >= 0.1)?;
+        let class = m.name.rsplit_once('.').map(|(c, _)| c).unwrap_or(&m.name);
+        let parts: Vec<&str> = class.split('.').collect();
+        let pkg = parts[..parts.len().saturating_sub(1).clamp(1, 3)].join(".");
+        Some(format!("{pkg} ({})", short(&m.name)))
+    }
+
+    /// Sostituisce «il plugin responsabile» con il nome del plugin e il metodo, così il consiglio è applicabile.
+    fn name_culprit(&self, text: &str, c: &CatStat) -> String {
+        const SUBS: &[(&str, &str)] = &[
+            ("Se un plugin compare tra i responsabili, deve", "{W} deve"),
+            ("If a plugin is listed as responsible, it must", "{W} must"),
+            ("Controlla i plugin responsabili:", "Controlla {W}:"),
+            ("Check the responsible plugins:", "Check {W}:"),
+            ("dei plugin responsabili", "di {W}"),
+            ("in the responsible plugins", "in {W}"),
+            ("Aggiorna il plugin o segnala", "Aggiorna {W} o segnala"),
+            ("Update the plugin or report", "Update {W} or report"),
+            ("Il plugin responsabile", "{W}"),
+            ("The responsible plugin", "{W}"),
+            ("il plugin responsabile", "{W}"),
+            ("the responsible plugin", "{W}"),
+        ];
+        let Some((pat, tpl)) = SUBS.iter().find(|(p, _)| text.contains(p)) else {
+            return text.to_string();
+        };
+        let w = match (self.who(c), self.unknown_code(c)) {
+            (Some(w), _) => w,
+            (None, Some(pkg)) => tf!(
+                "il codice del pacchetto {pkg} (spark non lo associa a nessun plugin: è il .jar in plugins/ che contiene questo pacchetto)",
+                "the code in package {pkg} (spark does not map it to any plugin: it is the .jar in plugins/ that contains this package)"
+            ),
+            (None, None) => {
+                return crate::i18n::t(
+                    "Nessun plugin compare nello stack di questa categoria: il lavoro parte dal server stesso (vedi «Stack tipico» qui sopra), quindi la correzione passa dalla configurazione o dal mondo, non da un plugin",
+                    "No plugin appears on the stack of this category: the work comes from the server itself (see “Typical stack” above), so the fix is in the configuration or the world, not in a plugin",
+                )
+                .to_string();
+            }
+        };
+        let mut out = text.replacen(pat, &tpl.replace("{W}", &w), 1);
+        if let Some(first) = out.chars().next()
+            && first.is_lowercase()
+        {
+            out = first.to_uppercase().collect::<String>() + &out[first.len_utf8()..];
+        }
+        out
     }
 
     fn adv(
@@ -372,8 +476,11 @@ pub fn diagnose(a: &Analysis, p: &Profile) -> Vec<Finding> {
         plugin_rules(&ctx, &mut out);
         spike_rules(&ctx, &mut out);
         thread_rules(&ctx, &mut out);
-    } else {
+    } else if p.mode == Mode::Lock {
         mode_note(&ctx, &mut out);
+    }
+    if p.meta.interval > 0 {
+        profile_advice(&ctx, &mut out);
     }
     jvm_rules(
         &ctx.p.meta.system_statistics,
@@ -383,6 +490,11 @@ pub fn diagnose(a: &Analysis, p: &Profile) -> Vec<Finding> {
     );
     world_rules(ctx.p.meta.platform_statistics.as_ref(), &mut out);
     config_rules(&ctx, &mut out);
+    sort_findings(&mut out);
+    out
+}
+
+pub fn sort_findings(out: &mut [Finding]) {
     out.sort_by(|x, y| {
         let px = x.area == crate::i18n::t("Panoramica", "Overview");
         let py = y.area == crate::i18n::t("Panoramica", "Overview");
@@ -390,7 +502,185 @@ pub fn diagnose(a: &Analysis, p: &Profile) -> Vec<Finding> {
             .then(x.severity.cmp(&y.severity))
             .then(y.impact_pct.total_cmp(&x.impact_pct))
     });
-    out
+}
+
+fn round10(v: f64) -> i64 {
+    ((v / 10.0).round() * 10.0) as i64
+}
+
+/// Suggerisce il comando /spark più adatto quando il profilo registrato non basta a trovare la causa.
+fn profile_advice(c: &Ctx, out: &mut Vec<Finding>) {
+    let t = crate::i18n::t;
+    let p = c.p;
+    let a = c.a;
+    let ps = p.meta.platform_statistics.as_ref();
+    let dur = p.duration_ms() as f64 / 1000.0;
+    let th = p.ticked_threshold();
+    let mspt_max = ps
+        .and_then(|s| s.mspt.as_ref())
+        .and_then(|m| m.last1m.as_ref())
+        .map(|m| m.max)
+        .filter(|v| *v > 0.0)
+        .or_else(|| {
+            a.windows
+                .iter()
+                .map(|w| w.mspt_max)
+                .reduce(f64::max)
+                .filter(|v| *v > 0.0)
+        });
+    let avg_load = a.main.busy_per_tick.or(c.mspt);
+    let mut sol: Vec<String> = Vec::new();
+    let mut add = |why: String, cmds: &[String]| {
+        let mut s = why;
+        for cmd in cmds {
+            s.push_str("\n    - ");
+            s.push_str(cmd);
+        }
+        sol.push(s);
+    };
+    match p.mode {
+        Mode::Execution if a.main.total > 0.0 => {
+            match th {
+                None => {
+                    let spiky = !a.spikes.is_empty() && avg_load.is_some_and(|l| l < 40.0);
+                    if spiky {
+                        let thr = round10(mspt_max.unwrap_or(150.0) * 0.4).clamp(60, 150);
+                        add(
+                            tf!(
+                                "Il lag è a picchi ({} finestre su {}) mentre la media resta nel budget: in un profilo normale i tick lenti si diluiscono. Registra solo i tick sopra {thr} ms",
+                                "The lag comes in spikes ({} of {} windows) while the average stays within budget: in a normal profile slow ticks get diluted. Record only ticks above {thr} ms",
+                                a.spikes.len(),
+                                a.windows.len()
+                            ),
+                            &[format!(
+                                "/spark profiler start --only-ticks-over {thr} --timeout 600"
+                            )],
+                        );
+                    } else if dur > 0.0 && dur < 120.0 {
+                        add(
+                            tf!(
+                                "Profilo di soli {}: troppo corto per avere più finestre da confrontare e cogliere i picchi",
+                                "Profile of only {}: too short to have several windows to compare and to catch spikes",
+                                crate::report::fmt_duration(dur)
+                            ),
+                            &["/spark profiler start --timeout 300".to_string()],
+                        );
+                    }
+                }
+                Some(th) => {
+                    let ticks = p.effective_ticks();
+                    if ticks > 0 && ticks < 30 {
+                        let lower = round10(th as f64 * 0.66).max(50);
+                        add(
+                            tf!(
+                                "Solo {ticks} tick hanno superato {th} ms: pochi per una statistica affidabile. Abbassa la soglia e registra più a lungo",
+                                "Only {ticks} ticks exceeded {th} ms: too few for reliable statistics. Lower the threshold and record for longer"
+                            ),
+                            &[format!(
+                                "/spark profiler start --only-ticks-over {lower} --timeout 900"
+                            )],
+                        );
+                    }
+                    if c.mspt.is_some_and(|m| m > 50.0) {
+                        add(
+                            t(
+                                "Il server è in lag costante, non solo a picchi: con --only-ticks-over vedi solo i tick peggiori. Un profilo normale mostra il carico di base",
+                                "The server lags constantly, not just in spikes: with --only-ticks-over you only see the worst ticks. A normal profile shows the baseline load",
+                            )
+                            .into(),
+                            &["/spark profiler start --timeout 300".to_string()],
+                        );
+                    }
+                }
+            }
+            if ps.is_some_and(|s| s.player_count == 0) && !c.lagging {
+                add(
+                    t(
+                        "Nessun giocatore online durante il profilo: il carico reale non è rappresentato. Registra quando il server è pieno o quando i giocatori segnalano lag",
+                        "No players online during the profile: the real load is not represented. Record when the server is busy or when players report lag",
+                    )
+                    .into(),
+                    &["/spark profiler start --timeout 300".to_string()],
+                );
+            }
+            if p.interval_ms() > 10.0 && dur < 600.0 {
+                add(
+                    tf!(
+                        "Intervallo di campionamento di {} ms con un profilo breve: pochi campioni, i valori piccoli sono imprecisi",
+                        "Sampling interval of {} ms with a short profile: few samples, small values are imprecise",
+                        f(p.interval_ms())
+                    ),
+                    &["/spark profiler start --interval 4 --timeout 300".to_string()],
+                );
+            }
+            let gc_busy = ps.is_some_and(|s| {
+                s.gc.iter().any(|(k, g)| {
+                    let k = k.to_ascii_lowercase();
+                    let old = k.contains("old")
+                        || k.contains("full")
+                        || k.contains("mark") && !k.contains("young");
+                    g.total >= 2
+                        && g.avg_frequency > 0.0
+                        && (old && g.avg_frequency < 600_000.0 || !old && g.avg_frequency < 1500.0)
+                })
+            });
+            if gc_busy {
+                add(
+                    t(
+                        "Il garbage collector lavora molto: un profilo di allocazione mostra quali plugin creano più oggetti, l'heap summary cosa occupa la memoria",
+                        "The garbage collector is very busy: an allocation profile shows which plugins create the most objects, the heap summary what takes up memory",
+                    )
+                    .into(),
+                    &[
+                        "/spark profiler start --alloc --timeout 120".to_string(),
+                        "/spark heapsummary".to_string(),
+                    ],
+                );
+            }
+        }
+        Mode::Allocation | Mode::Lock if c.lagging => {
+            add(
+                t(
+                    "Il server mostra lag: questo profilo non misura il tempo CPU, quindi non dice cosa rallenta il tick. Registra anche un profilo CPU",
+                    "The server is lagging: this profile does not measure CPU time, so it cannot tell what slows the tick. Record a CPU profile too",
+                )
+                .into(),
+                &["/spark profiler start --timeout 300".to_string()],
+            );
+        }
+        Mode::Allocation if dur > 0.0 && dur < 30.0 => {
+            add(
+                tf!(
+                    "Profilo di allocazione di soli {}: pochi campioni",
+                    "Allocation profile of only {}: few samples",
+                    crate::report::fmt_duration(dur)
+                ),
+                &["/spark profiler start --alloc --timeout 120".to_string()],
+            );
+        }
+        _ => {}
+    }
+    if sol.is_empty() {
+        return;
+    }
+    out.push(Finding {
+        severity: Severity::Basso,
+        area: t("Profilo", "Profile").into(),
+        title: t(
+            "Comando consigliato per il prossimo profilo",
+            "Recommended command for the next profile",
+        )
+        .into(),
+        impact_pct: 0.0,
+        evidence: Vec::new(),
+        explanation: t(
+            "Il profilo registrato non basta a vedere bene la causa. Questi comandi registrano un profilo più adatto a quello che è stato misurato.",
+            "The recorded profile is not enough to see the cause clearly. These commands record a profile better suited to what was measured.",
+        )
+        .into(),
+        solutions: sol,
+        culprits: Vec::new(),
+    });
 }
 
 fn overview(c: &Ctx, out: &mut Vec<Finding>) {
@@ -424,11 +714,13 @@ fn overview(c: &Ctx, out: &mut Vec<Finding>) {
             c.a.main.ticks
         ));
     }
-    ev.push(tf!(
-        "Main thread occupato per il {}% del tempo campionato",
-        "Main thread busy for {}% of the sampled time",
-        f(c.a.main.busy_pct)
-    ));
+    if c.p.mode == Mode::Execution {
+        ev.push(tf!(
+            "Main thread occupato per il {}% del tempo campionato",
+            "Main thread busy for {}% of the sampled time",
+            f(c.a.main.busy_pct)
+        ));
+    }
     if let Some(th) = c.p.ticked_threshold() {
         ev.push(tf!("Profilo registrato con --only-ticks-over {th}: contiene SOLO i tick lenti, quindi le percentuali descrivono direttamente i lag spike", "Profile recorded with --only-ticks-over {th}: it contains ONLY slow ticks, so the percentages describe the lag spikes directly"));
     }
@@ -1561,7 +1853,11 @@ fn category_rules(c: &Ctx, out: &mut Vec<Finding>) {
             _ => {}
         }
         let cfg_lines: Vec<String> = cfg.into_iter().flatten().collect();
-        solutions.extend(rule.solutions.iter().map(|s| tr(*s).to_string()));
+        for s in rule.solutions.iter().map(|s| c.name_culprit(tr(*s), cs)) {
+            if !solutions.contains(&s) {
+                solutions.push(s);
+            }
+        }
         if !cfg_lines.is_empty() {
             solutions.push(tf!(
                 "Configurazione da rivedere:\n    - {}",
@@ -1748,13 +2044,85 @@ fn plugin_rules(c: &Ctx, out: &mut Vec<Finding>) {
             impact_pct: c.a.events.first().map(|e| e.pct).unwrap_or(0.0),
             evidence: heavy_events,
             explanation: crate::i18n::t("Questi eventi, gestiti dai plugin indicati, occupano una parte significativa del main thread.", "These events, handled by the listed plugins, take a significant share of the main thread.").into(),
-            solutions: vec![
-                crate::i18n::t("PlayerMoveEvent: esci subito se il giocatore non ha cambiato blocco (confronta getFrom/getTo a livello di blocco)", "PlayerMoveEvent: return early if the player didn't change block (compare getFrom/getTo at block level)").into(),
-                crate::i18n::t("BlockPhysicsEvent / InventoryMoveItemEvent: sono chiamati migliaia di volte al tick, i listener devono essere minimi", "BlockPhysicsEvent / InventoryMoveItemEvent: they are called thousands of times per tick, listeners must be minimal").into(),
-            ],
-            culprits: Vec::new(),
+            solutions: event_solutions(c),
+            culprits: event_culprits(c),
         });
     }
+}
+
+fn event_advice(ev: &str) -> &'static str {
+    let t = crate::i18n::t;
+    match ev {
+        "PlayerMoveEvent" | "EntityMoveEvent" => t(
+            "esci subito se non è cambiato il blocco (confronta getFrom/getTo con getBlockX/Y/Z) prima di qualsiasi altro controllo",
+            "return early if the block did not change (compare getFrom/getTo with getBlockX/Y/Z) before any other check",
+        ),
+        "BlockPhysicsEvent"
+        | "InventoryMoveItemEvent"
+        | "BlockRedstoneEvent"
+        | "BlockFromToEvent" => t(
+            "viene chiamato migliaia di volte per tick: il listener deve fare un solo controllo economico e uscire; se la funzione non serve, disattivala nella config del plugin",
+            "it is called thousands of times per tick: the listener must do one cheap check and return; if the feature is not needed, turn it off in the plugin config",
+        ),
+        "EntityDamageEvent" | "EntityDamageByEntityEvent" | "ProjectileHitEvent" => t(
+            "controlla prima il tipo di entità e i casi più frequenti, ed evita ricerche di entità vicine o regioni a ogni colpo",
+            "check the entity type and the most common cases first, and avoid nearby-entity or region lookups on every hit",
+        ),
+        "ChunkLoadEvent" | "ChunkUnloadEvent" => t(
+            "non scansionare tutto il chunk (getTileEntities/getEntities) a ogni caricamento: fallo in modo incrementale o asincrono",
+            "do not scan the whole chunk (getTileEntities/getEntities) on every load: do it incrementally or asynchronously",
+        ),
+        "AsyncPlayerChatEvent" | "AsyncChatEvent" | "PlayerCommandPreprocessEvent" => t(
+            "evita regex compilate a ogni messaggio e accessi sincroni a database dentro il listener",
+            "avoid compiling regex on every message and synchronous database access inside the listener",
+        ),
+        _ => t(
+            "riduci il lavoro nel listener: esci subito quando l'evento non è rilevante e sposta in asincrono ciò che non tocca il mondo",
+            "reduce the work in the listener: return early when the event is not relevant and move async whatever does not touch the world",
+        ),
+    }
+}
+
+fn event_listener(c: &Ctx, source: &str, ev: &str) -> Option<String> {
+    let s = c.a.sources.iter().find(|s| s.source == source)?;
+    let prefix = tf!("Evento {ev}", "Event {ev}");
+    s.top_entries
+        .iter()
+        .find(|e| e.context == prefix || e.context.starts_with(&format!("{prefix} ")))
+        .map(|e| short(&e.entry))
+}
+
+fn event_solutions(c: &Ctx) -> Vec<String> {
+    c.a.events
+        .iter()
+        .take(5)
+        .filter(|e| e.pct >= 2.0)
+        .map(|e| {
+            let name = c.p.sources.display_name(&e.source);
+            let who = match event_listener(c, &e.source, &e.entry) {
+                Some(l) => format!("{name} ({l})"),
+                None => name,
+            };
+            tf!(
+                "{} su {}: {}",
+                "{} on {}: {}",
+                who,
+                e.entry,
+                event_advice(&e.entry)
+            )
+        })
+        .collect()
+}
+
+fn event_culprits(c: &Ctx) -> Vec<String> {
+    let mut v: Vec<String> = Vec::new();
+    for e in c.a.events.iter().take(5).filter(|e| e.pct >= 2.0) {
+        let n = c.p.sources.display_name(&e.source);
+        if !v.contains(&n) {
+            v.push(n);
+        }
+    }
+    v
 }
 
 fn spike_rules(c: &Ctx, out: &mut Vec<Finding>) {
