@@ -325,6 +325,28 @@ pub(crate) fn topbar(page: &str, viewer: Option<&str>) -> String {
     )
 }
 
+pub const PUBLIC_SITE: &str = "https://onlydehbest.github.io/Spark-Analyzer/";
+
+pub(crate) fn copy_link_button() -> String {
+    let t = crate::i18n::t;
+    format!(
+        r#"<button type="button" class="btn sec" id="copylink" hidden data-ok="{}" data-label="{}" data-ask="{}" data-up="{}" data-cancel="{}" data-busy="{}" data-fail="{}" data-manual="{}">{}<span>{}</span></button>"#,
+        t("Link copiato!", "Link copied!"),
+        t("Copia link", "Copy link"),
+        esc(t(
+            "Per creare un link condivisibile il file viene caricato su spark-usercontent.lucko.me, lo stesso server dei link di spark. Chiunque abbia il link potrà vedere il profilo.",
+            "To create a shareable link the file is uploaded to spark-usercontent.lucko.me, the same server spark links use. Anyone with the link will be able to see the profile.",
+        )),
+        t("Carica e copia link", "Upload and copy link"),
+        t("Annulla", "Cancel"),
+        t("Carico…", "Uploading…"),
+        t("Caricamento fallito: ", "Upload failed: "),
+        t("Link condivisibile:", "Shareable link:"),
+        icon("link"),
+        t("Copia link", "Copy link")
+    )
+}
+
 pub(crate) fn lang_to() -> &'static str {
     if crate::i18n::is_en() { "it" } else { "en" }
 }
@@ -754,11 +776,8 @@ pub fn render(r: &Report) -> String {
             if m.comment.is_empty() { String::new() } else { format!(" · «{}»", m.comment) }
         )),
         format!(
-            r#"<button type="button" class="btn sec" id="copylink" hidden data-ok="{}" data-label="{}">{}<span>{}</span></button>{}"#,
-            crate::i18n::t("Link copiato!", "Link copied!"),
-            crate::i18n::t("Copia link", "Copy link"),
-            icon("link"),
-            crate::i18n::t("Copia link", "Copy link"),
+            "{}{}",
+            copy_link_button(),
             m.viewer_url
                 .as_ref()
                 .map(|v| format!(r#"<a class="btn" href="{0}" target="_blank" rel="noopener">{1}Apri nel viewer spark</a>"#, esc(v), icon("external")))
@@ -1509,7 +1528,7 @@ body.noside .side{margin-left:-249px}
 h1{font-size:36px;font-weight:700;letter-spacing:-.025em}.sub{font-size:15px;margin-top:8px}
 .top{margin-bottom:22px}
 .btn{background:var(--hd);color:var(--bg);border-radius:10px;padding:9px 16px}.btn:hover{background:var(--fg)}
-.btn.sec{background:var(--card);color:var(--hd);border:1px solid var(--line)}.btn[hidden]{display:none!important}.btn.sec.ok{border-color:var(--ok);color:var(--ok)}.btn.sec:hover{background:var(--card2);border-color:var(--muted)}
+.btn.sec{background:var(--card);color:var(--hd);border:1px solid var(--line)}.btn[hidden]{display:none!important}.sharebox{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--card);border:1px solid var(--acc);border-radius:12px;padding:12px 14px;margin:-4px 0 16px;color:var(--fg);font-size:13px}.sharebox span{flex:1 1 320px}.sharebox input{flex:1 1 320px;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--code);color:var(--hd);font:12px "JetBrains Mono",monospace}.btn.sec.ok{border-color:var(--ok);color:var(--ok)}.btn.sec:hover{background:var(--card2);border-color:var(--muted)}
 .stats{gap:12px}
 .stat{border-radius:14px;padding:14px;background:var(--card);box-shadow:none}
 .stat:hover{box-shadow:none;border-color:var(--card3)}
@@ -1564,7 +1583,21 @@ var docEl=document.documentElement;try{var t=localStorage.getItem('sparkscope-th
 var tb=document.getElementById('theme');if(tb)tb.addEventListener('click',function(){var n=docEl.dataset.theme==='dark'?'light':'dark';docEl.dataset.theme=n;try{localStorage.setItem('sparkscope-theme',n)}catch(e){}if(window.__redrawFlame)window.__redrawFlame()});
 var bl=document.getElementById('brandlink'),ch=document.getElementById('crumbhome'),nb=document.querySelector('.actions a.btn.sec');if(nb){if(bl)bl.href=nb.getAttribute('href');if(ch)ch.href=nb.getAttribute('href')}
 var cs=document.getElementById('copysum');if(cs){cs.addEventListener('click',function(){var tx=cs.dataset.text;function done(){var sp=cs.querySelector('span');sp.textContent=cs.dataset.ok;setTimeout(function(){sp.textContent=cs.dataset.label},1800)}function fb(){var ta=document.createElement('textarea');ta.value=tx;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();try{document.execCommand('copy')}catch(e){}ta.remove();done()}if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(tx).then(done,fb)}else{fb()}})}
-var cl=document.getElementById('copylink');if(cl){var sh=null;try{var u=new URL(location.href);if(u.searchParams.get('p')){var k=u.searchParams.get('p');u=new URL(location.href);var wq=new URL(location.href).searchParams.get('w');u.search='?p='+encodeURIComponent(k)+(wq?'&w='+encodeURIComponent(wq):'');u.hash='';sh=u.toString()}else if(u.searchParams.get('a')&&u.searchParams.get('b')){var qa=u.searchParams.get('a'),qb=u.searchParams.get('b');u.search='?a='+encodeURIComponent(qa)+'&b='+encodeURIComponent(qb);u.hash='';sh=u.toString()}else if(/\/r\/[^\/]+/.test(u.pathname)&&u.protocol.indexOf('http')===0){u.hash='';sh=u.toString()}}catch(e){}if(sh){cl.hidden=false;cl.addEventListener('click',function(){function done(){var sp=cl.querySelector('span');sp.textContent=cl.dataset.ok;cl.classList.add('ok');setTimeout(function(){sp.textContent=cl.dataset.label;cl.classList.remove('ok')},1800)}function fallback(){var ta=document.createElement('textarea');ta.value=sh;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();try{document.execCommand('copy')}catch(e){}ta.remove();done()}if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(sh).then(done,fallback)}else{fallback()}})}}
+var cl=document.getElementById('copylink');if(cl){(function(){
+var web=/^https?:/.test(location.protocol),local=web&&/\/r\/([^\/?#]+)/.exec(location.pathname);
+function fromUrl(){try{var u=new URL(location.href),p=u.searchParams;if(p.get('p')){var w=p.get('w');u.search='?p='+encodeURIComponent(p.get('p'))+(w?'&w='+encodeURIComponent(w):'');u.hash='';return u.toString()}if(p.get('a')&&p.get('b')){u.search='?a='+encodeURIComponent(p.get('a'))+'&b='+encodeURIComponent(p.get('b'));u.hash='';return u.toString()}}catch(e){}return null}
+function localShare(){var w=new URLSearchParams(location.search).get('w'),q=w?'w='+encodeURIComponent(w):'',base='/api/share/'+encodeURIComponent(local[1]);function call(m,x){return fetch(base+'?'+x+q,{method:m}).then(function(r){return r.json()}).then(function(j){if(j.error)throw new Error(j.error);return j})}return call('GET','dry=1&').then(function(j){return {url:j.url,upload:j.url?null:function(){return call('POST','').then(function(k){return k.url})}}})}
+function share(){if(window.__saShare)return Promise.resolve(window.__saShare());if(local)return localShare();return Promise.resolve({url:fromUrl(),upload:null})}
+if(!(window.__saShare||local||fromUrl()))return;cl.hidden=false;
+var sp=cl.querySelector('span'),box=null;
+function flash(t){sp.textContent=t;cl.classList.add('ok');setTimeout(function(){sp.textContent=cl.dataset.label;cl.classList.remove('ok')},1800)}
+function closeBox(){if(box){box.remove();box=null}}
+function makeBox(){closeBox();box=document.createElement('div');box.className='sharebox';cl.closest('.top').insertAdjacentElement('afterend',box);return box}
+function showLink(url){var b=makeBox();b.innerHTML='<span></span><input readonly><button type="button" class="btn sec">✕</button>';b.querySelector('span').textContent=cl.dataset.manual;var i=b.querySelector('input');i.value=url;i.focus();i.select();b.querySelector('button').onclick=closeBox}
+function copy(url){function fallback(){var ta=document.createElement('textarea');ta.value=url;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();var ok=false;try{ok=document.execCommand('copy')}catch(e){}ta.remove();if(ok)flash(cl.dataset.ok);else showLink(url)}if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(url).then(function(){flash(cl.dataset.ok)},fallback)}else{fallback()}}
+function ask(upload){var b=makeBox();b.innerHTML='<span></span><button type="button" class="btn">'+cl.dataset.up+'</button><button type="button" class="btn sec">'+cl.dataset.cancel+'</button>';b.querySelector('span').textContent=cl.dataset.ask;var bs=b.querySelectorAll('button');bs[1].onclick=closeBox;bs[0].onclick=function(){bs[0].disabled=true;bs[0].textContent=cl.dataset.busy;upload().then(function(url){closeBox();copy(url);showLink(url)},function(e){b.querySelector('span').textContent=cl.dataset.fail+((e&&e.message)||e);bs[0].disabled=false;bs[0].textContent=cl.dataset.up})}}
+cl.addEventListener('click',function(){share().then(function(s){if(s.url){closeBox();copy(s.url)}else if(s.upload){ask(s.upload)}}).catch(function(e){var b=makeBox();b.textContent=cl.dataset.fail+((e&&e.message)||e)})});
+})()}
 (function(){var can=!!window.__saFilter||(/^https?:/.test(location.protocol)&&/\/r\/[^\/]+/.test(location.pathname));if(!can)return;function apply(list){if(window.__saFilter){window.__saFilter(list);return}var u=new URL(location.href);if(list)u.searchParams.set('w',list);else u.searchParams.delete('w');location.href=u.toString()}document.querySelectorAll('.needs-filter').forEach(function(e){e.hidden=false});document.querySelectorAll('[data-w]').forEach(function(bt){bt.addEventListener('click',function(){apply(bt.dataset.w||null)})});document.querySelectorAll('.chartwrap').forEach(function(cw){var d;try{d=JSON.parse(cw.querySelector('.chartdata').textContent)}catch(e){return}var svg=cw.querySelector('svg'),br=svg.querySelector('.brush'),hs=svg.querySelectorAll('.hov'),a=null,b=null;function geom(i){var r=hs[i];return [parseFloat(r.getAttribute('x')),parseFloat(r.getAttribute('width'))]}function draw(){if(a===null)return;var lo=Math.min(a,b),hi=Math.max(a,b),g1=geom(lo),g2=geom(hi);br.setAttribute('x',g1[0]);br.setAttribute('width',g2[0]+g2[1]-g1[0]);br.style.display=''}hs.forEach(function(r,i){r.addEventListener('mousedown',function(e){e.preventDefault();a=b=i;svg.classList.add('brushing');draw()});r.addEventListener('mouseenter',function(){if(a!==null){b=i;draw()}})});window.addEventListener('mouseup',function(){if(a===null)return;var lo=Math.min(a,b),hi=Math.max(a,b);a=null;svg.classList.remove('brushing');br.style.display='none';if(hi-lo<1)return;var list=[];for(var k=lo;k<=hi;k++)list.push(d.rows[k].o);if(list.length===d.rows.length&&!document.querySelector('.fbanner'))return;apply(list.join(','))})})})();
 (function(){var box=document.getElementById('tree'),el=document.getElementById('flamedata');if(!box||!el)return;var data;try{data=JSON.parse(el.textContent)}catch(e){return}var N=data.names,LN=N.map(function(x){return x.toLowerCase()}),R=data.tree,TOT=R[1]||1,MORE=box.dataset.more,SELF=box.dataset.self;
 function fm(v){return v>=100?v.toFixed(0):v>=10?v.toFixed(1):v.toFixed(2)}

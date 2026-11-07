@@ -1,6 +1,8 @@
 use std::fmt::Write;
 
-use super::html::{ANIM_JS, CSS, FAVICON, JS, LOGO_SVG, esc, icon, lang_to, topbar};
+use super::html::{
+    ANIM_JS, CSS, FAVICON, JS, LOGO_SVG, copy_link_button, esc, icon, lang_to, topbar,
+};
 use super::{fmt_duration, fmt_time, fmt_utc};
 use crate::heap::{count, short_class};
 use crate::heapdiff::{HeapComparison, PluginDelta, display_name, signed_bytes};
@@ -133,7 +135,7 @@ pub fn render(c: &HeapComparison) -> String {
     };
     let _ = write!(
         b,
-        r#"<div class="top"><div><h1>{}</h1><p class="sub">{}</p></div><div class="actions"><button type="button" class="btn sec" id="copylink" hidden data-ok="{}" data-label="{}">{}<span>{}</span></button></div></div>"#,
+        r#"<div class="top"><div><h1>{}</h1><p class="sub">{}</p></div><div class="actions">{}</div></div>"#,
         esc(title),
         esc(&format!(
             "heap summary · {} · {} {} → {} {}{uptime}",
@@ -147,10 +149,7 @@ pub fn render(c: &HeapComparison) -> String {
             t("dopo", "after"),
             fmt_utc(c.after.generated_ms)
         )),
-        t("Link copiato!", "Link copied!"),
-        t("Copia link", "Copy link"),
-        icon("link"),
-        t("Copia link", "Copy link")
+        copy_link_button()
     );
 
     for w in &c.warnings {

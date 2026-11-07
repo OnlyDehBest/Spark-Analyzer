@@ -35,6 +35,7 @@ pub fn analyze_windows_to_json(
         loaded.origin = format!("https://spark.lucko.me/{k}");
         loaded.viewer_url = Some(format!("https://spark.lucko.me/{k}"));
     }
+    let content_type = loader::spark_content_type(&loaded.payload);
     let win = parse_windows(windows);
     let (report, _, heap) =
         pipeline::build_with(loaded, None, win.as_deref()).map_err(|e| format!("{e:#}"))?;
@@ -45,6 +46,7 @@ pub fn analyze_windows_to_json(
         "title": out.title,
         "detail": out.detail,
         "bad": out.bad,
+        "ctype": content_type,
     })
     .to_string())
 }

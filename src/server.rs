@@ -23,6 +23,7 @@ struct Staged {
     id: String,
     bytes: Arc<Vec<u8>>,
     name: String,
+    key: Option<String>,
 }
 
 struct Stored {
@@ -34,6 +35,7 @@ struct Stored {
     name: String,
     key: Option<String>,
     second: Option<(Arc<Vec<u8>>, String)>,
+    second_key: Option<String>,
     cache: HashMap<(Lang, String), Arc<Vec<u8>>>,
 }
 
@@ -224,18 +226,27 @@ fn handle(mut req: Request, st: &State) {
             let mut body = String::new();
             let _ = req.as_reader().take(8192).read_to_string(&mut body);
             let result = loader::fetch_link(body.trim(), &st.bytebin)
-                .and_then(|(bytes, key)| stage(st, bytes, key));
+                .and_then(|(bytes, key)| stage(st, bytes, key.clone(), Some(key)));
             staged_result(result)
         }
         (Method::Post, "/api/heap/file") => {
             let name = query_param(&url, "name").unwrap_or_else(|| "heap.sparkheap".into());
-            let result = read_upload(&mut req).and_then(|bytes| stage(st, bytes, name));
+            let result = read_upload(&mut req).and_then(|bytes| stage(st, bytes, name, None));
             staged_result(result)
         }
         (Method::Post, "/api/heap/compare") => {
             let a = query_param(&url, "a").unwrap_or_default();
             let b = query_param(&url, "b").unwrap_or_default();
             api_result(store_comparison(st, &a, &b))
+        }
+        (m @ (Method::Get | Method::Post), p) if p.starts_with("/api/share/") => {
+            let id = p["/api/share/".len()..].to_string();
+            let windows = query_param(&url, "w").unwrap_or_default();
+            let upload = m == Method::Post;
+            match share_link(st, &id, &windows, upload) {
+                Ok(link) => json_resp(200, serde_json::json!({ "url": link })),
+                Err(e) => json_resp(400, serde_json::json!({ "error": format!("{e:#}") })),
+            }
         }
         (Method::Get, p) if p.starts_with("/r/") => {
             let id = p[3..].trim_end_matches('/').to_string();
@@ -297,7 +308,7 @@ struct StageInfo {
     size: usize,
 }
 
-fn stage(st: &State, bytes: Vec<u8>, name: String) -> Result<StageInfo> {
+fn stage(st: &State, bytes: Vec<u8>, name: String, key: Option<String>) -> Result<StageInfo> {
     let info = crate::heapdiff::describe_bytes(&bytes, &name)?;
     let id = next_id(st, bytes.len());
     let size = bytes.len();
@@ -308,6 +319,7 @@ fn stage(st: &State, bytes: Vec<u8>, name: String) -> Result<StageInfo> {
             id: id.clone(),
             bytes: Arc::new(bytes),
             name: name.clone(),
+            key,
         },
     );
     staged.truncate(MAX_STAGED);
@@ -329,12 +341,12 @@ fn staged_result(r: Result<StageInfo>) -> Response<std::io::Cursor<Vec<u8>>> {
     }
 }
 
-fn staged_bytes(st: &State, id: &str) -> Result<(Arc<Vec<u8>>, String)> {
+fn staged_bytes(st: &State, id: &str) -> Result<(Arc<Vec<u8>>, String, Option<String>)> {
     let staged = st.staged.lock().unwrap_or_else(|e| e.into_inner());
     staged
         .iter()
         .find(|s| s.id == id)
-        .map(|s| (Arc::clone(&s.bytes), s.name.clone()))
+        .map(|s| (Arc::clone(&s.bytes), s.name.clone(), s.key.clone()))
         .ok_or_else(|| {
             anyhow!(
                 "{}",
@@ -352,8 +364,8 @@ fn render_comparison(a: &[u8], name_a: &str, b: &[u8], name_b: &str) -> Result<w
 }
 
 fn store_comparison(st: &State, a: &str, b: &str) -> Result<String> {
-    let (bytes_a, name_a) = staged_bytes(st, a)?;
-    let (bytes_b, name_b) = staged_bytes(st, b)?;
+    let (bytes_a, name_a, key_a) = staged_bytes(st, a)?;
+    let (bytes_b, name_b, key_b) = staged_bytes(st, b)?;
     let out = render_comparison(&bytes_a, &name_a, &bytes_b, &name_b)?;
     let id = next_id(st, bytes_a.len() + bytes_b.len());
     let mut cache = HashMap::new();
@@ -368,13 +380,76 @@ fn store_comparison(st: &State, a: &str, b: &str) -> Result<String> {
             bad: out.bad,
             bytes: bytes_a,
             name: name_a,
-            key: None,
+            key: key_a,
             second: Some((bytes_b, name_b)),
+            second_key: key_b,
             cache,
         },
     );
     reports.truncate(MAX_STORED);
     Ok(id)
+}
+
+fn upload_payload(st: &State, bytes: &[u8], name: &str) -> Result<String> {
+    let loaded = loader::load_bytes(bytes, name)?;
+    loader::upload(
+        bytes,
+        loader::spark_content_type(&loaded.payload),
+        &st.bytebin,
+    )
+}
+
+fn public_link(key: &str, second: Option<&str>, windows: &str) -> String {
+    let site = crate::report::html::PUBLIC_SITE;
+    let enc = |v: &str| v.replace('%', "%25").replace(',', "%2C");
+    match second {
+        Some(b) => format!("{site}?a={key}&b={b}"),
+        None if windows.is_empty() => format!("{site}?p={key}"),
+        None => format!("{site}?p={key}&w={}", enc(windows)),
+    }
+}
+
+fn share_link(st: &State, id: &str, windows: &str, upload: bool) -> Result<Option<String>> {
+    let (bytes, name, key, second, second_key) = {
+        let reports = st.reports.lock().unwrap_or_else(|e| e.into_inner());
+        let r = reports.iter().find(|r| r.id == id).ok_or_else(|| {
+            anyhow!(
+                "{}",
+                i18n::t(
+                    "report non più disponibile: rifai l'analisi",
+                    "report no longer available: run the analysis again"
+                )
+            )
+        })?;
+        (
+            Arc::clone(&r.bytes),
+            r.name.clone(),
+            r.key.clone(),
+            r.second.clone(),
+            r.second_key.clone(),
+        )
+    };
+    let complete = key.is_some() && (second.is_none() || second_key.is_some());
+    if !complete && !upload {
+        return Ok(None);
+    }
+    let key = match key {
+        Some(k) => k,
+        None => upload_payload(st, &bytes, &name)?,
+    };
+    let second_key = match (&second, second_key) {
+        (Some(_), Some(k)) => Some(k),
+        (Some((b, nb)), None) => Some(upload_payload(st, b, nb)?),
+        (None, _) => None,
+    };
+    {
+        let mut reports = st.reports.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(r) = reports.iter_mut().find(|r| r.id == id) {
+            r.key = Some(key.clone());
+            r.second_key.clone_from(&second_key);
+        }
+    }
+    Ok(Some(public_link(&key, second_key.as_deref(), windows)))
 }
 
 fn render(bytes: &[u8], name: &str, key: Option<&str>, windows: &str) -> Result<webui::Rendered> {
@@ -447,6 +522,7 @@ fn store(st: &State, bytes: Vec<u8>, name: String, key: Option<String>) -> Resul
             name,
             key,
             second: None,
+            second_key: None,
             cache,
         },
     );
@@ -491,6 +567,23 @@ fn with_actions(html: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn public_links() {
+        let site = crate::report::html::PUBLIC_SITE;
+        assert_eq!(
+            super::public_link("AbCd1234", None, ""),
+            format!("{site}?p=AbCd1234")
+        );
+        assert_eq!(
+            super::public_link("AbCd1234", None, "2,5"),
+            format!("{site}?p=AbCd1234&w=2%2C5")
+        );
+        assert_eq!(
+            super::public_link("Aaaa1", Some("Bbbb2"), ""),
+            format!("{site}?a=Aaaa1&b=Bbbb2")
+        );
+    }
+
     #[test]
     fn decode() {
         assert_eq!(super::percent_decode("a%20b%2Fc+d"), "a b/c d");

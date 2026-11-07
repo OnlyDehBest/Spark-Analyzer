@@ -189,8 +189,55 @@ fn download(bytebin: &str, key: &str) -> Result<(Vec<u8>, Hint)> {
     Ok((bytes, hint))
 }
 
+pub fn spark_content_type(payload: &Payload) -> &'static str {
+    match payload {
+        Payload::Sampler(_) => "application/x-spark-sampler",
+        Payload::Heap(_) => "application/x-spark-heap",
+        Payload::Health(_) => "application/x-spark-health",
+    }
+}
+
+pub fn is_gzip(bytes: &[u8]) -> bool {
+    bytes.len() > 2 && bytes[0] == 0x1f && bytes[1] == 0x8b
+}
+
+#[cfg(feature = "cli")]
+pub fn upload(bytes: &[u8], content_type: &str, bytebin: &str) -> Result<String> {
+    let url = format!("{}post", normalize_base(bytebin));
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_global(Some(std::time::Duration::from_secs(120)))
+        .user_agent(concat!("sparkscope/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .into();
+    let mut request = agent.post(&url).header("Content-Type", content_type);
+    if is_gzip(bytes) {
+        request = request.header("Content-Encoding", "gzip");
+    }
+    let mut resp = request
+        .send(bytes)
+        .with_context(|| tf!("caricamento su {url} fallito", "upload to {url} failed"))?;
+    let body = resp.body_mut().read_to_string().context(crate::i18n::t(
+        "lettura della risposta fallita",
+        "failed to read the response",
+    ))?;
+    let key = serde_json::from_str::<serde_json::Value>(&body)
+        .ok()
+        .and_then(|v| v.get("key").and_then(|k| k.as_str()).map(str::to_string))
+        .filter(|k| extract_key(k).as_deref() == Some(k.as_str()))
+        .ok_or_else(|| {
+            anyhow!(
+                "{}",
+                tf!(
+                    "risposta inattesa dal server dei link: {body}",
+                    "unexpected response from the link server: {body}"
+                )
+            )
+        })?;
+    Ok(key)
+}
+
 fn maybe_gunzip(bytes: &[u8]) -> Result<Vec<u8>> {
-    if bytes.len() > 2 && bytes[0] == 0x1f && bytes[1] == 0x8b {
+    if is_gzip(bytes) {
         let mut out = Vec::with_capacity(bytes.len() * 4);
         flate2::read::MultiGzDecoder::new(bytes)
             .read_to_end(&mut out)
