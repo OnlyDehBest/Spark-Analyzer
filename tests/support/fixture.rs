@@ -578,6 +578,7 @@ pub fn sample() -> SamplerData {
     sample_with(false)
 }
 
+#[allow(dead_code)]
 pub fn sample_paper_wait() -> SamplerData {
     sample_with(true)
 }
@@ -954,6 +955,7 @@ pub fn sample_heap() -> HeapData {
             576_000,
         ),
         ("com.example.shop.cache.PriceEntry", 40_000, 1_280_000),
+        ("com.example.shop.EconomyShop", 1, 96),
         (
             "me.lucko.spark.common.sampler.async.AsyncDataAggregator",
             1,
@@ -969,7 +971,7 @@ pub fn sample_heap() -> HeapData {
             r#type: t.to_string(),
         })
         .collect();
-    entries.sort_by(|a, b| b.size.cmp(&a.size));
+    entries.sort_by_key(|e| std::cmp::Reverse(e.size));
     for (k, e) in entries.iter_mut().enumerate() {
         e.order = k as i32 + 1;
     }
@@ -987,4 +989,85 @@ pub fn sample_heap() -> HeapData {
         }),
         entries,
     }
+}
+
+#[allow(dead_code)]
+pub const HEAP_START_UPTIME_MS: i64 = 21_720_000;
+#[allow(dead_code)]
+pub const HEAP_INTERVAL_MS: i64 = 3 * 3_600_000;
+
+#[allow(dead_code)]
+fn with_snapshot(mut h: HeapData, generated: i64, uptime: i64, players: i64) -> HeapData {
+    let m = h.metadata.get_or_insert_with(Default::default);
+    m.generated_time = generated;
+    let ps = m.platform_statistics.get_or_insert_with(Default::default);
+    ps.uptime = uptime;
+    ps.player_count = players;
+    h
+}
+
+#[allow(dead_code)]
+fn grow(mut h: HeapData, growth: &[(&str, i32)]) -> HeapData {
+    for e in &mut h.entries {
+        for (t, instances) in growth {
+            if e.r#type == *t {
+                let per = e.size as f64 / e.instances.max(1) as f64;
+                e.instances = *instances;
+                e.size = (per * *instances as f64) as i64;
+            }
+        }
+    }
+    h
+}
+
+#[allow(dead_code)]
+pub fn sample_heap_pair() -> (HeapData, HeapData) {
+    let t0 = sample_heap().metadata.unwrap_or_default().generated_time;
+    let before = with_snapshot(sample_heap(), t0, HEAP_START_UPTIME_MS, 38);
+    let after = grow(
+        sample_heap(),
+        &[
+            ("com.example.crates.data.PlayerCrateData", 2_312_000),
+            ("com.example.crates.data.RewardHistory", 2_312_000),
+            ("com.example.crates.data.CrateKey", 1_156_000),
+            (
+                "net.example.hololines.HoloLines$$Lambda/0x00007f3a1c2b4d58",
+                96_500,
+            ),
+            ("net.example.hololines.listener.PlayerViewListener", 96_500),
+            ("com.example.shop.cache.PriceEntry", 43_000),
+            ("me.lucko.luckperms.common.node.types.Permission", 181_000),
+            ("java.util.HashMap$Node", 12_130_000),
+            ("java.util.UUID", 2_772_000),
+            ("byte[]", 5_100_000),
+            ("net.minecraft.world.level.chunk.LevelChunk", 6_000),
+        ],
+    );
+    let after = with_snapshot(
+        after,
+        t0 + HEAP_INTERVAL_MS,
+        HEAP_START_UPTIME_MS + HEAP_INTERVAL_MS,
+        42,
+    );
+    (before, after)
+}
+
+#[allow(dead_code)]
+pub fn sample_heap_stable_pair() -> (HeapData, HeapData) {
+    let t0 = sample_heap().metadata.unwrap_or_default().generated_time;
+    (
+        with_snapshot(sample_heap(), t0, HEAP_START_UPTIME_MS, 42),
+        with_snapshot(
+            sample_heap(),
+            t0 + HEAP_INTERVAL_MS,
+            HEAP_START_UPTIME_MS + HEAP_INTERVAL_MS,
+            42,
+        ),
+    )
+}
+
+#[allow(dead_code)]
+pub fn sample_heap_after_restart() -> HeapData {
+    let t0 = sample_heap().metadata.unwrap_or_default().generated_time;
+    with_snapshot(sample_heap(), t0 + HEAP_INTERVAL_MS, 600_000, 42)
 }

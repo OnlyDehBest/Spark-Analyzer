@@ -23,7 +23,6 @@ pub struct PluginMem {
     pub pct: f64,
     pub classes: usize,
     pub top: Vec<HeapRow>,
-    /// 0 = normale, 1 = da tenere d'occhio, 2 = sospetto leak
     pub level: u8,
     pub reasons: Vec<String>,
 }
@@ -39,7 +38,6 @@ pub struct HeapReport {
     pub notes: Vec<String>,
 }
 
-/// Package noti -> nome del plugin (per i plugin il cui package non contiene il nome).
 const KNOWN: &[(&str, &str)] = &[
     ("com.earth2me.essentials", "Essentials"),
     ("net.ess3", "Essentials"),
@@ -77,7 +75,6 @@ const KNOWN: &[(&str, &str)] = &[
     ("litebans", "LiteBans"),
 ];
 
-/// Prefissi del server/JDK/librerie comuni: non sono plugin.
 const SERVER: &[&str] = &[
     "net.minecraft.",
     "org.bukkit.",
@@ -155,27 +152,35 @@ fn norm(s: &str) -> String {
         .collect()
 }
 
-/// Package delle classi principali dei plugin: `com.example.crates.CrateRewards` -> `com.example.crates.` per CrateRewards.
-fn main_packages(h: &HeapData, plugins: &[(String, String, String)]) -> Vec<(String, usize)> {
+fn main_packages(
+    heaps: &[&HeapData],
+    plugins: &[(String, String, String)],
+) -> Vec<(String, usize)> {
     let mut out: Vec<(String, usize)> = Vec::new();
-    for e in &h.entries {
-        let t = e.r#type.trim_end_matches("[]");
-        let Some((pkg, cls)) = t.rsplit_once('.') else {
-            continue;
-        };
-        if pkg.starts_with("java.")
-            || SERVER.iter().any(|p| t.starts_with(p))
-            || pkg.split('.').count() < 2
-        {
-            continue;
-        }
-        let c = norm(cls);
-        for (i, p) in plugins.iter().enumerate() {
-            let n = &p.2;
-            if n.len() >= 4 && (c == *n || c == format!("{n}plugin") || c == format!("{n}main")) {
-                let key = format!("{pkg}.");
-                if !out.iter().any(|(k, _)| *k == key) {
-                    out.push((key, i));
+    for h in heaps {
+        for e in &h.entries {
+            let t = e.r#type.trim_end_matches("[]");
+            let Some((pkg, cls)) = t.rsplit_once('.') else {
+                continue;
+            };
+            if pkg.starts_with("java.")
+                || SERVER.iter().any(|p| t.starts_with(p))
+                || pkg.split('.').count() < 2
+            {
+                continue;
+            }
+            let c = norm(cls);
+            for (i, p) in plugins.iter().enumerate() {
+                let n = &p.2;
+                if n.len() >= 4
+                    && (c == *n
+                        || c.strip_suffix("plugin") == Some(n)
+                        || c.strip_suffix("main") == Some(n))
+                {
+                    let key = format!("{pkg}.");
+                    if !out.iter().any(|(k, _)| *k == key) {
+                        out.push((key, i));
+                    }
                 }
             }
         }
@@ -184,7 +189,59 @@ fn main_packages(h: &HeapData, plugins: &[(String, String, String)]) -> Vec<(Str
     out
 }
 
-/// A quale plugin installato appartiene la classe (in base al package).
+pub fn is_builtin_class(t: &str) -> bool {
+    !t.contains('.')
+        || t.starts_with("java.")
+        || t.starts_with("jdk.")
+        || t.starts_with("sun.")
+        || SERVER.iter().any(|p| t.starts_with(p))
+        || LIBS.iter().any(|p| t.starts_with(p))
+}
+
+pub fn is_server_class(t: &str) -> bool {
+    SERVER.iter().any(|p| t.starts_with(p))
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Owner {
+    Plugin(usize),
+    Package(String),
+    Builtin,
+}
+
+pub struct ClassOwners {
+    pub plugins: Vec<(String, String, String)>,
+    mains: Vec<(String, usize)>,
+}
+
+impl ClassOwners {
+    pub fn from_heaps(heaps: &[&HeapData]) -> ClassOwners {
+        let mut plugins: Vec<(String, String, String)> = Vec::new();
+        for h in heaps.iter().rev() {
+            if let Some(m) = &h.metadata {
+                for s in m.sources.values() {
+                    if !s.builtin && !plugins.iter().any(|p| p.0 == s.name) {
+                        plugins.push((s.name.clone(), s.version.clone(), norm(&s.name)));
+                    }
+                }
+            }
+        }
+        plugins.sort();
+        let mains = main_packages(heaps, &plugins);
+        ClassOwners { plugins, mains }
+    }
+
+    pub fn owner(&self, t: &str) -> Owner {
+        if is_builtin_class(t) {
+            return Owner::Builtin;
+        }
+        match owner_of(t, &self.plugins, &self.mains) {
+            Some(i) => Owner::Plugin(i),
+            None => Owner::Package(package_group(t)),
+        }
+    }
+}
+
 fn owner_of(
     t: &str,
     plugins: &[(String, String, String)],
@@ -230,13 +287,12 @@ fn owner_of(
     None
 }
 
-/// Numero con separatore delle migliaia (1.840.000 / 1,840,000).
 pub fn count(n: i64) -> String {
     let sep = if crate::i18n::is_en() { ',' } else { '.' };
     let digits = n.abs().to_string();
     let mut out = String::new();
     for (i, ch) in digits.chars().enumerate() {
-        if i > 0 && (digits.len() - i) % 3 == 0 {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
             out.push(sep);
         }
         out.push(ch);
@@ -267,36 +323,18 @@ fn looks_per_player(t: &str) -> bool {
 }
 
 fn plugin_memory(h: &HeapData, total_size: i64, players: i64) -> Vec<PluginMem> {
-    let meta = h.metadata.clone().unwrap_or_default();
-    let mut plugins: Vec<(String, String, String)> = meta
-        .sources
-        .values()
-        .filter(|s| !s.builtin)
-        .map(|s| (s.name.clone(), s.version.clone(), norm(&s.name)))
-        .collect();
-    plugins.sort();
-    let mains = main_packages(h, &plugins);
+    let owners = ClassOwners::from_heaps(&[h]);
+    let mut plugins = owners.plugins.clone();
     let mut acc: Vec<Vec<&crate::proto::HeapEntry>> = vec![Vec::new(); plugins.len()];
     let mut unknown: Vec<(String, Vec<&crate::proto::HeapEntry>)> = Vec::new();
     for e in &h.entries {
-        let t = e.r#type.as_str();
-        if !t.contains('.')
-            || t.starts_with("java.")
-            || t.starts_with("jdk.")
-            || t.starts_with("sun.")
-            || SERVER.iter().any(|p| t.starts_with(p))
-            || LIBS.iter().any(|p| t.starts_with(p))
-        {
-            continue;
-        }
-        if let Some(i) = owner_of(t, &plugins, &mains) {
-            acc[i].push(e);
-        } else {
-            let g = package_group(t);
-            match unknown.iter_mut().find(|(k, _)| *k == g) {
+        match owners.owner(&e.r#type) {
+            Owner::Builtin => {}
+            Owner::Plugin(i) => acc[i].push(e),
+            Owner::Package(g) => match unknown.iter_mut().find(|(k, _)| *k == g) {
                 Some((_, v)) => v.push(e),
                 None => unknown.push((g, vec![e])),
-            }
+            },
         }
     }
     let n_known = plugins.len();
@@ -620,7 +658,6 @@ pub fn render_text(r: &HeapReport) -> String {
     o
 }
 
-/// Diagnosi da aggiungere al report per i plugin che sembrano avere un memory leak.
 pub fn findings(r: &HeapReport) -> Vec<crate::rules::Finding> {
     use crate::rules::{Finding, Severity};
     let t = crate::i18n::t;

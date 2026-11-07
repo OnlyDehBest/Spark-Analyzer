@@ -1,5 +1,6 @@
 #[cfg(feature = "cli")]
 pub mod cli;
+pub mod heapdiff_html;
 pub mod html;
 pub mod localize;
 pub mod markdown;

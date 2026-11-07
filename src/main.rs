@@ -75,7 +75,9 @@ enum Cmd {
         #[arg(long, help = "Non stampare il report nel terminale")]
         quiet: bool,
     },
-    #[command(about = "Confronta due profili (prima/dopo una modifica)")]
+    #[command(
+        about = "Confronta due profili (prima/dopo una modifica) o due heap summary per trovare i memory leak"
+    )]
     Diff {
         before: String,
         after: String,
@@ -83,6 +85,8 @@ enum Cmd {
         common: Common,
         #[arg(long, value_name = "FILE", help = "Scrive il confronto in JSON")]
         json: Option<PathBuf>,
+        #[arg(long, value_name = "FILE", help = "Scrive il confronto heap in HTML")]
+        html: Option<PathBuf>,
     },
     #[command(about = "Stampa l'albero delle chiamate del main thread, potato sotto una soglia")]
     Tree {
@@ -193,10 +197,37 @@ fn main() -> Result<()> {
             after,
             common,
             json,
+            html,
         } => {
             eprintln!("Carico {before} e {after} …");
-            let (rb, _, _) = load_report(&before, &common)?;
-            let (ra, _, _) = load_report(&after, &common)?;
+            let first = loader::load(&before, &common.bytebin)?;
+            let second = loader::load(&after, &common.bytebin)?;
+            if let (loader::Payload::Heap(a), loader::Payload::Heap(b)) =
+                (&first.payload, &second.payload)
+            {
+                let c = sparkscope::heapdiff::compare(a, b);
+                print!("{}", sparkscope::heapdiff::render_text(&c));
+                if let Some(p) = html {
+                    write_file(
+                        &p,
+                        &sparkscope::report::heapdiff_html::render(&c),
+                        "Report HTML",
+                    )?;
+                }
+                if let Some(p) = json {
+                    write_file(&p, &serde_json::to_string_pretty(&c)?, "JSON")?;
+                }
+                return Ok(());
+            }
+            if matches!(first.payload, loader::Payload::Heap(_))
+                != matches!(second.payload, loader::Payload::Heap(_))
+            {
+                bail!(
+                    "per confrontare la memoria servono due heap summary (/spark heapsummary); per confrontare la CPU servono due profili"
+                );
+            }
+            let (rb, _, _) = sparkscope::pipeline::build(first, common.thread.as_deref())?;
+            let (ra, _, _) = sparkscope::pipeline::build(second, common.thread.as_deref())?;
             let d = diff::diff(&rb, &ra);
             print!("{}", diff::render_text(&d));
             if let Some(p) = json {

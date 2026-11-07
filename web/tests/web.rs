@@ -79,3 +79,50 @@ fn english_controls_and_headers() {
         html.contains("Show usage as") && html.contains(">On stack<") && html.contains(">Own<")
     );
 }
+
+#[test]
+fn heap_comparison_through_the_web_api() {
+    let (before, after) = fixture::sample_heap_pair();
+    let a = before.encode_to_vec();
+    let b = after.encode_to_vec();
+    let info: serde_json::Value =
+        serde_json::from_str(&sparkscope_web::describe_heap_json(&a, "a.sparkheap", "it").unwrap())
+            .unwrap();
+    assert!(info["detail"].as_str().unwrap().contains("38 giocatori"));
+    let out: serde_json::Value = serde_json::from_str(
+        &sparkscope_web::compare_heaps_json(
+            &b,
+            "dopo.sparkheap",
+            &a,
+            "prima.sparkheap",
+            "./",
+            "en",
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let html = out["html"].as_str().unwrap();
+    assert!(
+        html.contains("Heap comparison")
+            && html.contains("Leak confirmed")
+            && html.contains("New analysis")
+    );
+    assert_eq!(out["bad"], true);
+    let profile = fixture::sample().encode_to_vec();
+    assert!(sparkscope_web::describe_heap_json(&profile, "x.sparkprofile", "it").is_err());
+}
+
+#[test]
+fn static_index_has_compare_mode() {
+    let _g = sparkscope::i18n::scoped(sparkscope::i18n::Lang::It);
+    let html = sparkscope::webui::static_index();
+    for needle in [
+        "Confronta due heap",
+        "id=\"cmpgo\"",
+        "saSetupCompare",
+        "compare_heaps",
+        "describe_heap",
+    ] {
+        assert!(html.contains(needle), "manca {needle}");
+    }
+}

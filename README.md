@@ -36,7 +36,11 @@ configurazione da cambiare.
 - **Comando consigliato**: se il profilo non basta a vedere la causa (troppo corto, lag a picchi in un
   profilo normale, pochi tick sopra la soglia di `--only-ticks-over`, nessun giocatore online, GC
   molto attivo, profilo di allocazione su un server in lag) propone il comando `/spark` esatto da rilanciare.
-- **Heap summary** (`.sparkheap`) e **health report** (`.sparkhealth`).
+- **Heap summary** (`.sparkheap`): memoria per plugin, con i segnali di memory leak (dati di giocatori usciti,
+  listener mai deregistrati, cache senza limite) e **health report** (`.sparkhealth`).
+- **Confronto tra due heap summary** (scheda «Confronta due heap» nella home, oppure `diff` da terminale):
+  cosa cresce tra i due dump, a che ritmo, verdetto per plugin (leak confermato, cresce con i giocatori,
+  stabile), classi Java attribuite al plugin che le riempie e stima di quando l'heap si riempie.
 - **Confronto** tra due profili (prima/dopo una modifica).
 
 L'attesa tra un tick e l'altro viene esclusa, mentre i pacchetti e i task eseguiti durante quell'attesa
@@ -106,6 +110,9 @@ sparkscope flame AbCd1234 -o flame.svg
 
 # confronto prima/dopo
 sparkscope diff VecchioCodice NuovoCodice
+
+# confronto di due heap summary per trovare i memory leak (l'ordine non conta)
+sparkscope diff heap-12.sparkheap heap-15.sparkheap --html confronto.html
 
 # analizzare un thread diverso dal main thread
 sparkscope analyze AbCd1234 --thread "Craft Scheduler"

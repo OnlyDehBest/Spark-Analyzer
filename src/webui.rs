@@ -185,6 +185,37 @@ fn heap_section(h: &HeapReport, text: &str) -> String {
 
 const HEAP_CSS: &str = ".lv{display:inline-block;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:600;margin-bottom:4px;border:1px solid var(--line)}.lv2{color:var(--crit);border-color:var(--crit)}.lv1{color:var(--high);border-color:var(--high)}.lv0{color:var(--ok)}table.hp td{vertical-align:top}table.hp td:nth-child(5){min-width:260px}table.hp td.small div{margin-top:2px}.hnotes{margin:8px 0 12px;padding-left:18px;color:var(--fg)}.hnotes li{margin:4px 0}details.hraw{margin-top:8px}details.hraw summary{cursor:pointer;color:var(--muted);font-size:13px;margin-bottom:8px}pre.heap{margin:0;background:var(--code);border:1px solid var(--line);border-radius:6px;padding:12px;overflow:auto;font:12px ui-monospace,Menlo,Consolas,monospace}";
 
+pub fn render_comparison(c: &crate::heapdiff::HeapComparison) -> Rendered {
+    let t = crate::i18n::t;
+    let leaks: Vec<String> = c.leaks().map(|p| p.name.clone()).collect();
+    let platform = if c.after.platform.is_empty() {
+        "Server".to_string()
+    } else {
+        c.after.platform.clone()
+    };
+    let detail = if leaks.is_empty() {
+        tf!(
+            "nessun leak · {}",
+            "no leak · {}",
+            fmt_duration(c.hours * 3600.0)
+        )
+    } else {
+        tf!(
+            "leak: {} · {}",
+            "leak: {} · {}",
+            leaks.join(", "),
+            fmt_duration(c.hours * 3600.0)
+        )
+    };
+    Rendered {
+        html: crate::report::heapdiff_html::render(c),
+        markdown: crate::heapdiff::render_text(c),
+        title: format!("{} · {platform}", t("Confronto heap", "Heap comparison")),
+        detail,
+        bad: !leaks.is_empty() || c.restarted,
+    }
+}
+
 pub fn with_static_actions(html: &str, home: &str) -> String {
     let buttons = format!(
         r#"<div class="actions"><a class="btn sec" href="{}">{}{}</a>"#,
@@ -214,7 +245,7 @@ pub fn shell(p: &Page) -> String {
         format!(r#"<script type="module">{}</script>"#, p.module_script)
     };
     format!(
-        r#"<!doctype html><html lang="{}" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">{}<title>{}</title><style>{}{}</style></head><body><div class="shell"><aside class="side"><a class="brand" href="{}" title="Home"><span class="logo">{}</span><span>Spark-Analyzer</span></a><nav><a class="on" href="{}">{}<span>{}</span></a></nav>{}<div class="sidefoot"><div class="srv"><b>Spark-Analyzer</b><span>v{}</span></div><button id="langbtn" class="ghost lang" data-to="{}" data-href="{}" title="Lingua / Language">{}</button><button id="theme" class="ghost" title="{}">{}</button></div></aside><main class="content">{}{}</main></div><script>{}{}{}{}</script>{}</body></html>"#,
+        r#"<!doctype html><html lang="{}" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">{}<title>{}</title><style>{}{}</style></head><body><div class="shell"><aside class="side"><a class="brand" href="{}" title="Home"><span class="logo">{}</span><span>Spark-Analyzer</span></a><nav><a class="on" href="{}">{}<span>{}</span></a></nav>{}<div class="sidefoot"><div class="srv"><b>Spark-Analyzer</b><span>v{}</span></div><button id="langbtn" class="ghost lang" data-to="{}" data-href="{}" title="Lingua / Language">{}</button><button id="theme" class="ghost" title="{}">{}</button></div></aside><main class="content">{}{}</main></div><script>{}{}{}{}{}</script>{}</body></html>"#,
         crate::i18n::lang().code(),
         FAVICON,
         esc(p.title),
@@ -237,6 +268,7 @@ pub fn shell(p: &Page) -> String {
         THEME_JS,
         ANIM_JS,
         messages_js(),
+        COMPARE_JS,
         p.script,
         module
     )
@@ -276,15 +308,90 @@ pub fn recent_html(recent: &[Recent]) -> (String, String) {
     (side, panel)
 }
 
+fn compare_slot(index: usize) -> String {
+    let t = crate::i18n::t;
+    let (title, hint) = if index == 0 {
+        (
+            t("Prima", "Before"),
+            t("Il dump più vecchio", "The older dump"),
+        )
+    } else {
+        (
+            t("Dopo", "After"),
+            t(
+                "Fatto qualche ora dopo, senza riavviare il server",
+                "Taken a few hours later, without restarting the server",
+            ),
+        )
+    };
+    format!(
+        r#"<div class="slot" data-slot="{index}"><h3>{title} <span class="tag">{n}</span></h3><p class="h">{hint}</p><div class="schip" hidden><span class="sok">{check}</span><div class="stxt"><b class="sname"></b><span class="sdet"></span></div><button type="button" class="ghost sclear" title="{remove}">{x}</button></div><div class="sinput"><form class="lrow slinkform"><input class="slink" autocomplete="off" placeholder="{ph}"><button class="btn sec" type="submit">{link}{load}</button></form><label class="drop sdrop"><input class="sfile" type="file" accept=".sparkheap" hidden><span class="dicon">{upload}</span><b>{drop}</b><span>{click}</span></label></div></div>"#,
+        n = index + 1,
+        check = icon("check"),
+        remove = t("Rimuovi", "Remove"),
+        x = icon("x"),
+        ph = t(
+            "Link spark.lucko.me o codice",
+            "spark.lucko.me link or code"
+        ),
+        link = icon("link"),
+        load = t("Carica", "Load"),
+        upload = icon("upload"),
+        drop = if index == 0 {
+            t("Trascina qui il primo file", "Drop the first file here")
+        } else {
+            t("Trascina qui il secondo file", "Drop the second file here")
+        },
+        click = t("oppure clicca per sceglierlo", "or click to choose it"),
+    )
+}
+
+fn compare_panel() -> String {
+    let t = crate::i18n::t;
+    format!(
+        r#"<section class="panel" id="cmppanel"><h2><span class="hi">{cube}</span>{title}</h2><p class="note">{note}</p><div class="cmp2">{a}{b}</div><div class="cmpbar"><button class="btn" type="button" id="cmpgo" disabled>{bolt}{go}</button><span class="dim small" id="cmpmsg">{missing}</span></div><ul class="tips"><li>{tip1}</li><li>{tip2}</li><li>{tip3}</li></ul></section>"#,
+        cube = icon("cube"),
+        title = t("Confronta due heap summary", "Compare two heap summaries"),
+        note = t(
+            "Carica due /spark heapsummary dello stesso server fatti a qualche ora di distanza: il report mostra cosa cresce, a che ritmo e quale plugin ha un memory leak.",
+            "Load two /spark heapsummary of the same server taken a few hours apart: the report shows what grows, how fast and which plugin has a memory leak.",
+        ),
+        a = compare_slot(0),
+        b = compare_slot(1),
+        bolt = icon("bolt"),
+        go = t("Confronta", "Compare"),
+        missing = t(
+            "Carica i due file. L'ordine non conta: li riordino io in base alla data.",
+            "Load both files. The order doesn't matter: I sort them by date.",
+        ),
+        tip1 = t(
+            "Fai /spark heapsummary adesso e di nuovo tra 2-3 ore, con giocatori che entrano ed escono",
+            "Run /spark heapsummary now and again in 2-3 hours, with players joining and leaving",
+        ),
+        tip2 = t(
+            "Non riavviare il server tra i due dump: se l'uptime non torna, ti avviso",
+            "Don't restart the server between the two dumps: if the uptime doesn't add up, I'll warn you",
+        ),
+        tip3 = t(
+            "Puoi incollare due link oppure trascinare due file .sparkheap",
+            "You can paste two links or drop two .sparkheap files",
+        ),
+    )
+}
+
 pub fn index_main(subtitle: &str, recent_panel: &str) -> String {
     let t = crate::i18n::t;
     format!(
         r#"<div class="top"><div><h1>{h1}</h1><p class="sub">{}</p></div></div>
+<div class="modesel"><div class="seg big" id="modesel"><button type="button" class="on" data-mode="one">{mode_one}</button><button type="button" data-mode="cmp">{mode_cmp}</button></div><span class="dim small" id="modehint">{mode_hint}</span></div>
+<div id="mode-one">
 <section class="panel"><h2><span class="hi">{link}</span>{link_t}</h2>
 <form id="lform" class="lrow"><input id="link" autocomplete="off" placeholder="{ph}"><button class="btn" type="submit">{bolt}{go}</button></form>
 <p class="note">{note1} <code>/spark profiler stop</code>.</p></section>
 <section class="panel"><h2><span class="hi">{upload}</span>{file_t}</h2>
 <label id="drop" class="drop"><input id="file" type="file" accept=".sparkprofile,.sparkheap,.sparkhealth" hidden><span class="dicon">{upload}</span><b>{drop}</b><span>{click}</span><small>{saved} <code>/spark profiler stop --save-to-file</code> {in_dir} <code>plugins/spark/</code></small></label></section>
+</div>
+<div id="mode-cmp" hidden>{compare}</div>
 <div id="busy" class="busy" hidden><span class="spin"></span><span id="busytext">{busy}</span></div>
 <div id="err" class="errbox" hidden></div>
 <div id="recentbox">{recent_panel}</div>"#,
@@ -309,6 +416,13 @@ pub fn index_main(subtitle: &str, recent_panel: &str) -> String {
         saved = t("I file salvati con", "Files saved with"),
         in_dir = t("sono in", "are in"),
         busy = t("Analisi in corso…", "Analyzing…"),
+        mode_one = t("Analizza un profilo", "Analyze a profile"),
+        mode_cmp = t("Confronta due heap", "Compare two heaps"),
+        mode_hint = t(
+            "oppure scegli «Confronta due heap» per trovare i memory leak",
+            "or pick “Compare two heaps” to find memory leaks",
+        ),
+        compare = compare_panel(),
     )
 }
 
@@ -328,6 +442,12 @@ fn messages_js() -> String {
         "httpFail": t("Download fallito (HTTP {s})", "Download failed (HTTP {s})"),
         "badLink": t("Link o codice spark non valido. Esempio: https://spark.lucko.me/AbCd1234", "Invalid spark link or code. Example: https://spark.lucko.me/AbCd1234"),
         "recent": t("Analisi recenti", "Recent analyses"),
+        "cmpMissing": t("Carica i due file. L'ordine non conta: li riordino io in base alla data.", "Load both files. The order doesn't matter: I sort them by date."),
+        "cmpOneLeft": t("Manca il secondo file. L'ordine non conta: li riordino io in base alla data.", "The second file is missing. The order doesn't matter: I sort them by date."),
+        "cmpReady": t("Pronto: premi Confronta.", "Ready: press Compare."),
+        "cmpSame": t("Hai caricato due volte lo stesso dump: serve un secondo heap summary fatto più tardi.", "You loaded the same dump twice: you need a second heap summary taken later."),
+        "cmpLoading": t("Leggo {f}…", "Reading {f}…"),
+        "cmpRunning": t("Confronto i due heap summary…", "Comparing the two heap summaries…"),
         "open": t("Apri →", "Open →"),
     });
     format!("var M={m};")
@@ -448,6 +568,36 @@ pub const EXTRA_CSS: &str = r#"
 .ghost.lang{font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--muted)}
 pre.heap{margin:0;background:var(--code);border:1px solid var(--line);border-radius:6px;padding:12px;overflow:auto;font:12px ui-monospace,Menlo,Consolas,monospace}
 @media (max-width:900px){.recent{display:none}}
+.modesel{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:0 0 18px}.seg.big{border-radius:12px}.seg.big button{padding:10px 18px;font-size:13px;font-family:Inter,system-ui,sans-serif;cursor:pointer}.seg.big button.on{background:var(--card3);color:var(--hd)}
+.cmp2{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media(max-width:800px){.cmp2{grid-template-columns:1fr}}.slot{border:1px solid var(--line);border-radius:14px;padding:16px;background:var(--card2)}.slot h3{margin:0 0 4px;font-size:15px;color:var(--hd);display:flex;gap:8px;align-items:center}.slot .tag{font:600 11px "JetBrains Mono",monospace;border:1px solid var(--line);border-radius:999px;padding:2px 8px;color:var(--muted)}.slot p.h{margin:0 0 12px;color:var(--muted);font-size:13px}.slot .lrow{margin-bottom:10px}.slot .drop{min-height:150px;padding:20px 12px}.slot.busy-slot{opacity:.6;pointer-events:none}
+.schip{display:flex;gap:12px;align-items:center;border:1px solid var(--ok);background:rgba(163,230,53,.06);border-radius:12px;padding:12px 14px}.schip[hidden],.sinput[hidden]{display:none}.schip .sok{color:var(--ok);flex:none;display:grid}.schip .stxt{flex:1;min-width:0}.schip .sname{display:block;color:var(--hd);font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.schip .sdet{display:block;color:var(--muted);font-size:12px}.schip .sclear{flex:none}
+.cmpbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:16px}.btn[disabled]{opacity:.45;cursor:not-allowed;pointer-events:none}.tips{margin:14px 0 0;padding-left:18px;color:var(--muted);font-size:13px}.tips li{margin:4px 0}
+"#;
+
+pub const COMPARE_JS: &str = r#"
+window.saSetupCompare=function(api){
+var one=document.getElementById('mode-one'),cmp=document.getElementById('mode-cmp'),hint=document.getElementById('modehint'),btns=document.querySelectorAll('#modesel button');
+var go=document.getElementById('cmpgo'),msg=document.getElementById('cmpmsg'),err=document.getElementById('err');
+var slots=[null,null];
+function setMode(m){var c=m==='cmp';one.hidden=c;cmp.hidden=!c;if(hint)hint.hidden=c;btns.forEach(function(b){b.classList.toggle('on',b.dataset.mode===m)});window.__saMode=m;try{history.replaceState(null,'',c?'#confronta':location.pathname+location.search)}catch(e){}}
+btns.forEach(function(b){b.addEventListener('click',function(){setMode(b.dataset.mode)})});
+function refresh(){var n=(slots[0]?1:0)+(slots[1]?1:0);var same=n===2&&slots[0].detail===slots[1].detail&&slots[0].size===slots[1].size;go.disabled=n<2||same;msg.textContent=same?M.cmpSame:n===2?M.cmpReady:n===1?M.cmpOneLeft:M.cmpMissing}
+function show(i){var el=document.querySelector('.slot[data-slot="'+i+'"]'),s=slots[i],chip=el.querySelector('.schip'),inp=el.querySelector('.sinput');chip.hidden=!s;inp.hidden=!!s;if(s){chip.querySelector('.sname').textContent=s.name;chip.querySelector('.sdet').textContent=s.detail}refresh()}
+function fail(e){err.textContent=(e&&e.message)||String(e);err.hidden=false}
+function accept(i,p){var el=document.querySelector('.slot[data-slot="'+i+'"]');err.hidden=true;el.classList.add('busy-slot');return p.then(function(s){slots[i]=s;show(i)}).catch(fail).then(function(){el.classList.remove('busy-slot')})}
+document.querySelectorAll('.slot').forEach(function(el){var i=+el.dataset.slot,file=el.querySelector('.sfile'),drop=el.querySelector('.sdrop');
+el.querySelector('.slinkform').addEventListener('submit',function(e){e.preventDefault();var v=el.querySelector('.slink').value.trim();if(!v){fail(M.pasteFirst);return}accept(i,api.fromLink(v))});
+file.addEventListener('change',function(){if(file.files[0])accept(i,api.fromFile(file.files[0]));file.value=''});
+['dragenter','dragover'].forEach(function(t){drop.addEventListener(t,function(e){e.preventDefault();e.stopPropagation();drop.classList.add('over')})});
+['dragleave','drop'].forEach(function(t){drop.addEventListener(t,function(e){e.preventDefault();drop.classList.remove('over')})});
+drop.addEventListener('drop',function(e){e.stopPropagation();var f=e.dataTransfer.files;if(!f.length)return;accept(i,api.fromFile(f[0]));if(f.length>1&&!slots[1-i])accept(1-i,api.fromFile(f[1]))});
+el.querySelector('.sclear').addEventListener('click',function(){slots[i]=null;show(i)})});
+cmp.addEventListener('drop',function(e){e.preventDefault();e.stopPropagation();var f=e.dataTransfer.files;for(var k=0,j=0;k<f.length&&j<2;j++){if(!slots[j]){accept(j,api.fromFile(f[k]));k++}}});
+go.addEventListener('click',function(){if(go.disabled)return;err.hidden=true;api.run(slots[0],slots[1]).catch(fail)});
+window.__saCmpLoad=function(i,p){setMode('cmp');return accept(i,p)};
+if(location.hash==='#confronta')setMode('cmp');
+refresh();
+};
 "#;
 
 pub const THEME_JS: &str = r#"
@@ -470,13 +620,19 @@ file.addEventListener('change',function(){send(file.files[0])});
 ['dragenter','dragover'].forEach(function(t){drop.addEventListener(t,function(e){e.preventDefault();drop.classList.add('over')})});
 ['dragleave','drop'].forEach(function(t){drop.addEventListener(t,function(e){e.preventDefault();drop.classList.remove('over')})});
 drop.addEventListener('drop',function(e){send(e.dataTransfer.files[0])});
-document.addEventListener('dragover',function(e){e.preventDefault()});document.addEventListener('drop',function(e){e.preventDefault();if(e.target.closest&&!e.target.closest('#drop'))send(e.dataTransfer.files[0])});
+document.addEventListener('dragover',function(e){e.preventDefault()});document.addEventListener('drop',function(e){e.preventDefault();if(window.__saMode==='cmp')return;if(e.target.closest&&!e.target.closest('#drop'))send(e.dataTransfer.files[0])});
 document.getElementById('link').addEventListener('paste',function(){var i=this;setTimeout(function(){if(/spark\.lucko\.me\/|^[A-Za-z0-9]{6,}$/.test(i.value.trim()))document.getElementById('lform').requestSubmit()},50)});
+function staged(r){return r.json().then(function(j){if(j.error)throw new Error(j.error);return j})}
+window.saSetupCompare({
+fromFile:function(f){return fetch('/api/heap/file?name='+encodeURIComponent(f.name)+'&'+LQ,{method:'POST',body:f}).then(staged)},
+fromLink:function(v){return fetch('/api/heap/link?'+LQ,{method:'POST',body:v}).then(staged)},
+run:function(a,b){start(M.cmpRunning);return fetch('/api/heap/compare?a='+encodeURIComponent(a.stage)+'&b='+encodeURIComponent(b.stage)+'&'+LQ,{method:'POST'}).then(done)}
+});
 })();
 "#;
 
 const STATIC_JS: &str = r#"
-import init, { analyze } from './pkg/sparkscope_web.js';
+import init, { analyze, describe_heap, compare_heaps } from './pkg/sparkscope_web.js';
 var OTHER=document.getElementById('langbtn').dataset.href;
 var REDIR=false;try{var pref=localStorage.getItem('sa-lang');if(pref&&pref!==M.lang){REDIR=true;location.replace(OTHER+location.search)}}catch(e){}
 if(REDIR)await new Promise(function(){});
@@ -506,8 +662,18 @@ file.addEventListener('change',function(){send(file.files[0])});
 ['dragenter','dragover'].forEach(function(t){drop.addEventListener(t,function(e){e.preventDefault();drop.classList.add('over')})});
 ['dragleave','drop'].forEach(function(t){drop.addEventListener(t,function(e){e.preventDefault();drop.classList.remove('over')})});
 drop.addEventListener('drop',function(e){send(e.dataTransfer.files[0])});
-document.addEventListener('dragover',function(e){e.preventDefault()});document.addEventListener('drop',function(e){e.preventDefault();if(e.target.closest&&!e.target.closest('#drop'))send(e.dataTransfer.files[0])});
+document.addEventListener('dragover',function(e){e.preventDefault()});document.addEventListener('drop',function(e){e.preventDefault();if(window.__saMode==='cmp')return;if(e.target.closest&&!e.target.closest('#drop'))send(e.dataTransfer.files[0])});
 document.getElementById('link').addEventListener('paste',function(){var i=this;setTimeout(function(){if(extractKey(i.value))document.getElementById('lform').requestSubmit()},50)});
+function fetchKey(key){return fetch('https://spark-usercontent.lucko.me/'+encodeURIComponent(key)).then(function(r){if(r.status===404)throw new Error(M.notFound);if(!r.ok)throw new Error(M.httpFail.replace('{s}',r.status));return r.arrayBuffer()}).then(function(b){return new Uint8Array(b)})}
+function heapSlot(bytes,name,key){return ready.then(function(){var j=JSON.parse(describe_heap(bytes,name,CUR));j.bytes=bytes;j.key=key||null;return j})}
+function renderCmp(a,b,lang){lang=lang||CUR;CUR=lang;return ready.then(function(){var res=JSON.parse(compare_heaps(a.bytes,a.name,b.bytes,b.name,HOME,lang));if(a.key&&b.key){try{var u=new URL(location.href);u.search='?a='+encodeURIComponent(a.key)+'&b='+encodeURIComponent(b.key);u.hash='';history.replaceState(null,'',u.toString())}catch(e){}}last=null;window.__saRender=function(l){renderCmp(a,b,l).catch(function(e){alert(e.message||String(e))})};setTimeout(function(){document.open();document.write(res.html);document.close();window.scrollTo(0,0)},0)})}
+window.saSetupCompare({
+fromFile:function(f){return f.arrayBuffer().then(function(b){return heapSlot(new Uint8Array(b),f.name,null)})},
+fromLink:function(v){var k=extractKey(v);if(!k)return Promise.reject(new Error(M.badLink));return fetchKey(k).then(function(b){return heapSlot(b,k,k)})},
+run:function(a,b){start(M.cmpRunning);return renderCmp(a,b).catch(function(e){fail(e.message||String(e))})}
+});
 showRecent();
-var q=new URLSearchParams(location.search).get('p');if(q){var k=extractKey(q);if(k){document.getElementById('link').value='https://spark.lucko.me/'+k;runKey(k)}}
+var sp=new URLSearchParams(location.search),q=sp.get('p'),qa=sp.get('a'),qb=sp.get('b');
+if(qa&&qb){var ka=extractKey(qa),kb=extractKey(qb);if(ka&&kb){start(M.cmpRunning);Promise.all([fetchKey(ka).then(function(x){return heapSlot(x,ka,ka)}),fetchKey(kb).then(function(x){return heapSlot(x,kb,kb)})]).then(function(s){return renderCmp(s[0],s[1])}).catch(function(e){fail(e.message||String(e))})}}
+else if(q){var k=extractKey(q);if(k){document.getElementById('link').value='https://spark.lucko.me/'+k;runKey(k)}}
 "#;

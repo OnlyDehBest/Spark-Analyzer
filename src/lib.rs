@@ -11,6 +11,7 @@ pub mod analysis;
 pub mod config;
 pub mod diff;
 pub mod heap;
+pub mod heapdiff;
 pub mod loader;
 pub mod model;
 pub mod patterns;

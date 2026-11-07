@@ -17,6 +17,13 @@ use crate::webui;
 
 const MAX_UPLOAD: usize = 512 * 1024 * 1024;
 const MAX_STORED: usize = 30;
+const MAX_STAGED: usize = 12;
+
+struct Staged {
+    id: String,
+    bytes: Arc<Vec<u8>>,
+    name: String,
+}
 
 struct Stored {
     id: String,
@@ -26,12 +33,14 @@ struct Stored {
     bytes: Arc<Vec<u8>>,
     name: String,
     key: Option<String>,
+    second: Option<(Arc<Vec<u8>>, String)>,
     cache: HashMap<(Lang, String), Arc<Vec<u8>>>,
 }
 
 struct State {
     bytebin: String,
     reports: Mutex<Vec<Stored>>,
+    staged: Mutex<Vec<Staged>>,
     counter: AtomicU64,
 }
 
@@ -74,6 +83,7 @@ pub fn serve(o: ServeOptions) -> Result<()> {
     let state = Arc::new(State {
         bytebin: o.bytebin,
         reports: Mutex::new(Vec::new()),
+        staged: Mutex::new(Vec::new()),
         // id unici anche dopo un riavvio: le pagine /r/ restano in cache del browser
         counter: AtomicU64::new(
             std::time::SystemTime::now()
@@ -207,30 +217,25 @@ fn handle(mut req: Request, st: &State) {
         }
         (Method::Post, "/api/file") => {
             let name = query_param(&url, "name").unwrap_or_else(|| "profile".into());
-            let mut bytes = Vec::new();
-            let read = req
-                .as_reader()
-                .take(MAX_UPLOAD as u64 + 1)
-                .read_to_end(&mut bytes);
-            let result = match read {
-                Err(e) => Err(anyhow!(
-                    "{}",
-                    tf!("upload interrotto: {e}", "upload interrupted: {e}")
-                )),
-                Ok(_) if bytes.len() > MAX_UPLOAD => Err(anyhow!(
-                    "{}",
-                    i18n::t(
-                        "file troppo grande (massimo 512 MB)",
-                        "file too large (max 512 MB)"
-                    )
-                )),
-                Ok(_) if bytes.is_empty() => Err(anyhow!(
-                    "{}",
-                    i18n::t("il file è vuoto", "the file is empty")
-                )),
-                Ok(_) => store(st, bytes, name, None),
-            };
+            let result = read_upload(&mut req).and_then(|bytes| store(st, bytes, name, None));
             api_result(result)
+        }
+        (Method::Post, "/api/heap/link") => {
+            let mut body = String::new();
+            let _ = req.as_reader().take(8192).read_to_string(&mut body);
+            let result = loader::fetch_link(body.trim(), &st.bytebin)
+                .and_then(|(bytes, key)| stage(st, bytes, key));
+            staged_result(result)
+        }
+        (Method::Post, "/api/heap/file") => {
+            let name = query_param(&url, "name").unwrap_or_else(|| "heap.sparkheap".into());
+            let result = read_upload(&mut req).and_then(|bytes| stage(st, bytes, name));
+            staged_result(result)
+        }
+        (Method::Post, "/api/heap/compare") => {
+            let a = query_param(&url, "a").unwrap_or_default();
+            let b = query_param(&url, "b").unwrap_or_default();
+            api_result(store_comparison(st, &a, &b))
         }
         (Method::Get, p) if p.starts_with("/r/") => {
             let id = p[3..].trim_end_matches('/').to_string();
@@ -251,6 +256,127 @@ fn handle(mut req: Request, st: &State) {
     let _ = req.respond(resp);
 }
 
+fn read_upload(req: &mut Request) -> Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    let read = req
+        .as_reader()
+        .take(MAX_UPLOAD as u64 + 1)
+        .read_to_end(&mut bytes);
+    match read {
+        Err(e) => Err(anyhow!(
+            "{}",
+            tf!("upload interrotto: {e}", "upload interrupted: {e}")
+        )),
+        Ok(_) if bytes.len() > MAX_UPLOAD => Err(anyhow!(
+            "{}",
+            i18n::t(
+                "file troppo grande (massimo 512 MB)",
+                "file too large (max 512 MB)"
+            )
+        )),
+        Ok(_) if bytes.is_empty() => Err(anyhow!(
+            "{}",
+            i18n::t("il file è vuoto", "the file is empty")
+        )),
+        Ok(_) => Ok(bytes),
+    }
+}
+
+fn next_id(st: &State, len: usize) -> String {
+    let n = st.counter.fetch_add(1, Ordering::Relaxed);
+    format!(
+        "{n}{:x}",
+        (len as u64 ^ n.wrapping_mul(2_654_435_761)) & 0xffff
+    )
+}
+
+struct StageInfo {
+    id: String,
+    name: String,
+    detail: String,
+    size: usize,
+}
+
+fn stage(st: &State, bytes: Vec<u8>, name: String) -> Result<StageInfo> {
+    let info = crate::heapdiff::describe_bytes(&bytes, &name)?;
+    let id = next_id(st, bytes.len());
+    let size = bytes.len();
+    let mut staged = st.staged.lock().unwrap_or_else(|e| e.into_inner());
+    staged.insert(
+        0,
+        Staged {
+            id: id.clone(),
+            bytes: Arc::new(bytes),
+            name: name.clone(),
+        },
+    );
+    staged.truncate(MAX_STAGED);
+    Ok(StageInfo {
+        id,
+        name,
+        detail: crate::heapdiff::describe_label(&info),
+        size,
+    })
+}
+
+fn staged_result(r: Result<StageInfo>) -> Response<std::io::Cursor<Vec<u8>>> {
+    match r {
+        Ok(s) => json_resp(
+            200,
+            serde_json::json!({ "stage": s.id, "name": s.name, "detail": s.detail, "size": s.size }),
+        ),
+        Err(e) => json_resp(400, serde_json::json!({ "error": format!("{e:#}") })),
+    }
+}
+
+fn staged_bytes(st: &State, id: &str) -> Result<(Arc<Vec<u8>>, String)> {
+    let staged = st.staged.lock().unwrap_or_else(|e| e.into_inner());
+    staged
+        .iter()
+        .find(|s| s.id == id)
+        .map(|s| (Arc::clone(&s.bytes), s.name.clone()))
+        .ok_or_else(|| {
+            anyhow!(
+                "{}",
+                i18n::t(
+                    "file non più disponibile: ricaricalo",
+                    "file no longer available: load it again"
+                )
+            )
+        })
+}
+
+fn render_comparison(a: &[u8], name_a: &str, b: &[u8], name_b: &str) -> Result<webui::Rendered> {
+    let c = crate::heapdiff::compare_bytes(a, name_a, b, name_b)?;
+    Ok(webui::render_comparison(&c))
+}
+
+fn store_comparison(st: &State, a: &str, b: &str) -> Result<String> {
+    let (bytes_a, name_a) = staged_bytes(st, a)?;
+    let (bytes_b, name_b) = staged_bytes(st, b)?;
+    let out = render_comparison(&bytes_a, &name_a, &bytes_b, &name_b)?;
+    let id = next_id(st, bytes_a.len() + bytes_b.len());
+    let mut cache = HashMap::new();
+    cache.insert((i18n::lang(), String::new()), final_page(&out.html));
+    let mut reports = st.reports.lock().unwrap_or_else(|e| e.into_inner());
+    reports.insert(
+        0,
+        Stored {
+            id: id.clone(),
+            title: out.title,
+            detail: out.detail,
+            bad: out.bad,
+            bytes: bytes_a,
+            name: name_a,
+            key: None,
+            second: Some((bytes_b, name_b)),
+            cache,
+        },
+    );
+    reports.truncate(MAX_STORED);
+    Ok(id)
+}
+
 fn render(bytes: &[u8], name: &str, key: Option<&str>, windows: &str) -> Result<webui::Rendered> {
     let mut loaded = loader::load_bytes(bytes, name)?;
     if let Some(k) = key {
@@ -268,15 +394,24 @@ fn render(bytes: &[u8], name: &str, key: Option<&str>, windows: &str) -> Result<
 
 fn report_html(st: &State, id: &str, lang: Lang, windows: &str) -> Option<Result<Arc<Vec<u8>>>> {
     let ck = (lang, windows.to_string());
-    let (bytes, name, key) = {
+    let (bytes, name, key, second) = {
         let reports = st.reports.lock().unwrap_or_else(|e| e.into_inner());
         let r = reports.iter().find(|r| r.id == id)?;
         if let Some(h) = r.cache.get(&ck) {
             return Some(Ok(Arc::clone(h)));
         }
-        (Arc::clone(&r.bytes), r.name.clone(), r.key.clone())
+        (
+            Arc::clone(&r.bytes),
+            r.name.clone(),
+            r.key.clone(),
+            r.second.clone(),
+        )
     };
-    let out = match render(&bytes, &name, key.as_deref(), windows) {
+    let rendered = match &second {
+        Some((b, nb)) => render_comparison(&bytes, &name, b, nb),
+        None => render(&bytes, &name, key.as_deref(), windows),
+    };
+    let out = match rendered {
         Ok(o) => o,
         Err(e) => return Some(Err(e)),
     };
@@ -297,11 +432,7 @@ fn api_result(r: Result<String>) -> Response<std::io::Cursor<Vec<u8>>> {
 
 fn store(st: &State, bytes: Vec<u8>, name: String, key: Option<String>) -> Result<String> {
     let out = render(&bytes, &name, key.as_deref(), "")?;
-    let n = st.counter.fetch_add(1, Ordering::Relaxed);
-    let id = format!(
-        "{n}{:x}",
-        (bytes.len() as u64 ^ n.wrapping_mul(2_654_435_761)) & 0xffff
-    );
+    let id = next_id(st, bytes.len());
     let mut cache = HashMap::new();
     cache.insert((i18n::lang(), String::new()), final_page(&out.html));
     let mut reports = st.reports.lock().unwrap_or_else(|e| e.into_inner());
@@ -315,6 +446,7 @@ fn store(st: &State, bytes: Vec<u8>, name: String, key: Option<String>) -> Resul
             bytes: Arc::new(bytes),
             name,
             key,
+            second: None,
             cache,
         },
     );
