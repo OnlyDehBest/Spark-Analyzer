@@ -647,3 +647,35 @@ fn heap_memory_by_plugin_flags_leaks() {
             && html.contains("1,840,000")
     );
 }
+
+#[test]
+fn malicious_profile_cannot_inject_html() {
+    let bytes = fixture::sample_malicious().encode_to_vec();
+    let l = sparkscope::loader::load_bytes(&bytes, "evil.sparkprofile").unwrap();
+    let (r, _, _) = sparkscope::pipeline::build(l, None).unwrap();
+    assert!(
+        r.analysis
+            .sources
+            .iter()
+            .any(|s| s.display.contains("<img")),
+        "il fixture deve davvero contenere il nome malevolo"
+    );
+    let html = report::html::render(&r);
+    for raw in ["<img src=x", "</script><img", "<script>window.__xss"] {
+        assert!(!html.contains(raw), "HTML non sicuro: {raw}");
+    }
+    let mut rest = html.as_str();
+    while let Some(i) = rest.find(r#"<script type="application/json""#) {
+        let body = &rest[i..];
+        let start = body.find('>').unwrap() + 1;
+        let end = body.find("</script>").unwrap();
+        let json = &body[start..end];
+        assert!(
+            !json.contains('<'),
+            "JSON incorporato con '<': {}",
+            &json[..json.len().min(80)]
+        );
+        serde_json::from_str::<serde_json::Value>(json).expect("JSON incorporato valido");
+        rest = &body[end..];
+    }
+}

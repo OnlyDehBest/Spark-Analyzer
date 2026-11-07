@@ -41,6 +41,7 @@ struct Stored {
 
 struct State {
     bytebin: String,
+    loopback_only: bool,
     reports: Mutex<Vec<Stored>>,
     staged: Mutex<Vec<Staged>>,
     counter: AtomicU64,
@@ -82,8 +83,10 @@ pub fn serve(o: ServeOptions) -> Result<()> {
     if o.open {
         let _ = webbrowser::open(&url);
     }
+    let loopback_only = is_loopback_host(&o.host);
     let state = Arc::new(State {
         bytebin: o.bytebin,
+        loopback_only,
         reports: Mutex::new(Vec::new()),
         staged: Mutex::new(Vec::new()),
         // id unici anche dopo un riavvio: le pagine /r/ restano in cache del browser
@@ -98,6 +101,57 @@ pub fn serve(o: ServeOptions) -> Result<()> {
         std::thread::spawn(move || handle(req, &st));
     }
     Ok(())
+}
+
+fn is_loopback_host(host: &str) -> bool {
+    let h = host.trim_start_matches('[');
+    let h = match h.split_once(']') {
+        Some((inner, _)) => inner,
+        None => h.rsplit_once(':').map_or(h, |(name, port)| {
+            if port.chars().all(|c| c.is_ascii_digit()) && !name.contains(':') {
+                name
+            } else {
+                h
+            }
+        }),
+    };
+    matches!(h, "127.0.0.1" | "localhost" | "::1")
+}
+
+fn authority_of(origin: &str) -> Option<&str> {
+    let rest = origin
+        .strip_prefix("http://")
+        .or_else(|| origin.strip_prefix("https://"))?;
+    Some(rest.split('/').next().unwrap_or(rest))
+}
+
+fn request_allowed(
+    is_post: bool,
+    host: Option<&str>,
+    origin: Option<&str>,
+    fetch_site: Option<&str>,
+    loopback_only: bool,
+) -> bool {
+    if loopback_only && !host.is_some_and(is_loopback_host) {
+        return false;
+    }
+    if !is_post {
+        return true;
+    }
+    if matches!(fetch_site, Some("cross-site" | "same-site")) {
+        return false;
+    }
+    match origin {
+        None | Some("null") => fetch_site.is_none_or(|f| f == "same-origin" || f == "none"),
+        Some(o) => authority_of(o).is_some_and(|a| host.is_some_and(|h| h.eq_ignore_ascii_case(a))),
+    }
+}
+
+fn header_value(req: &Request, name: &'static str) -> Option<String> {
+    req.headers()
+        .iter()
+        .find(|h| h.field.equiv(name))
+        .map(|h| h.value.as_str().to_string())
 }
 
 fn header(k: &str, v: &str) -> Header {
@@ -204,6 +258,23 @@ fn handle(mut req: Request, st: &State) {
         .headers()
         .iter()
         .any(|h| h.field.equiv("Accept-Encoding") && h.value.as_str().contains("gzip"));
+    let allowed = request_allowed(
+        method == Method::Post,
+        header_value(&req, "Host").as_deref(),
+        header_value(&req, "Origin").as_deref(),
+        header_value(&req, "Sec-Fetch-Site").as_deref(),
+        st.loopback_only,
+    );
+    if !allowed {
+        let _ = req.respond(json_resp(
+            403,
+            serde_json::json!({ "error": i18n::t(
+                    "richiesta bloccata: arriva da un altro sito",
+                    "request blocked: it comes from another site"
+                ) }),
+        ));
+        return;
+    }
     let resp = match (method, path.as_str()) {
         (Method::Get, "/") => {
             html_resp(index_page(st), gz).with_header(header("Cache-Control", "no-cache"))
@@ -567,6 +638,68 @@ fn with_actions(html: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn loopback_hosts() {
+        for h in [
+            "127.0.0.1:8085",
+            "localhost:8085",
+            "[::1]:8085",
+            "localhost",
+            "127.0.0.1",
+        ] {
+            assert!(super::is_loopback_host(h), "{h}");
+        }
+        for h in [
+            "evil.example:8085",
+            "192.168.1.5:8085",
+            "127.0.0.1.evil.com",
+            "0.0.0.0",
+        ] {
+            assert!(!super::is_loopback_host(h), "{h}");
+        }
+    }
+
+    #[test]
+    fn blocks_cross_site_and_rebinding() {
+        let ok = super::request_allowed;
+        let host = Some("127.0.0.1:8085");
+        assert!(ok(false, host, None, None, true));
+        assert!(ok(
+            true,
+            host,
+            Some("http://127.0.0.1:8085"),
+            Some("same-origin"),
+            true
+        ));
+        assert!(ok(true, host, None, None, true));
+        assert!(!ok(false, Some("evil.example:8085"), None, None, true));
+        assert!(!ok(
+            true,
+            host,
+            Some("https://evil.example"),
+            Some("cross-site"),
+            true
+        ));
+        assert!(!ok(true, host, Some("https://evil.example"), None, true));
+        assert!(!ok(true, host, Some("http://localhost:8085"), None, true));
+        assert!(!ok(true, host, None, Some("cross-site"), true));
+        assert!(!ok(true, host, Some("null"), Some("cross-site"), true));
+        assert!(ok(
+            true,
+            Some("192.168.1.5:8085"),
+            Some("http://192.168.1.5:8085"),
+            Some("same-origin"),
+            false
+        ));
+        assert!(!ok(
+            true,
+            Some("192.168.1.5:8085"),
+            Some("https://evil.example"),
+            Some("cross-site"),
+            false
+        ));
+    }
+
     #[test]
     fn public_links() {
         let site = crate::report::html::PUBLIC_SITE;

@@ -1071,3 +1071,28 @@ pub fn sample_heap_after_restart() -> HeapData {
     let t0 = sample_heap().metadata.unwrap_or_default().generated_time;
     with_snapshot(sample_heap(), t0 + HEAP_INTERVAL_MS, 600_000, 42)
 }
+
+#[allow(dead_code)]
+pub const XSS_METHOD: &str = "save</script><img src=x onerror=window.__xss=1>";
+#[allow(dead_code)]
+pub const XSS_PLUGIN: &str = "Eco<img src=x onerror=window.__xss=2>";
+
+#[allow(dead_code)]
+pub fn sample_malicious() -> SamplerData {
+    let mut s = sample();
+    for t in &mut s.threads {
+        for n in &mut t.children {
+            if n.class_name.ends_with("ShopRepository") {
+                n.method_name = XSS_METHOD.to_string();
+            }
+        }
+    }
+    if let Some(m) = s.metadata.as_mut()
+        && let Some(src) = m.sources.get_mut("EconomyShop")
+    {
+        src.name = XSS_PLUGIN.to_string();
+    }
+    s.metadata.get_or_insert_with(Default::default).comment =
+        "</script><script>window.__xss=3</script>".into();
+    s
+}
