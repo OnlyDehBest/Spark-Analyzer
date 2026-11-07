@@ -21,6 +21,18 @@ pub struct CatStat {
     pub top_owners: Vec<Stat>,
     pub top_methods: Vec<Stat>,
     pub example_stack: Vec<String>,
+    /// Plugin e suo metodo più interno da cui parte il lavoro di questa categoria.
+    pub culprit_sites: Vec<CulpritSite>,
+    /// Primo metodo (dal basso dello stack) in un pacchetto che spark non associa a nessun plugin.
+    pub unknown_sites: Vec<Stat>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct CulpritSite {
+    pub source: String,
+    pub method: String,
+    pub time: f64,
+    pub pct: f64,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -194,6 +206,8 @@ struct State {
     owner: Option<u32>,
     ctx: Option<Cat>,
     event_caller: Option<u32>,
+    owner_frame: Option<u32>,
+    unknown_frame: Option<u32>,
     entered: bool,
 }
 
@@ -266,6 +280,9 @@ pub fn analyze(p: &Profile) -> Analysis {
     let mut method_source: HashMap<u32, Option<u32>> = HashMap::new();
     let mut cat_owner: HashMap<(Cat, u32), f64> = HashMap::new();
     let mut cat_method: HashMap<(Cat, u32), f64> = HashMap::new();
+    let mut cat_site: HashMap<(Cat, u32, u32), f64> = HashMap::new();
+    let mut cat_unknown: HashMap<(Cat, u32), f64> = HashMap::new();
+    let unknown_bucket = crate::i18n::t("Sconosciuto", "Unknown");
     let mut owner_method: HashMap<(u32, u32), f64> = HashMap::new();
     let mut owner_hazard: HashMap<(u32, Cat), f64> = HashMap::new();
     let mut entity_self: HashMap<u32, f64> = HashMap::new();
@@ -313,6 +330,8 @@ pub fn analyze(p: &Profile) -> Analysis {
             owner: None,
             ctx: None,
             event_caller: None,
+            owner_frame: None,
+            unknown_frame: None,
             entered: false,
         });
     }
@@ -371,6 +390,15 @@ pub fn analyze(p: &Profile) -> Analysis {
         }
         let cat = own_cat.or(st.cat);
         let owner = src.or(st.owner);
+        let owner_frame = if src.is_some() {
+            Some(mid)
+        } else {
+            st.owner_frame
+        };
+        let unknown_frame = st.unknown_frame.or_else(|| {
+            (src.is_none() && patterns::package_bucket(&node.class) == unknown_bucket)
+                .then_some(mid)
+        });
         let ctx = match own_cat {
             Some(c @ (Cat::PluginEvents | Cat::PluginTasks | Cat::Commands | Cat::Network))
                 if src.is_none() =>
@@ -494,6 +522,9 @@ pub fn analyze(p: &Profile) -> Analysis {
                             oa.win[wi] += self_win[wi];
                         }
                         *cat_owner.entry((c, o)).or_insert(0.0) += self_t;
+                        if let Some(fr) = owner_frame {
+                            *cat_site.entry((c, o, fr)).or_insert(0.0) += self_t;
+                        }
                         *owner_method.entry((o, mid)).or_insert(0.0) += self_t;
                         if c.is_sync_hazard()
                             || matches!(c, Cat::Logging | Cat::Exceptions | Cat::Serialization)
@@ -502,6 +533,9 @@ pub fn analyze(p: &Profile) -> Analysis {
                         }
                     }
                     None => {
+                        if let Some(u) = unknown_frame {
+                            *cat_unknown.entry((c, u)).or_insert(0.0) += self_t;
+                        }
                         *bucket_self
                             .entry(patterns::package_bucket(&node.class))
                             .or_insert(0.0) += self_t;
@@ -532,6 +566,8 @@ pub fn analyze(p: &Profile) -> Analysis {
                 owner,
                 ctx,
                 event_caller,
+                owner_frame,
+                unknown_frame,
                 entered: false,
             });
         }
@@ -574,7 +610,32 @@ pub fn analyze(p: &Profile) -> Analysis {
                 .get(c)
                 .map(|(nid, _)| example_stack(thread, *nid))
                 .unwrap_or_default();
+            let mut culprit_sites: Vec<CulpritSite> = cat_site
+                .iter()
+                .filter(|((cc, _, _), _)| cc == c)
+                .map(|((_, o, m), t)| CulpritSite {
+                    source: name_of(*o),
+                    method: mname(*m),
+                    time: *t,
+                    pct: pct(*t),
+                })
+                .collect();
+            culprit_sites.sort_by(|a, b| b.time.total_cmp(&a.time).then(a.method.cmp(&b.method)));
+            culprit_sites.truncate(6);
+            let mut unknown_sites: Vec<Stat> = cat_unknown
+                .iter()
+                .filter(|((cc, _), _)| cc == c)
+                .map(|((_, m), t)| Stat {
+                    name: mname(*m),
+                    time: *t,
+                    pct: pct(*t),
+                })
+                .collect();
+            sort_stats(&mut unknown_sites);
+            unknown_sites.truncate(4);
             CatStat {
+                unknown_sites,
+                culprit_sites,
                 cat: *c,
                 label: c.label().to_string(),
                 time: a.total,

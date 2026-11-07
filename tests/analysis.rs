@@ -532,3 +532,66 @@ fn summary_and_alloc_in_english() {
     assert!(html.contains("Copy summary") && html.contains("Allocation sites"));
     assert!(!html.contains("Punti di allocazione"));
 }
+
+#[test]
+fn advice_names_the_responsible_plugin_and_method() {
+    let r = build();
+    let all: Vec<String> = r
+        .findings
+        .iter()
+        .flat_map(|f| f.solutions.iter().cloned())
+        .collect();
+    assert!(
+        !all.iter()
+            .any(|s| s.contains("plugin responsabil") || s.contains("tra i responsabili")),
+        "{all:#?}"
+    );
+    let db = r
+        .findings
+        .iter()
+        .find(|f| f.title.starts_with("Accesso a database sincrono"))
+        .unwrap();
+    assert!(
+        db.solutions[0].starts_with("EconomyShop 2.4.1 (ShopRepository.saveBalances) deve"),
+        "{}",
+        db.solutions[0]
+    );
+    assert!(db.culprits[0].contains("ShopRepository.saveBalances"));
+    let ev = r
+        .findings
+        .iter()
+        .find(|f| f.title == "Eventi Bukkit più costosi")
+        .unwrap();
+    assert!(
+        ev.solutions
+            .iter()
+            .any(|s| s.contains("AntiCheatX 5.0.0 (MoveListener.onMove) su PlayerMoveEvent")),
+        "{:?}",
+        ev.solutions
+    );
+    assert!(
+        r.summary
+            .action
+            .as_deref()
+            .unwrap_or("")
+            .contains("EconomyShop")
+    );
+
+    let mut data = fixture::sample();
+    data.class_sources
+        .retain(|k, _| !k.starts_with("com.example.shop"));
+    let p = Profile::from_proto(data);
+    let a = analysis::analyze(&p);
+    let r = report::build(&p, a, "test", None, "x");
+    let db = r
+        .findings
+        .iter()
+        .find(|f| f.title.starts_with("Accesso a database sincrono"))
+        .unwrap();
+    assert!(
+        db.solutions[0].contains("pacchetto com.example.shop (SaveTask.run)")
+            && db.culprits[0].contains("com.example.shop"),
+        "senza mappatura spark si indica il pacchetto del .jar: {}",
+        db.solutions[0]
+    );
+}

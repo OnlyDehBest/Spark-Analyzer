@@ -262,6 +262,8 @@ pub struct AllocReport {
     pub threads: Vec<Stat>,
     pub sources: Vec<Stat>,
     pub categories: Vec<Stat>,
+    /// Plugin che allocano dentro ogni fase (chiave: etichetta della fase).
+    pub category_owners: std::collections::BTreeMap<String, Vec<Stat>>,
     pub sites: Vec<AllocSite>,
     pub habits: Vec<HabitStat>,
 }
@@ -282,6 +284,7 @@ struct Acc<'a> {
     p: &'a Profile,
     owner_bytes: HashMap<String, f64>,
     cat_bytes: HashMap<Cat, f64>,
+    cat_owner: HashMap<(Cat, String), f64>,
     site_bytes: SiteMap,
     habit_bytes: HashMap<Habit, (f64, HashMap<String, f64>)>,
 }
@@ -329,6 +332,11 @@ fn walk(acc: &mut Acc, t: &Thread) {
             *acc.cat_bytes
                 .entry(cat.unwrap_or(Cat::Other))
                 .or_insert(0.0) += self_b;
+            if let Some(o) = &owner {
+                *acc.cat_owner
+                    .entry((cat.unwrap_or(Cat::Other), o.clone()))
+                    .or_insert(0.0) += self_b;
+            }
             let (site_id, via) = match (site, via) {
                 (Some(s), Some(v)) => (s, Some(t.node(v).short_label())),
                 (Some(s), None) => (s, None),
@@ -392,6 +400,7 @@ pub fn analyze(p: &Profile) -> AllocReport {
         p,
         owner_bytes: HashMap::new(),
         cat_bytes: HashMap::new(),
+        cat_owner: HashMap::new(),
         site_bytes: HashMap::new(),
         habit_bytes: HashMap::new(),
     };
@@ -423,6 +432,23 @@ pub fn analyze(p: &Profile) -> AllocReport {
         .map(|mut s| {
             s.name = p.sources.display_name(&s.name);
             s
+        })
+        .collect();
+    let mut by_cat: HashMap<Cat, HashMap<String, f64>> = HashMap::new();
+    for ((c, o), b) in std::mem::take(&mut acc.cat_owner) {
+        *by_cat.entry(c).or_default().entry(o).or_insert(0.0) += b;
+    }
+    let category_owners = by_cat
+        .into_iter()
+        .map(|(c, m)| {
+            let v = sorted(m, total, 4)
+                .into_iter()
+                .map(|mut s| {
+                    s.name = p.sources.display_name(&s.name);
+                    s
+                })
+                .collect();
+            (c.label().to_string(), v)
         })
         .collect();
     let mut categories: Vec<Stat> = acc
@@ -487,6 +513,7 @@ pub fn analyze(p: &Profile) -> AllocReport {
         threads: sorted(thread_bytes, total, 15),
         sources,
         categories,
+        category_owners,
         sites,
         habits,
     }
@@ -522,8 +549,8 @@ fn category_advice(name: &str) -> Option<&'static str> {
         ))
     } else if is(Cat::Logging) {
         Some(t(
-            "Logging: qualcosa scrive in console di continuo. Controlla latest.log e disattiva il debug del plugin responsabile",
-            "Logging: something writes to the console constantly. Check latest.log and turn off the responsible plugin's debug",
+            "Logging: qualcosa scrive in console di continuo. Controlla latest.log e disattiva il debug dei plugin indicati",
+            "Logging: something writes to the console constantly. Check latest.log and turn off debug in the plugins listed",
         ))
     } else if is(Cat::Exceptions) {
         Some(t(
@@ -758,6 +785,33 @@ pub fn findings(r: &AllocReport, p: &Profile) -> Vec<Finding> {
         let Some(adv) = category_advice(&c.name) else {
             continue;
         };
+        let owners: Vec<&Stat> = r
+            .category_owners
+            .get(&c.name)
+            .map(|v| v.iter().filter(|o| o.pct >= c.pct * 0.05).collect())
+            .unwrap_or_default();
+        let mut ev = vec![tf!(
+            "{} allocati in questa fase",
+            "{} allocated in this phase",
+            fmt_time(c.time, "byte")
+        )];
+        if owners.is_empty() {
+            ev.push(
+                t(
+                    "Nessun plugin compare negli stack di questa fase: le allocazioni partono dal server stesso",
+                    "No plugin appears on the stacks of this phase: the allocations come from the server itself",
+                )
+                .into(),
+            );
+        }
+        for o in &owners {
+            ev.push(tf!(
+                "{}: {}% delle allocazioni totali in questa fase",
+                "{}: {}% of total allocations in this phase",
+                o.name,
+                fmt_num(o.pct)
+            ));
+        }
         out.push(Finding {
             severity: Severity::Basso,
             area: area.clone(),
@@ -768,14 +822,10 @@ pub fn findings(r: &AllocReport, p: &Profile) -> Vec<Finding> {
                 fmt_num(c.pct)
             ),
             impact_pct: c.pct,
-            evidence: vec![tf!(
-                "{} allocati in questa fase",
-                "{} allocated in this phase",
-                fmt_time(c.time, "byte")
-            )],
+            evidence: ev,
             explanation: String::new(),
             solutions: vec![adv.into()],
-            culprits: Vec::new(),
+            culprits: owners.iter().map(|o| o.name.clone()).collect(),
         });
     }
     out
