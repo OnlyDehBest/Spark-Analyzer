@@ -800,3 +800,64 @@ fn sample_with(paper_wait: bool) -> SamplerData {
         channel_info: None,
     }
 }
+
+#[allow(dead_code)]
+pub fn sample_alloc() -> SamplerData {
+    let mut d = sample();
+    let main = thread(
+        "Server thread",
+        vec![chain(
+            &[(MS, "runServer"), (MS, "tickServer"), (MS, "tickChildren")],
+            n(
+                SL,
+                "tick",
+                vec![
+                    chain(&[(LE, "tick")], leaf("java.util.ArrayList", "grow", 2.0e8)),
+                    chain(
+                        &[
+                            ("org.bukkit.plugin.SimplePluginManager", "callEvent"),
+                            ("com.example.anticheat.MoveListener", "onMove"),
+                        ],
+                        n(
+                            "org.bukkit.craftbukkit.entity.CraftEntity",
+                            "getLocation",
+                            vec![leaf("org.bukkit.Location", "<init>", 6.0e8)],
+                        ),
+                    ),
+                    chain(
+                        &[
+                            ("org.bukkit.plugin.SimplePluginManager", "callEvent"),
+                            ("com.example.anticheat.check.SpeedCheck", "check"),
+                            ("java.util.stream.ReferencePipeline", "collect"),
+                        ],
+                        leaf("java.util.stream.ReduceOps$3", "makeRef", 3.0e8),
+                    ),
+                    chain(
+                        &[
+                            (
+                                "org.bukkit.craftbukkit.scheduler.CraftScheduler",
+                                "mainThreadHeartbeat",
+                            ),
+                            ("com.example.shop.SaveTask", "run"),
+                            ("java.lang.String", "format"),
+                        ],
+                        leaf("java.util.Formatter", "format", 2.0e8),
+                    ),
+                ],
+            ),
+        )],
+    );
+    let netty = thread(
+        "Netty Epoll Server IO #1",
+        vec![chain(
+            &[("io.netty.channel.epoll.EpollEventLoop", "run")],
+            leaf("io.netty.buffer.PoolArena", "allocate", 1.0e8),
+        )],
+    );
+    d.threads = vec![main, netty];
+    if let Some(m) = d.metadata.as_mut() {
+        m.sampler_mode = 1;
+        m.interval = 524_287;
+    }
+    d
+}

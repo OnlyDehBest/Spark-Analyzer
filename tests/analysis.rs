@@ -416,3 +416,119 @@ fn window_filter_recomputes_report() {
     assert!(h.contains("Solo i lag spike") && h.contains("disabled"));
     assert!(h.contains("Mostra tutto il profilo"));
 }
+
+#[test]
+fn allocation_profile_is_analyzed_across_threads() {
+    let bytes = fixture::sample_alloc().encode_to_vec();
+    let l = sparkscope::loader::load_bytes(&bytes, "a.sparkprofile").unwrap();
+    let (r, _, _) = sparkscope::pipeline::build(l, None).unwrap();
+    let al = r.alloc.as_ref().expect("report allocazioni presente");
+    assert!((al.total - 1.4e9 * 10.0).abs() < 1e6, "{}", al.total);
+    let top = &al.sources[0];
+    assert!(top.name.starts_with("AntiCheatX"), "{}", top.name);
+    assert!((top.pct - 9.0 / 14.0 * 100.0).abs() < 0.5, "{}", top.pct);
+    assert!(al.threads.iter().any(|t| t.name.starts_with("Netty")));
+    let site = al
+        .sites
+        .iter()
+        .find(|s| s.method.ends_with("MoveListener.onMove"))
+        .expect("il punto di allocazione e' il metodo del plugin, non la classe JDK");
+    assert!(
+        site.via.as_deref().unwrap_or("").contains("Location"),
+        "{:?}",
+        site.via
+    );
+    let hab = |h: sparkscope::alloc::Habit| {
+        al.habits
+            .iter()
+            .find(|x| x.habit == h)
+            .map(|x| x.pct)
+            .unwrap_or(0.0)
+    };
+    assert!(hab(sparkscope::alloc::Habit::Locations) > 40.0);
+    assert!(hab(sparkscope::alloc::Habit::Streams) > 20.0);
+    assert!(hab(sparkscope::alloc::Habit::Strings) > 10.0);
+    assert!(
+        r.findings
+            .iter()
+            .any(|f| f.title.contains("AntiCheatX") && f.title.contains("alloca"))
+    );
+    assert!(
+        !r.findings
+            .iter()
+            .any(|f| f.title == "Profilo di allocazione memoria")
+    );
+    let html = report::html::render(&r);
+    assert!(html.contains(r#"id="allocazioni""#) && html.contains("Punti di allocazione"));
+    let md = report::markdown::render(&r);
+    assert!(md.contains("Allocazioni di memoria"));
+}
+
+#[test]
+fn health_summary_score_and_lines() {
+    let r = build();
+    let s = &r.summary;
+    assert!(
+        s.score < 85,
+        "un server con lag spike non e' ottimo: {}",
+        s.score
+    );
+    assert_eq!(s.lines.len(), 3, "{:?}", s.lines);
+    assert!(s.lines[0].starts_with(&format!("Salute {}/100", s.score)));
+    assert!(s.cause.is_some() && s.action.is_some());
+    assert!(!s.lines.iter().any(|l| l.contains('⟪')));
+    let html = report::html::render(&r);
+    assert!(html.contains(r#"id="copysum""#) && html.contains("class=\"score\""));
+    assert!(report::markdown::render(&r).contains(&format!("**Salute {}/100", s.score)));
+}
+
+#[test]
+fn recommended_profile_command() {
+    let cmd = |r: &report::Report| {
+        r.findings
+            .iter()
+            .find(|f| f.title == "Comando consigliato per il prossimo profilo")
+            .map(|f| f.solutions.join("\n"))
+    };
+    let mut data = fixture::sample();
+    if let Some(m) = data.metadata.as_mut() {
+        m.data_aggregator = Some(sparkscope::proto::sampler_metadata::DataAggregator {
+            r#type: 1,
+            thread_grouper: 0,
+            tick_length_threshold: 150,
+            number_of_included_ticks: 12,
+        });
+    }
+    let p = Profile::from_proto(data);
+    let a = analysis::analyze(&p);
+    let r = report::build(&p, a, "test", None, "x");
+    let c = cmd(&r).expect("pochi tick sopra soglia: consiglio presente");
+    assert!(c.contains("--only-ticks-over 100 --timeout 900"), "{c}");
+
+    let mut data = fixture::sample();
+    if let Some(m) = data.metadata.as_mut() {
+        m.end_time = m.start_time + 45_000;
+    }
+    let p = Profile::from_proto(data);
+    let a = analysis::analyze(&p);
+    let r = report::build(&p, a, "test", None, "x");
+    let c = cmd(&r).unwrap_or_default();
+    assert!(c.contains("/spark profiler start"), "{c}");
+    assert!(
+        c.contains("/spark profiler start --alloc"),
+        "GC frequente nel fixture: {c}"
+    );
+}
+
+#[test]
+fn summary_and_alloc_in_english() {
+    let _g = sparkscope::i18n::scoped(sparkscope::i18n::Lang::En);
+    let bytes = fixture::sample_alloc().encode_to_vec();
+    let l = sparkscope::loader::load_bytes(&bytes, "a.sparkprofile").unwrap();
+    let (r, _, _) = sparkscope::pipeline::build(l, None).unwrap();
+    assert!(r.summary.lines[0].starts_with("Health "));
+    assert!(r.summary.lines[1].starts_with("Main cause: AntiCheatX"));
+    let html = report::html::render(&r);
+    assert!(html.contains("Copy summary") && html.contains("Allocation sites"));
+    assert!(!html.contains("Punti di allocazione"));
+}

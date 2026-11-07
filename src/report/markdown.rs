@@ -44,6 +44,15 @@ pub fn render(r: &Report) -> String {
     }
     let _ = writeln!(o, "\n");
 
+    for (i, l) in r.summary.lines.iter().enumerate() {
+        if i == 0 {
+            let _ = writeln!(o, "> **{}**  ", esc(l));
+        } else {
+            let _ = writeln!(o, "> {}  ", esc(l));
+        }
+    }
+    let _ = writeln!(o);
+
     let _ = writeln!(o, "## Diagnosi\n");
     for f in &r.findings {
         let impact = if f.impact_pct > 0.0 {
@@ -73,6 +82,10 @@ pub fn render(r: &Report) -> String {
             }
         }
         let _ = writeln!(o);
+    }
+
+    if let Some(al) = &r.alloc {
+        alloc_md(&mut o, al);
     }
 
     if a.main.total > 0.0 {
@@ -265,4 +278,75 @@ pub fn render(r: &Report) -> String {
         env!("CARGO_PKG_VERSION")
     );
     o
+}
+
+fn alloc_md(o: &mut String, al: &crate::alloc::AllocReport) {
+    let t = crate::i18n::t;
+    let _ = writeln!(
+        o,
+        "## {}\n",
+        t("Allocazioni di memoria", "Memory allocations")
+    );
+    let _ = writeln!(
+        o,
+        "{}\n",
+        tf!(
+            "{} allocati in {} su tutti i thread · main thread {}%",
+            "{} allocated over {} across all threads · main thread {}%",
+            fmt_time(al.total, "byte"),
+            fmt_duration(al.duration_s),
+            fmt_num(al.main_pct)
+        )
+    );
+    if !al.sources.is_empty() {
+        let _ = writeln!(o, "| Plugin | % |\n|---|---:|");
+        for s in al.sources.iter().take(15) {
+            let _ = writeln!(o, "| {} | {} |", esc(&s.name), fmt_num(s.pct));
+        }
+        let _ = writeln!(o);
+    }
+    let _ = writeln!(
+        o,
+        "### {}\n\n| {} | {} | {} | % |\n|---|---|---|---:|",
+        t("Punti di allocazione", "Allocation sites"),
+        t("Metodo", "Method"),
+        t("Sorgente", "Source"),
+        t("Tramite", "Via")
+    );
+    for s in al.sites.iter().take(20) {
+        let _ = writeln!(
+            o,
+            "| `{}` | {} | {} | {} |",
+            esc(&short(&s.method)),
+            esc(s.source.as_deref().unwrap_or("-")),
+            esc(s.via.as_deref().unwrap_or("")),
+            fmt_num(s.pct)
+        );
+    }
+    let _ = writeln!(o);
+    let habits: Vec<_> = al.habits.iter().filter(|h| h.pct >= 0.5).take(8).collect();
+    if !habits.is_empty() {
+        let _ = writeln!(
+            o,
+            "### {}\n\n| {} | % | {} |\n|---|---:|---|",
+            t("Schemi che creano oggetti", "Patterns that create objects"),
+            t("Schema", "Pattern"),
+            t("Chi", "Who")
+        );
+        for h in habits {
+            let who: Vec<String> = h
+                .owners
+                .iter()
+                .map(|x| format!("{} {}%", x.name, fmt_num(x.pct)))
+                .collect();
+            let _ = writeln!(
+                o,
+                "| {} | {} | {} |",
+                esc(&h.label),
+                fmt_num(h.pct),
+                esc(&who.join(", "))
+            );
+        }
+        let _ = writeln!(o);
+    }
 }

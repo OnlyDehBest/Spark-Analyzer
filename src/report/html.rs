@@ -387,6 +387,176 @@ pub(crate) fn icon(name: &str) -> String {
     )
 }
 
+fn summary_html(s: &super::Summary) -> String {
+    let t = crate::i18n::t;
+    let mut lines = String::new();
+    for (i, l) in s.lines.iter().enumerate() {
+        let _ = write!(
+            lines,
+            r#"<p class="{}">{}</p>"#,
+            if i == 0 { "l1" } else { "ln" },
+            esc(l)
+        );
+    }
+    format!(
+        r#"<section class="sumcard {lv}" id="riassunto"><div class="score" style="--p:{sc}" title="{tt}"><b>{sc}</b></div><div class="sumtxt">{lines}</div><button type="button" class="btn sec" id="copysum" data-text="{tx}" data-ok="{ok}" data-label="{lb}">{ic}<span>{lb}</span></button></section>"#,
+        lv = esc(&s.level),
+        sc = s.score,
+        tt = esc(t(
+            "Punteggio da 0 a 100 calcolato da TPS, MSPT, lag spike e gravità dei problemi trovati",
+            "Score from 0 to 100 computed from TPS, MSPT, lag spikes and severity of the problems found"
+        )),
+        tx = esc(&s.lines.join("\n")),
+        ok = t("Copiato!", "Copied!"),
+        lb = t("Copia riassunto", "Copy summary"),
+        ic = icon("clipboard"),
+    )
+}
+
+fn alloc_html(al: &crate::alloc::AllocReport) -> String {
+    let t = crate::i18n::t;
+    let pc = |p: f64| format!("{}%", fmt_num(p));
+    let rate = al.rate_bps;
+    let per_s = |pct: f64| {
+        rate.map(|r| crate::alloc::fmt_rate(r * pct / 100.0))
+            .unwrap_or_else(|| "-".into())
+    };
+    let mut b = String::new();
+    let _ = write!(
+        b,
+        r#"<section id="allocazioni" class="panel"><h2><span class="hi">{}</span>{}</h2><p class="note">{}</p>"#,
+        icon("cube"),
+        t("Allocazioni di memoria", "Memory allocations"),
+        esc(&tf!(
+            "{} allocati in {} su tutti i thread. Le percentuali sono sul totale allocato; il main thread «{}» ne crea il {}%.",
+            "{} allocated over {} across all threads. Percentages are of the total allocated; the main thread “{}” creates {}% of it.",
+            fmt_time(al.total, "byte"),
+            fmt_duration(al.duration_s),
+            al.main_thread,
+            fmt_num(al.main_pct)
+        ))
+    );
+    let _ = write!(
+        b,
+        r#"<div class="grid2"><div><h3>{}</h3><table class="sortable"><thead><tr><th>Plugin</th><th class="n">%</th><th></th><th class="n">{}</th></tr></thead><tbody>"#,
+        t("Plugin e mod", "Plugins and mods"),
+        t("Velocità", "Rate")
+    );
+    if al.sources.is_empty() {
+        let _ = write!(
+            b,
+            r#"<tr><td colspan="4" class="dim">{}</td></tr>"#,
+            t(
+                "nessun plugin tra gli allocatori",
+                "no plugin among the allocators"
+            )
+        );
+    }
+    for s in al.sources.iter().take(15) {
+        let _ = write!(
+            b,
+            r#"<tr><td>{}</td><td class="n">{}</td><td>{}</td><td class="n">{}</td></tr>"#,
+            esc(&s.name),
+            pc(s.pct),
+            pct_bar(s.pct),
+            per_s(s.pct)
+        );
+    }
+    let _ = write!(
+        b,
+        r#"</tbody></table></div><div><h3>Thread</h3><table class="sortable"><thead><tr><th>Thread</th><th class="n">%</th><th></th><th class="n">{}</th></tr></thead><tbody>"#,
+        t("Velocità", "Rate")
+    );
+    for s in al.threads.iter().take(10) {
+        let _ = write!(
+            b,
+            r#"<tr><td>{}</td><td class="n">{}</td><td>{}</td><td class="n">{}</td></tr>"#,
+            esc(&s.name),
+            pc(s.pct),
+            pct_bar(s.pct),
+            per_s(s.pct)
+        );
+    }
+    b.push_str("</tbody></table></div></div>");
+
+    let _ = write!(
+        b,
+        r#"<h3>{}</h3><p class="note">{}</p><table class="sortable"><thead><tr><th>{}</th><th>{}</th><th>{}</th><th class="n">%</th><th></th></tr></thead><tbody>"#,
+        t("Punti di allocazione", "Allocation sites"),
+        t(
+            "Il primo metodo del server o di un plugin che crea gli oggetti; «tramite» indica la classe della libreria Java che li alloca materialmente.",
+            "The first server or plugin method that creates the objects; “via” shows the Java library class that actually allocates them."
+        ),
+        t("Metodo", "Method"),
+        t("Sorgente", "Source"),
+        t("Tramite", "Via")
+    );
+    for s in al.sites.iter().take(25) {
+        let _ = write!(
+            b,
+            r#"<tr><td><code>{}</code></td><td>{}</td><td class="small dim">{}</td><td class="n">{}</td><td>{}</td></tr>"#,
+            esc(&short(&s.method)),
+            esc(s.source.as_deref().unwrap_or("-")),
+            esc(s.via.as_deref().unwrap_or("")),
+            pc(s.pct),
+            pct_bar(s.pct)
+        );
+    }
+    b.push_str("</tbody></table>");
+
+    if !al.habits.is_empty() {
+        let _ = write!(
+            b,
+            r#"<h3>{}</h3><table class="sortable"><thead><tr><th>{}</th><th class="n">%</th><th></th><th>{}</th></tr></thead><tbody>"#,
+            t("Schemi che creano oggetti", "Patterns that create objects"),
+            t("Schema", "Pattern"),
+            t("Chi", "Who")
+        );
+        for h in al.habits.iter().filter(|h| h.pct >= 0.5).take(10) {
+            let who: Vec<String> = h
+                .owners
+                .iter()
+                .map(|o| format!("{} {}", esc(&o.name), pc(o.pct)))
+                .collect();
+            let _ = write!(
+                b,
+                r#"<tr><td title="{}">{}</td><td class="n">{}</td><td>{}</td><td class="small">{}</td></tr>"#,
+                esc(h.habit.advice()),
+                esc(&h.label),
+                pc(h.pct),
+                pct_bar(h.pct),
+                who.join("<br>")
+            );
+        }
+        b.push_str("</tbody></table>");
+    }
+    if !al.categories.is_empty() {
+        let _ = write!(
+            b,
+            r#"<h3>{}</h3><table class="sortable"><thead><tr><th>{}</th><th class="n">%</th><th></th><th class="n">{}</th></tr></thead><tbody>"#,
+            t(
+                "Fasi del server (tutti i thread)",
+                "Server phases (all threads)"
+            ),
+            t("Fase", "Phase"),
+            t("Allocato", "Allocated")
+        );
+        for c in al.categories.iter().filter(|c| c.pct >= 0.5).take(12) {
+            let _ = write!(
+                b,
+                r#"<tr><td>{}</td><td class="n">{}</td><td>{}</td><td class="n">{}</td></tr>"#,
+                esc(&c.name),
+                pc(c.pct),
+                pct_bar(c.pct),
+                fmt_time(c.time, "byte")
+            );
+        }
+        b.push_str("</tbody></table>");
+    }
+    b.push_str("</section>");
+    b
+}
+
 pub fn render(r: &Report) -> String {
     let m = &r.meta;
     let a = &r.analysis;
@@ -466,6 +636,38 @@ pub fn render(r: &Report) -> String {
         &format!(" / {} finestre", a.windows.len()),
         if a.spikes.is_empty() { "ok" } else { "wrn" },
     );
+    if let Some(al) = &r.alloc {
+        let (v, u) = super::fmt_time(al.total, "byte")
+            .split_once(' ')
+            .map(|(a, b)| (a.to_string(), format!(" {b}")))
+            .unwrap_or_default();
+        card(
+            "cube",
+            crate::i18n::t("Memoria allocata", "Memory allocated"),
+            v,
+            &u,
+            "",
+        );
+        if let Some(rate) = al.jvm_rate_bps.or(al.rate_bps) {
+            let (v, u) = crate::alloc::fmt_rate(rate)
+                .split_once(' ')
+                .map(|(a, b)| (a.to_string(), format!(" {b}")))
+                .unwrap_or_default();
+            card(
+                "bolt",
+                crate::i18n::t("Velocità allocazione", "Allocation rate"),
+                v,
+                &u,
+                if rate >= 1.5e9 {
+                    "bad"
+                } else if rate >= 7e8 {
+                    "wrn"
+                } else {
+                    "ok"
+                },
+            );
+        }
+    }
     card("users", "Giocatori", m.players.to_string(), "", "");
     card(
         "hourglass",
@@ -479,8 +681,10 @@ pub fn render(r: &Report) -> String {
         f.area == crate::i18n::t("Panoramica", "Overview")
             && f.title == crate::i18n::t("Il server mostra lag", "The server is lagging")
     });
-    let nav_items: [(&str, &str, &str); 11] = [
+    let alloc_label = crate::i18n::t("Allocazioni", "Allocations");
+    let nav_items: [(&str, &str, &str); 12] = [
         ("diagnosi", "clipboard", "Diagnosi"),
+        ("allocazioni", "cube", alloc_label),
         ("tempo", "pie", "Tempo main thread"),
         ("plugin", "plug", "Plugin e mod"),
         ("spike", "line", "Lag spike"),
@@ -494,7 +698,9 @@ pub fn render(r: &Report) -> String {
     ];
     let mut nav = String::new();
     for (id, ic, label) in nav_items {
-        if id == "macchina" && m.machine.is_empty() && m.resources.is_empty() {
+        if id == "macchina" && m.machine.is_empty() && m.resources.is_empty()
+            || id == "allocazioni" && r.alloc.is_none()
+        {
             continue;
         }
         let _ = write!(
@@ -580,6 +786,7 @@ pub fn render(r: &Report) -> String {
             crate::i18n::t("Mostra tutto il profilo", "Show the whole profile")
         );
     }
+    b.push_str(&summary_html(&r.summary));
     let _ = write!(b, r#"<section class="stats">{cards}</section>"#);
     if let Some(th) = m.ticked_threshold {
         let _ = write!(
@@ -678,12 +885,23 @@ pub fn render(r: &Report) -> String {
         b.push_str("</div>");
     }
     b.push_str("</section>");
+    if let Some(al) = &r.alloc {
+        b.push_str(&alloc_html(al));
+    }
 
     if a.main.total > 0.0 {
         let per_tick = a.main.ticks > 0 && a.unit == "ms";
         let _ = write!(
             b,
-            r#"<section id="tempo"><h2>Dove va il tempo del main thread</h2><p class="note">Thread «{}»: attivo {} su {} campionati ({}%). Le percentuali sono calcolate sul tempo attivo, esclusa l'attesa tra un tick e l'altro. Ogni riga attribuisce il tempo alla categoria più specifica in cui si trova lo stack.</p>"#,
+            r#"<section id="tempo"><h2>{}</h2><p class="note">Thread «{}»: attivo {} su {} campionati ({}%). Le percentuali sono calcolate sul tempo attivo, esclusa l'attesa tra un tick e l'altro. Ogni riga attribuisce il tempo alla categoria più specifica in cui si trova lo stack.</p>"#,
+            if a.unit == "byte" {
+                crate::i18n::t(
+                    "Allocazioni del main thread per fase",
+                    "Main thread allocations by phase",
+                )
+            } else {
+                "Dove va il tempo del main thread"
+            },
             esc(&a.main.thread),
             fmt_time(a.main.busy, &a.unit),
             fmt_time(a.main.total, &a.unit),
@@ -1197,6 +1415,7 @@ table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font
 code{font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--code);border:1px solid var(--line2);padding:1px 5px;border-radius:4px;word-break:break-all;color:var(--fg)}
 .bar{display:inline-block;width:110px;height:6px;background:var(--code);border-radius:3px;overflow:hidden;vertical-align:middle}.bar i{display:block;height:100%;background:var(--bar);border-radius:3px}
 .ctx{color:var(--muted);font-size:11px}.unitbar{display:flex;align-items:center;gap:10px;margin:-4px 0 12px;font-size:13px;flex-wrap:wrap}.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--card)}.seg button{border:0;border-radius:0;background:transparent;padding:5px 12px;font-size:12px;font-weight:600;color:var(--muted)}.seg button+button{border-left:1px solid var(--line)}.seg button.on{background:var(--acc);color:#fff}.warn{color:var(--high);font-weight:600}
+.sumcard{display:flex;gap:16px;align-items:center;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);border-left:3px solid var(--ok);border-radius:8px;padding:14px 16px;margin:0 0 12px}.sumcard.wrn{border-left-color:var(--med)}.sumcard.bad{border-left-color:var(--crit)}.score{--c:var(--ok);width:66px;height:66px;border-radius:50%;flex:none;display:grid;place-items:center;background:conic-gradient(var(--c) calc(var(--p)*1%),var(--card3) 0)}.sumcard.wrn .score{--c:var(--med)}.sumcard.bad .score{--c:var(--crit)}.score b{width:54px;height:54px;border-radius:50%;background:var(--card);display:grid;place-items:center;font-size:20px;color:var(--hd);font-variant-numeric:tabular-nums}.sumtxt{flex:1;min-width:220px}.sumtxt p{margin:2px 0}.sumtxt .l1{font-weight:600;color:var(--hd)}.sumtxt .ln{color:var(--fg)}
 .chart{width:100%;height:auto;background:var(--card2);border:1px solid var(--line);border-radius:6px}.chart .grid{stroke:var(--line2)}.chart .budget{stroke:var(--crit);stroke-dasharray:4 4;opacity:.8}.chart .axis{fill:var(--muted);font-size:11px}.chart polyline{fill:none;stroke-width:2}.chart .l1{stroke:var(--high)}.chart .l2{stroke:var(--acc)}.chart .l3{stroke:var(--ok);stroke-dasharray:3 3}.chart circle{fill:var(--high)}.chart circle.sp{fill:var(--crit)}.chart .spikebg{fill:var(--spike)}.tree{background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:6px 0;max-height:70vh;overflow:auto;font-size:13px}.tn{display:flex;align-items:center;gap:8px;padding:4px 12px 4px 0;cursor:pointer;white-space:nowrap;border-radius:6px}.tn:hover{background:var(--card3)}.tn .cr{width:14px;flex:none;color:var(--muted);text-align:center;transition:transform .15s ease;font-size:10px}.tn.open>.cr{transform:rotate(90deg)}.tn.leaf .cr{opacity:0}.tn .tv{min-width:86px;text-align:right;flex:none;font-variant-numeric:tabular-nums;color:var(--hd)}.tn .tb{width:60px;height:5px;flex:none;background:var(--card3);border-radius:999px;overflow:hidden}.tn .tb i{display:block;height:100%;background:var(--acc);border-radius:999px}.tn .tl{overflow:hidden;text-overflow:ellipsis;font-family:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;font-size:12px}.tn .src{color:var(--ok);margin-left:6px}.tn .ts{color:var(--muted);font-size:11px;margin-left:8px}.tn.hit{background:var(--accl)}.tn.hit .tl{color:var(--hd)}.tmore{padding:3px 0 3px 0;color:var(--muted);font-size:11px}.totree{color:var(--acc)}.filterbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px}.filterbar[hidden],.needs-filter[hidden]{display:none!important}.chip{border-radius:999px;padding:5px 12px;font-size:12px;background:var(--card);border:1px solid var(--line);color:var(--fg)}.chip:hover{border-color:var(--muted);color:var(--hd)}.chip:disabled{opacity:.45;cursor:not-allowed}.chip:disabled:hover{border-color:var(--line);color:var(--fg)}.chip.on{background:var(--card3);color:var(--hd)}.fbanner{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--accl);border:1px solid var(--acc);color:var(--hd);border-radius:12px;padding:10px 14px;margin:0 0 14px;font-size:13px}.fbanner svg{color:var(--acc);flex:none}.fbanner .chip{margin-left:auto}.chart .brush{fill:var(--accl);stroke:var(--acc);stroke-dasharray:4 3}.chart.brushing .hov{cursor:ew-resize}.chartwrap{position:relative}.chart .hov{fill:transparent;cursor:crosshair}.chart .hov:hover{fill:rgba(127,127,127,.08)}.chart .guide{stroke:var(--muted);stroke-dasharray:3 3}.chart circle.on{r:5;stroke:var(--card);stroke-width:2}.ctip{position:absolute;z-index:4;pointer-events:none;min-width:200px;max-width:300px;background:var(--card);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.35);padding:10px 12px;font-size:12px;color:var(--fg)}.ctip b{color:var(--hd)}.ctip .r{display:flex;justify-content:space-between;gap:16px;margin-top:3px}.ctip .r span:last-child{font-variant-numeric:tabular-nums;color:var(--hd)}.ctip .sp{margin-top:7px;padding-top:6px;border-top:1px solid var(--line2);color:var(--crit)}.ctip .cs{color:var(--muted);margin-top:2px}
 .legend{color:var(--muted);font-size:12px;margin:8px 0 12px;display:flex;gap:6px 14px;flex-wrap:wrap;align-items:center}.legend span{display:inline-block;width:14px;height:3px;vertical-align:middle;margin-right:4px;border-radius:2px}.k1{background:var(--high)}.k2{background:var(--acc)}.k3{background:var(--ok)}.kb{background:var(--crit)}.ks{background:var(--spike);height:10px!important}
 .spike{background:var(--card2);border:1px solid var(--line);border-left:3px solid var(--crit);border-radius:6px;padding:10px 14px;margin:10px 0}.spike h4 small{color:var(--muted);font-weight:400}.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}.grid3 td{padding:4px 6px}
@@ -1319,6 +1538,7 @@ const JS: &str = r#"
 var docEl=document.documentElement;try{var t=localStorage.getItem('sparkscope-theme');if(t)docEl.dataset.theme=t}catch(e){}
 var tb=document.getElementById('theme');if(tb)tb.addEventListener('click',function(){var n=docEl.dataset.theme==='dark'?'light':'dark';docEl.dataset.theme=n;try{localStorage.setItem('sparkscope-theme',n)}catch(e){}if(window.__redrawFlame)window.__redrawFlame()});
 var bl=document.getElementById('brandlink'),ch=document.getElementById('crumbhome'),nb=document.querySelector('.actions a.btn.sec');if(nb){if(bl)bl.href=nb.getAttribute('href');if(ch)ch.href=nb.getAttribute('href')}
+var cs=document.getElementById('copysum');if(cs){cs.addEventListener('click',function(){var tx=cs.dataset.text;function done(){var sp=cs.querySelector('span');sp.textContent=cs.dataset.ok;setTimeout(function(){sp.textContent=cs.dataset.label},1800)}function fb(){var ta=document.createElement('textarea');ta.value=tx;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();try{document.execCommand('copy')}catch(e){}ta.remove();done()}if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(tx).then(done,fb)}else{fb()}})}
 var cl=document.getElementById('copylink');if(cl){var sh=null;try{var u=new URL(location.href);if(u.searchParams.get('p')){var k=u.searchParams.get('p');u=new URL(location.href);var wq=new URL(location.href).searchParams.get('w');u.search='?p='+encodeURIComponent(k)+(wq?'&w='+encodeURIComponent(wq):'');u.hash='';sh=u.toString()}else if(/\/r\/[^\/]+/.test(u.pathname)&&u.protocol.indexOf('http')===0){u.hash='';sh=u.toString()}}catch(e){}if(sh){cl.hidden=false;cl.addEventListener('click',function(){function done(){var sp=cl.querySelector('span');sp.textContent=cl.dataset.ok;cl.classList.add('ok');setTimeout(function(){sp.textContent=cl.dataset.label;cl.classList.remove('ok')},1800)}function fallback(){var ta=document.createElement('textarea');ta.value=sh;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();try{document.execCommand('copy')}catch(e){}ta.remove();done()}if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(sh).then(done,fallback)}else{fallback()}})}}
 (function(){var can=!!window.__saFilter||(/^https?:/.test(location.protocol)&&/\/r\/[^\/]+/.test(location.pathname));if(!can)return;function apply(list){if(window.__saFilter){window.__saFilter(list);return}var u=new URL(location.href);if(list)u.searchParams.set('w',list);else u.searchParams.delete('w');location.href=u.toString()}document.querySelectorAll('.needs-filter').forEach(function(e){e.hidden=false});document.querySelectorAll('[data-w]').forEach(function(bt){bt.addEventListener('click',function(){apply(bt.dataset.w||null)})});document.querySelectorAll('.chartwrap').forEach(function(cw){var d;try{d=JSON.parse(cw.querySelector('.chartdata').textContent)}catch(e){return}var svg=cw.querySelector('svg'),br=svg.querySelector('.brush'),hs=svg.querySelectorAll('.hov'),a=null,b=null;function geom(i){var r=hs[i];return [parseFloat(r.getAttribute('x')),parseFloat(r.getAttribute('width'))]}function draw(){if(a===null)return;var lo=Math.min(a,b),hi=Math.max(a,b),g1=geom(lo),g2=geom(hi);br.setAttribute('x',g1[0]);br.setAttribute('width',g2[0]+g2[1]-g1[0]);br.style.display=''}hs.forEach(function(r,i){r.addEventListener('mousedown',function(e){e.preventDefault();a=b=i;svg.classList.add('brushing');draw()});r.addEventListener('mouseenter',function(){if(a!==null){b=i;draw()}})});window.addEventListener('mouseup',function(){if(a===null)return;var lo=Math.min(a,b),hi=Math.max(a,b);a=null;svg.classList.remove('brushing');br.style.display='none';if(hi-lo<1)return;var list=[];for(var k=lo;k<=hi;k++)list.push(d.rows[k].o);if(list.length===d.rows.length&&!document.querySelector('.fbanner'))return;apply(list.join(','))})})})();
 (function(){var box=document.getElementById('tree'),el=document.getElementById('flamedata');if(!box||!el)return;var data;try{data=JSON.parse(el.textContent)}catch(e){return}var N=data.names,LN=N.map(function(x){return x.toLowerCase()}),R=data.tree,TOT=R[1]||1,MORE=box.dataset.more,SELF=box.dataset.self;

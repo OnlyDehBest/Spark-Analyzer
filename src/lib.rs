@@ -6,6 +6,7 @@
 
 #[macro_use]
 pub mod i18n;
+pub mod alloc;
 pub mod analysis;
 pub mod config;
 pub mod diff;

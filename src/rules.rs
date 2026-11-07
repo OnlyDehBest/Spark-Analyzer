@@ -372,8 +372,11 @@ pub fn diagnose(a: &Analysis, p: &Profile) -> Vec<Finding> {
         plugin_rules(&ctx, &mut out);
         spike_rules(&ctx, &mut out);
         thread_rules(&ctx, &mut out);
-    } else {
+    } else if p.mode == Mode::Lock {
         mode_note(&ctx, &mut out);
+    }
+    if p.meta.interval > 0 {
+        profile_advice(&ctx, &mut out);
     }
     jvm_rules(
         &ctx.p.meta.system_statistics,
@@ -383,6 +386,11 @@ pub fn diagnose(a: &Analysis, p: &Profile) -> Vec<Finding> {
     );
     world_rules(ctx.p.meta.platform_statistics.as_ref(), &mut out);
     config_rules(&ctx, &mut out);
+    sort_findings(&mut out);
+    out
+}
+
+pub fn sort_findings(out: &mut [Finding]) {
     out.sort_by(|x, y| {
         let px = x.area == crate::i18n::t("Panoramica", "Overview");
         let py = y.area == crate::i18n::t("Panoramica", "Overview");
@@ -390,7 +398,185 @@ pub fn diagnose(a: &Analysis, p: &Profile) -> Vec<Finding> {
             .then(x.severity.cmp(&y.severity))
             .then(y.impact_pct.total_cmp(&x.impact_pct))
     });
-    out
+}
+
+fn round10(v: f64) -> i64 {
+    ((v / 10.0).round() * 10.0) as i64
+}
+
+/// Suggerisce il comando /spark più adatto quando il profilo registrato non basta a trovare la causa.
+fn profile_advice(c: &Ctx, out: &mut Vec<Finding>) {
+    let t = crate::i18n::t;
+    let p = c.p;
+    let a = c.a;
+    let ps = p.meta.platform_statistics.as_ref();
+    let dur = p.duration_ms() as f64 / 1000.0;
+    let th = p.ticked_threshold();
+    let mspt_max = ps
+        .and_then(|s| s.mspt.as_ref())
+        .and_then(|m| m.last1m.as_ref())
+        .map(|m| m.max)
+        .filter(|v| *v > 0.0)
+        .or_else(|| {
+            a.windows
+                .iter()
+                .map(|w| w.mspt_max)
+                .reduce(f64::max)
+                .filter(|v| *v > 0.0)
+        });
+    let avg_load = a.main.busy_per_tick.or(c.mspt);
+    let mut sol: Vec<String> = Vec::new();
+    let mut add = |why: String, cmds: &[String]| {
+        let mut s = why;
+        for cmd in cmds {
+            s.push_str("\n    - ");
+            s.push_str(cmd);
+        }
+        sol.push(s);
+    };
+    match p.mode {
+        Mode::Execution if a.main.total > 0.0 => {
+            match th {
+                None => {
+                    let spiky = !a.spikes.is_empty() && avg_load.is_some_and(|l| l < 40.0);
+                    if spiky {
+                        let thr = round10(mspt_max.unwrap_or(150.0) * 0.4).clamp(60, 150);
+                        add(
+                            tf!(
+                                "Il lag è a picchi ({} finestre su {}) mentre la media resta nel budget: in un profilo normale i tick lenti si diluiscono. Registra solo i tick sopra {thr} ms",
+                                "The lag comes in spikes ({} of {} windows) while the average stays within budget: in a normal profile slow ticks get diluted. Record only ticks above {thr} ms",
+                                a.spikes.len(),
+                                a.windows.len()
+                            ),
+                            &[format!(
+                                "/spark profiler start --only-ticks-over {thr} --timeout 600"
+                            )],
+                        );
+                    } else if dur > 0.0 && dur < 120.0 {
+                        add(
+                            tf!(
+                                "Profilo di soli {}: troppo corto per avere più finestre da confrontare e cogliere i picchi",
+                                "Profile of only {}: too short to have several windows to compare and to catch spikes",
+                                crate::report::fmt_duration(dur)
+                            ),
+                            &["/spark profiler start --timeout 300".to_string()],
+                        );
+                    }
+                }
+                Some(th) => {
+                    let ticks = p.effective_ticks();
+                    if ticks > 0 && ticks < 30 {
+                        let lower = round10(th as f64 * 0.66).max(50);
+                        add(
+                            tf!(
+                                "Solo {ticks} tick hanno superato {th} ms: pochi per una statistica affidabile. Abbassa la soglia e registra più a lungo",
+                                "Only {ticks} ticks exceeded {th} ms: too few for reliable statistics. Lower the threshold and record for longer"
+                            ),
+                            &[format!(
+                                "/spark profiler start --only-ticks-over {lower} --timeout 900"
+                            )],
+                        );
+                    }
+                    if c.mspt.is_some_and(|m| m > 50.0) {
+                        add(
+                            t(
+                                "Il server è in lag costante, non solo a picchi: con --only-ticks-over vedi solo i tick peggiori. Un profilo normale mostra il carico di base",
+                                "The server lags constantly, not just in spikes: with --only-ticks-over you only see the worst ticks. A normal profile shows the baseline load",
+                            )
+                            .into(),
+                            &["/spark profiler start --timeout 300".to_string()],
+                        );
+                    }
+                }
+            }
+            if ps.is_some_and(|s| s.player_count == 0) && !c.lagging {
+                add(
+                    t(
+                        "Nessun giocatore online durante il profilo: il carico reale non è rappresentato. Registra quando il server è pieno o quando i giocatori segnalano lag",
+                        "No players online during the profile: the real load is not represented. Record when the server is busy or when players report lag",
+                    )
+                    .into(),
+                    &["/spark profiler start --timeout 300".to_string()],
+                );
+            }
+            if p.interval_ms() > 10.0 && dur < 600.0 {
+                add(
+                    tf!(
+                        "Intervallo di campionamento di {} ms con un profilo breve: pochi campioni, i valori piccoli sono imprecisi",
+                        "Sampling interval of {} ms with a short profile: few samples, small values are imprecise",
+                        f(p.interval_ms())
+                    ),
+                    &["/spark profiler start --interval 4 --timeout 300".to_string()],
+                );
+            }
+            let gc_busy = ps.is_some_and(|s| {
+                s.gc.iter().any(|(k, g)| {
+                    let k = k.to_ascii_lowercase();
+                    let old = k.contains("old")
+                        || k.contains("full")
+                        || k.contains("mark") && !k.contains("young");
+                    g.total >= 2
+                        && g.avg_frequency > 0.0
+                        && (old && g.avg_frequency < 600_000.0 || !old && g.avg_frequency < 1500.0)
+                })
+            });
+            if gc_busy {
+                add(
+                    t(
+                        "Il garbage collector lavora molto: un profilo di allocazione mostra quali plugin creano più oggetti, l'heap summary cosa occupa la memoria",
+                        "The garbage collector is very busy: an allocation profile shows which plugins create the most objects, the heap summary what takes up memory",
+                    )
+                    .into(),
+                    &[
+                        "/spark profiler start --alloc --timeout 120".to_string(),
+                        "/spark heapsummary".to_string(),
+                    ],
+                );
+            }
+        }
+        Mode::Allocation | Mode::Lock if c.lagging => {
+            add(
+                t(
+                    "Il server mostra lag: questo profilo non misura il tempo CPU, quindi non dice cosa rallenta il tick. Registra anche un profilo CPU",
+                    "The server is lagging: this profile does not measure CPU time, so it cannot tell what slows the tick. Record a CPU profile too",
+                )
+                .into(),
+                &["/spark profiler start --timeout 300".to_string()],
+            );
+        }
+        Mode::Allocation if dur > 0.0 && dur < 30.0 => {
+            add(
+                tf!(
+                    "Profilo di allocazione di soli {}: pochi campioni",
+                    "Allocation profile of only {}: few samples",
+                    crate::report::fmt_duration(dur)
+                ),
+                &["/spark profiler start --alloc --timeout 120".to_string()],
+            );
+        }
+        _ => {}
+    }
+    if sol.is_empty() {
+        return;
+    }
+    out.push(Finding {
+        severity: Severity::Basso,
+        area: t("Profilo", "Profile").into(),
+        title: t(
+            "Comando consigliato per il prossimo profilo",
+            "Recommended command for the next profile",
+        )
+        .into(),
+        impact_pct: 0.0,
+        evidence: Vec::new(),
+        explanation: t(
+            "Il profilo registrato non basta a vedere bene la causa. Questi comandi registrano un profilo più adatto a quello che è stato misurato.",
+            "The recorded profile is not enough to see the cause clearly. These commands record a profile better suited to what was measured.",
+        )
+        .into(),
+        solutions: sol,
+        culprits: Vec::new(),
+    });
 }
 
 fn overview(c: &Ctx, out: &mut Vec<Finding>) {
@@ -424,11 +610,13 @@ fn overview(c: &Ctx, out: &mut Vec<Finding>) {
             c.a.main.ticks
         ));
     }
-    ev.push(tf!(
-        "Main thread occupato per il {}% del tempo campionato",
-        "Main thread busy for {}% of the sampled time",
-        f(c.a.main.busy_pct)
-    ));
+    if c.p.mode == Mode::Execution {
+        ev.push(tf!(
+            "Main thread occupato per il {}% del tempo campionato",
+            "Main thread busy for {}% of the sampled time",
+            f(c.a.main.busy_pct)
+        ));
+    }
     if let Some(th) = c.p.ticked_threshold() {
         ev.push(tf!("Profilo registrato con --only-ticks-over {th}: contiene SOLO i tick lenti, quindi le percentuali descrivono direttamente i lag spike", "Profile recorded with --only-ticks-over {th}: it contains ONLY slow ticks, so the percentages describe the lag spikes directly"));
     }
