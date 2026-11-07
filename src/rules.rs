@@ -714,7 +714,7 @@ fn overview(c: &Ctx, out: &mut Vec<Finding>) {
             c.a.main.ticks
         ));
     }
-    if c.p.mode == Mode::Execution {
+    if c.p.mode == Mode::Execution && c.a.main.total > 0.0 {
         ev.push(tf!(
             "Main thread occupato per il {}% del tempo campionato",
             "Main thread busy for {}% of the sampled time",

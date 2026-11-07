@@ -170,7 +170,11 @@ fn main() -> Result<()> {
                 report::cli::print(&r, &CliOptions { color, top, all });
             }
             if let Some(p) = html {
-                write_file(&p, &report::html::render(&r), "Report HTML")?;
+                write_file(
+                    &p,
+                    &sparkscope::webui::render_report(&r, heap_report.as_ref()).html,
+                    "Report HTML",
+                )?;
             }
             if let Some(p) = md {
                 let mut text = report::markdown::render(&r);

@@ -22,14 +22,24 @@ pub fn render_report(r: &Report, heap_report: Option<&HeapReport>) -> Rendered {
     let mut markdown = crate::report::markdown::render(r);
     if let Some(h) = heap_report {
         let text = crate::heap::render_text(h);
-        let section = format!(
-            r#"<section id="heap" class="panel"><h2><span class="hi">{}</span>Heap summary</h2><pre class="heap">{}</pre></section>"#,
-            icon("cube"),
-            esc(&text)
-        );
+        let section = heap_section(h, &text);
+        let anchor = if html.contains(r#"<section id="macchina""#) {
+            r#"<section id="macchina""#
+        } else {
+            r#"<section id="mondo""#
+        };
+        if html.contains(anchor) {
+            html = html.replacen(anchor, &format!("{section}{anchor}"), 1);
+        } else {
+            html = html.replacen("</main>", &format!("{section}</main>"), 1);
+        }
+        let label = crate::i18n::t("Memoria (heap)", "Memory (heap)");
         html = html.replacen(
-            r#"<section id="diagnosi""#,
-            &format!(r#"{section}<section id="diagnosi""#),
+            "</nav>",
+            &format!(
+                r##"<a href="#heap">{}<span>{label}</span></a></nav>"##,
+                icon("cube")
+            ),
             1,
         );
         html = html.replacen("</style>", &format!("{HEAP_CSS}</style>"), 1);
@@ -63,7 +73,117 @@ pub fn render_report(r: &Report, heap_report: Option<&HeapReport>) -> Rendered {
     }
 }
 
-const HEAP_CSS: &str = "pre.heap{margin:0;background:var(--code);border:1px solid var(--line);border-radius:6px;padding:12px;overflow:auto;font:12px ui-monospace,Menlo,Consolas,monospace}";
+fn heap_section(h: &HeapReport, text: &str) -> String {
+    use crate::report::fmt_time;
+    use std::fmt::Write;
+    let t = crate::i18n::t;
+    let bytes = |v: i64| fmt_time(v as f64, "byte");
+    let mut b = String::new();
+    let _ = write!(
+        b,
+        r#"<section id="heap" class="panel"><h2><span class="hi">{}</span>{}</h2><p class="note">{}</p>"#,
+        icon("cube"),
+        t("Memoria per plugin", "Memory by plugin"),
+        esc(&tf!(
+            "Heap totale {} in {} oggetti{}. Le classi sono assegnate al plugin in base al package. La cifra è la memoria degli oggetti del plugin: i dati che tiene in HashMap, liste e array compaiono come classi Java (sotto) e si aggiungono a questa.",
+            "Total heap {} in {} objects{}. Classes are assigned to a plugin by their package. The figure is the memory of the plugin's own objects: data kept in HashMaps, lists and arrays shows up as Java classes (below) and comes on top of it.",
+            bytes(h.total_size),
+            crate::heap::count(h.total_instances),
+            if h.players > 0 {
+                tf!(", {} giocatori online", ", {} players online", h.players)
+            } else {
+                String::new()
+            }
+        ))
+    );
+    if h.by_plugin.is_empty() {
+        let _ = write!(
+            b,
+            "<p>{}</p>",
+            t(
+                "Nessuna classe riconducibile ai plugin installati.",
+                "No class could be linked to the installed plugins."
+            )
+        );
+    } else {
+        let _ = write!(
+            b,
+            r#"<table class="sortable hp"><thead><tr><th>Plugin</th><th class="n">{}</th><th class="n">% heap</th><th class="n">{}</th><th>{}</th><th>{}</th></tr></thead><tbody>"#,
+            t("Memoria", "Memory"),
+            t("Oggetti", "Objects"),
+            t("Classi più pesanti", "Heaviest classes"),
+            t("Segnale", "Signal")
+        );
+        for p in &h.by_plugin {
+            let (cls, tag) = match p.level {
+                2 => ("lv2", t("Sospetto leak", "Suspected leak")),
+                1 => ("lv1", t("Da tenere d'occhio", "Keep an eye on")),
+                _ => ("lv0", t("Normale", "Normal")),
+            };
+            let classes: Vec<String> = p
+                .top
+                .iter()
+                .take(3)
+                .map(|c| {
+                    format!(
+                        "<code title=\"{}\">{}</code> <span class=\"dim\">{} · {}</span>",
+                        esc(&c.kind),
+                        esc(crate::heap::short_class(&c.kind)),
+                        bytes(c.size),
+                        crate::heap::count(c.instances)
+                    )
+                })
+                .collect();
+            let why: Vec<String> = p
+                .reasons
+                .iter()
+                .map(|r| format!("<div>{}</div>", esc(r)))
+                .collect();
+            let _ = write!(
+                b,
+                r#"<tr><td><b>{}</b> <span class="dim">{}</span></td><td class="n" data-v="{}">{}</td><td class="n" data-v="{:.4}">{:.2}%</td><td class="n" data-v="{}">{}</td><td class="small">{}</td><td class="small"><span class="lv {cls}">{tag}</span>{}</td></tr>"#,
+                esc(&p.name),
+                esc(&p.version),
+                p.size,
+                bytes(p.size),
+                p.pct,
+                p.pct,
+                p.instances,
+                crate::heap::count(p.instances),
+                classes.join("<br>"),
+                why.join("")
+            );
+        }
+        b.push_str("</tbody></table>");
+    }
+    let _ = write!(
+        b,
+        r#"<p class="note">{}</p>"#,
+        t(
+            "Un solo heap summary è una fotografia: una cache grande non è per forza un leak. Per confermarlo rifai /spark heapsummary dopo qualche ora e confronta: se i numeri di un plugin salgono sempre e non scendono mai, è un leak.",
+            "A single heap summary is a snapshot: a large cache is not necessarily a leak. To confirm it, run /spark heapsummary again a few hours later and compare: if a plugin's numbers keep going up and never come down, it's a leak."
+        )
+    );
+    if !h.notes.is_empty() {
+        b.push_str("<ul class=\"hnotes\">");
+        for n in &h.notes {
+            let _ = write!(b, "<li>{}</li>", esc(n));
+        }
+        b.push_str("</ul>");
+    }
+    let _ = write!(
+        b,
+        r#"<details class="hraw"><summary>{}</summary><pre class="heap">{}</pre></details></section>"#,
+        t(
+            "Dettaglio completo (package e classi più grandi)",
+            "Full detail (largest packages and classes)"
+        ),
+        esc(text)
+    );
+    b
+}
+
+const HEAP_CSS: &str = ".lv{display:inline-block;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:600;margin-bottom:4px;border:1px solid var(--line)}.lv2{color:var(--crit);border-color:var(--crit)}.lv1{color:var(--high);border-color:var(--high)}.lv0{color:var(--ok)}table.hp td{vertical-align:top}table.hp td:nth-child(5){min-width:260px}table.hp td.small div{margin-top:2px}.hnotes{margin:8px 0 12px;padding-left:18px;color:var(--fg)}.hnotes li{margin:4px 0}details.hraw{margin-top:8px}details.hraw summary{cursor:pointer;color:var(--muted);font-size:13px;margin-bottom:8px}pre.heap{margin:0;background:var(--code);border:1px solid var(--line);border-radius:6px;padding:12px;overflow:auto;font:12px ui-monospace,Menlo,Consolas,monospace}";
 
 pub fn with_static_actions(html: &str, home: &str) -> String {
     let buttons = format!(

@@ -66,7 +66,19 @@ pub fn build_with(
             };
             let p = Profile::from_health(health);
             let a = analysis::analyze(&p);
-            let r = report::build(&p, a, &loaded.origin, loaded.viewer_url, kind);
+            let mut r = report::build(&p, a, &loaded.origin, loaded.viewer_url, kind);
+            for f in heap::findings(&hr) {
+                let at = r
+                    .findings
+                    .iter()
+                    .position(|x| {
+                        x.severity >= f.severity
+                            && x.area != crate::i18n::t("Panoramica", "Overview")
+                    })
+                    .unwrap_or(r.findings.len());
+                r.findings.insert(at, f);
+            }
+            r.summary = report::summarize(&r.meta, &r.analysis, &r.findings);
             Ok((r, None, Some(hr)))
         }
     }

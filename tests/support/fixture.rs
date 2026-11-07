@@ -861,3 +861,130 @@ pub fn sample_alloc() -> SamplerData {
     }
     d
 }
+
+/// Heap summary realistico: 42 giocatori online, un plugin che tiene i dati dei giocatori usciti
+/// (CrateRewards), uno che registra listener anonimi di continuo (HoloLines) e plugin normali.
+#[allow(dead_code)]
+pub fn sample_heap() -> HeapData {
+    let base = sample().metadata.unwrap_or_default();
+    let mut sources = BTreeMap::new();
+    for (n, v) in [
+        ("LuckPerms", "5.4.141"),
+        ("QuickShop-Hikari", "6.2.0.8"),
+        ("CrateRewards", "2.1.0"),
+        ("HoloLines", "1.8.2"),
+        ("EconomyShop", "2.4.1"),
+        ("spark", "1.10.124"),
+    ] {
+        sources.insert(n.to_string(), src(n, v));
+    }
+    let raw: &[(&str, i32, i64)] = &[
+        ("byte[]", 4_200_000, 1_650_000_000),
+        ("int[]", 310_000, 420_000_000),
+        ("long[]", 120_000, 380_000_000),
+        ("java.lang.Object[]", 2_100_000, 290_000_000),
+        ("java.util.HashMap$Node", 9_800_000, 313_600_000),
+        ("java.lang.String", 7_400_000, 177_600_000),
+        ("java.util.UUID", 2_300_000, 73_600_000),
+        (
+            "java.util.concurrent.ConcurrentHashMap$Node",
+            2_600_000,
+            83_200_000,
+        ),
+        ("java.util.ArrayList", 1_900_000, 45_600_000),
+        (
+            "net.minecraft.world.level.chunk.LevelChunk",
+            5_600,
+            1_120_000,
+        ),
+        (
+            "net.minecraft.world.level.chunk.PalettedContainer",
+            1_400_000,
+            44_800_000,
+        ),
+        ("net.minecraft.nbt.CompoundTag", 1_900_000, 30_400_000),
+        ("net.minecraft.world.item.ItemStack", 2_800_000, 112_000_000),
+        ("net.minecraft.server.level.ServerPlayer", 42, 210_000),
+        ("org.bukkit.craftbukkit.entity.CraftPlayer", 42, 2_000),
+        ("net.minecraft.server.level.ServerLevel", 3, 6_000),
+        (
+            "it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap",
+            90_000,
+            7_200_000,
+        ),
+        ("io.netty.buffer.PoolChunk", 400, 25_000),
+        (
+            "com.example.crates.data.PlayerCrateData",
+            1_840_000,
+            176_640_000,
+        ),
+        (
+            "com.example.crates.data.RewardHistory",
+            1_840_000,
+            88_320_000,
+        ),
+        ("com.example.crates.data.CrateKey", 920_000, 29_440_000),
+        ("com.example.crates.CrateRewards", 1, 120),
+        (
+            "net.example.hololines.HoloLines$$Lambda/0x00007f3a1c2b4d58",
+            64_000,
+            1_024_000,
+        ),
+        (
+            "net.example.hololines.listener.PlayerViewListener",
+            64_000,
+            2_048_000,
+        ),
+        ("net.example.hololines.hologram.HoloLine", 3_400, 272_000),
+        ("me.lucko.luckperms.common.model.User", 42, 4_032),
+        ("me.lucko.luckperms.common.cache.LoadingMap", 900, 43_200),
+        (
+            "me.lucko.luckperms.common.node.types.Permission",
+            180_000,
+            8_640_000,
+        ),
+        (
+            "com.ghostchu.quickshop.shop.ContainerShop",
+            12_000,
+            1_920_000,
+        ),
+        (
+            "com.ghostchu.quickshop.shop.display.RealDisplayItem",
+            12_000,
+            576_000,
+        ),
+        ("com.example.shop.cache.PriceEntry", 40_000, 1_280_000),
+        (
+            "me.lucko.spark.common.sampler.async.AsyncDataAggregator",
+            1,
+            64,
+        ),
+    ];
+    let mut entries: Vec<HeapEntry> = raw
+        .iter()
+        .map(|(t, i, s)| HeapEntry {
+            order: 0,
+            instances: *i,
+            size: *s,
+            r#type: t.to_string(),
+        })
+        .collect();
+    entries.sort_by(|a, b| b.size.cmp(&a.size));
+    for (k, e) in entries.iter_mut().enumerate() {
+        e.order = k as i32 + 1;
+    }
+    HeapData {
+        metadata: Some(HeapMetadata {
+            creator: base.creator,
+            platform_metadata: base.platform_metadata,
+            platform_statistics: base.platform_statistics,
+            system_statistics: base.system_statistics,
+            generated_time: base.start_time,
+            server_configurations: base.server_configurations,
+            sources,
+            extra_platform_metadata: base.extra_platform_metadata,
+            metrics: base.metrics,
+        }),
+        entries,
+    }
+}

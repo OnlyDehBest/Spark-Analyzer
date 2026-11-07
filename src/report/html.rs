@@ -629,13 +629,15 @@ pub fn render(r: &Report) -> String {
         "",
         if crit > 0 { "bad" } else { "ok" },
     );
-    card(
-        "line",
-        "Lag spike",
-        a.spikes.len().to_string(),
-        &format!(" / {} finestre", a.windows.len()),
-        if a.spikes.is_empty() { "ok" } else { "wrn" },
-    );
+    if m.duration_s > 0.0 {
+        card(
+            "line",
+            "Lag spike",
+            a.spikes.len().to_string(),
+            &format!(" / {} finestre", a.windows.len()),
+            if a.spikes.is_empty() { "ok" } else { "wrn" },
+        );
+    }
     if let Some(al) = &r.alloc {
         let (v, u) = super::fmt_time(al.total, "byte")
             .split_once(' ')
@@ -669,13 +671,15 @@ pub fn render(r: &Report) -> String {
         }
     }
     card("users", "Giocatori", m.players.to_string(), "", "");
-    card(
-        "hourglass",
-        "Durata profilo",
-        fmt_duration(m.duration_s),
-        "",
-        "",
-    );
+    if m.duration_s > 0.0 {
+        card(
+            "hourglass",
+            "Durata profilo",
+            fmt_duration(m.duration_s),
+            "",
+            "",
+        );
+    }
 
     let lag = r.findings.iter().any(|f| {
         f.area == crate::i18n::t("Panoramica", "Overview")
@@ -1335,6 +1339,25 @@ pub fn render(r: &Report) -> String {
     }
     b.push_str("</section>");
     b.push_str("</main></div>");
+
+    for (id, _, label) in nav_items {
+        if !b.contains(&format!(r#"<section id="{id}""#)) {
+            b = b.replacen(
+                &format!(
+                    r##"<a href="#{id}">{}<span>{label}</span></a>"##,
+                    icon(
+                        nav_items
+                            .iter()
+                            .find(|x| x.0 == id)
+                            .map(|x| x.1)
+                            .unwrap_or("")
+                    )
+                ),
+                "",
+                1,
+            );
+        }
+    }
 
     for (id, ic) in [
         ("diagnosi", "clipboard"),

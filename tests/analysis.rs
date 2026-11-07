@@ -595,3 +595,55 @@ fn advice_names_the_responsible_plugin_and_method() {
         db.solutions[0]
     );
 }
+
+#[test]
+fn heap_memory_by_plugin_flags_leaks() {
+    let bytes = fixture::sample_heap().encode_to_vec();
+    let l = sparkscope::loader::load_bytes(&bytes, "a.sparkheap").unwrap();
+    let (r, _, h) = sparkscope::pipeline::build(l, None).unwrap();
+    let h = h.expect("heap report");
+    let crates = h
+        .by_plugin
+        .iter()
+        .find(|p| p.name == "CrateRewards")
+        .expect("CrateRewards riconosciuto dalla classe principale");
+    assert_eq!(crates.level, 2);
+    assert!(
+        crates
+            .reasons
+            .iter()
+            .any(|x| x.contains("giocatori usciti"))
+    );
+    let holo = h.by_plugin.iter().find(|p| p.name == "HoloLines").unwrap();
+    assert_eq!(holo.level, 1);
+    let lp = h.by_plugin.iter().find(|p| p.name == "LuckPerms").unwrap();
+    assert_eq!(lp.level, 0);
+    assert!(h.by_plugin.iter().any(|p| p.name.starts_with("QuickShop")));
+    assert!(
+        r.findings
+            .iter()
+            .any(|f| f.title.contains("memory leak in CrateRewards"))
+    );
+    assert!(
+        r.summary
+            .cause
+            .as_deref()
+            .unwrap_or("")
+            .contains("CrateRewards")
+    );
+    let html = sparkscope::webui::render_report(&r, Some(&h)).html;
+    assert!(html.contains(r#"<section id="heap""#) && html.contains("Sospetto leak"));
+    assert!(
+        !html.contains(r##"href="#tempo""##),
+        "link del menu verso sezioni assenti"
+    );
+    let _g = sparkscope::i18n::scoped(sparkscope::i18n::Lang::En);
+    let l = sparkscope::loader::load_bytes(&bytes, "a.sparkheap").unwrap();
+    let (r, _, h) = sparkscope::pipeline::build(l, None).unwrap();
+    let html = sparkscope::webui::render_report(&r, h.as_ref()).html;
+    assert!(
+        html.contains("Memory by plugin")
+            && html.contains("Suspected leak")
+            && html.contains("1,840,000")
+    );
+}

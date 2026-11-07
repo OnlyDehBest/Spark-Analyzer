@@ -8,11 +8,14 @@ fn main() {
         .nth(1)
         .unwrap_or_else(|| "sample.sparkprofile".into());
     let alloc = std::env::args().any(|a| a == "--alloc");
-    let data = if alloc {
-        fixture::sample_alloc()
+    let heap = std::env::args().any(|a| a == "--heap");
+    let bytes = if heap {
+        fixture::sample_heap().encode_to_vec()
+    } else if alloc {
+        fixture::sample_alloc().encode_to_vec()
     } else {
-        fixture::sample()
+        fixture::sample().encode_to_vec()
     };
-    std::fs::write(&out, data.encode_to_vec()).expect("scrittura fallita");
+    std::fs::write(&out, bytes).expect("scrittura fallita");
     eprintln!("scritto {out}");
 }

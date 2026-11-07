@@ -254,7 +254,7 @@ pub fn summarize(m: &MetaInfo, a: &Analysis, findings: &[Finding]) -> Summary {
     if let Some(load) = a.main.busy_per_tick.or(m.mspt_mean) {
         score -= ((load - 30.0) * 1.2).clamp(0.0, 35.0);
     }
-    let exec = a.mode == crate::model::Mode::Execution;
+    let exec = a.mode == crate::model::Mode::Execution && a.main.total > 0.0;
     if exec && !a.windows.is_empty() {
         score -= (a.spikes.len() as f64 / a.windows.len() as f64 * 20.0).min(15.0);
     }
