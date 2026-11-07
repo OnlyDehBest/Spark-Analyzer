@@ -467,10 +467,7 @@ pub fn local_index(recent: &[Recent]) -> String {
     shell(&Page {
         crumb: t("Nuova analisi", "New analysis"),
         lang_switch: &switch,
-        title: t(
-            "Spark-Analyzer — nuova analisi",
-            "Spark-Analyzer — new analysis",
-        ),
+        title: t("Spark Resource Analyzer", "Spark Resource Analyzer"),
         side_extra: &side,
         main: &main,
         script: LOCAL_JS,
@@ -537,10 +534,7 @@ pub fn static_index() -> String {
     let page = shell(&Page {
         crumb: t("Nuova analisi", "New analysis"),
         lang_switch: other,
-        title: t(
-            "Spark-Analyzer — analisi profili spark",
-            "Spark-Analyzer — spark profile analysis",
-        ),
+        title: t("Spark Resource Analyzer", "Spark Resource Analyzer"),
         side_extra: r#"<div id="recentside"></div>"#,
         main: &main,
         script: "",
