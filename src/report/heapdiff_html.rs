@@ -1,7 +1,8 @@
 use std::fmt::Write;
 
 use super::html::{
-    ANIM_JS, CSS, FAVICON, JS, LOGO_SVG, copy_link_button, esc, icon, lang_to, topbar,
+    ANIM_JS, CSS, FAVICON, JS, LOGO_SVG, copy_link_button, copyright_footer, esc, icon, lang_to,
+    topbar,
 };
 use super::{fmt_duration, fmt_time, fmt_utc};
 use crate::heap::{count, short_class};
@@ -336,7 +337,9 @@ pub fn render(c: &HeapComparison) -> String {
     for a in &c.actions {
         let _ = write!(b, "<li>{}</li>", esc(a));
     }
-    b.push_str("</ol></section></main></div>");
+    b.push_str("</ol></section>");
+    b.push_str(&copyright_footer());
+    b.push_str("</main></div>");
 
     let page_title = match c.leaks().next() {
         Some(p) => format!("Spark-Analyzer — {} · {}", title, display_name(p)),

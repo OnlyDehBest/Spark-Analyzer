@@ -325,6 +325,15 @@ pub(crate) fn topbar(page: &str, viewer: Option<&str>) -> String {
     )
 }
 
+pub const COPYRIGHT_OWNER: &str = "onlynelchilling";
+pub const COPYRIGHT_YEAR: u16 = 2026;
+
+pub(crate) fn copyright_footer() -> String {
+    format!(
+        r#"<footer class="copy">© {COPYRIGHT_YEAR} <b>{COPYRIGHT_OWNER}</b> · Spark Resource Analyzer</footer>"#
+    )
+}
+
 pub const PUBLIC_SITE: &str = "https://onlydehbest.github.io/Spark-Analyzer/";
 
 pub(crate) fn copy_link_button() -> String {
@@ -1359,6 +1368,7 @@ pub fn render(r: &Report) -> String {
         b.push_str("</p>");
     }
     b.push_str("</section>");
+    b.push_str(&copyright_footer());
     b.push_str("</main></div>");
 
     for (id, _, label) in nav_items {
@@ -1528,7 +1538,7 @@ body.noside .side{margin-left:-249px}
 h1{font-size:36px;font-weight:700;letter-spacing:-.025em}.sub{font-size:15px;margin-top:8px}
 .top{margin-bottom:22px}
 .btn{background:var(--hd);color:var(--bg);border-radius:10px;padding:9px 16px}.btn:hover{background:var(--fg)}
-.btn.sec{background:var(--card);color:var(--hd);border:1px solid var(--line)}.btn[hidden]{display:none!important}.sharebox{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--card);border:1px solid var(--acc);border-radius:12px;padding:12px 14px;margin:-4px 0 16px;color:var(--fg);font-size:13px}.sharebox span{flex:1 1 320px}.sharebox input{flex:1 1 320px;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--code);color:var(--hd);font:12px "JetBrains Mono",monospace}.btn.sec.ok{border-color:var(--ok);color:var(--ok)}.btn.sec:hover{background:var(--card2);border-color:var(--muted)}
+.btn.sec{background:var(--card);color:var(--hd);border:1px solid var(--line)}.btn[hidden]{display:none!important}.copy{margin:28px 0 12px;padding:14px 0 6px;border-top:1px solid var(--line2);text-align:center;color:var(--muted);font-size:12px;letter-spacing:.01em}.copy b{color:var(--fg);font-weight:600}.sharebox{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--card);border:1px solid var(--acc);border-radius:12px;padding:12px 14px;margin:-4px 0 16px;color:var(--fg);font-size:13px}.sharebox span{flex:1 1 320px}.sharebox input{flex:1 1 320px;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--code);color:var(--hd);font:12px "JetBrains Mono",monospace}.btn.sec.ok{border-color:var(--ok);color:var(--ok)}.btn.sec:hover{background:var(--card2);border-color:var(--muted)}
 .stats{gap:12px}
 .stat{border-radius:14px;padding:14px;background:var(--card);box-shadow:none}
 .stat:hover{box-shadow:none;border-color:var(--card3)}

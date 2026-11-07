@@ -149,3 +149,25 @@ fn static_assets_are_versioned() {
     let plain = sparkscope::webui::static_index();
     assert!(plain.contains("'./pkg/sparkscope_web.js'") && !plain.contains("__SA_V__"));
 }
+
+#[test]
+fn copyright_on_every_page() {
+    use prost::Message;
+    let footer = "© 2026 <b>onlynelchilling</b> · Spark Resource Analyzer";
+    assert!(sparkscope::webui::static_index().contains(footer));
+    assert!(sparkscope::webui::local_index(&[]).contains(footer));
+    let bytes = fixture::sample().encode_to_vec();
+    let json = sparkscope_web::analyze_to_json(&bytes, "a.sparkprofile", None, "./", "it").unwrap();
+    assert!(json.contains("onlynelchilling"));
+    let (a, b) = fixture::sample_heap_pair();
+    let cmp = sparkscope_web::compare_heaps_json(
+        &a.encode_to_vec(),
+        "a.sparkheap",
+        &b.encode_to_vec(),
+        "b.sparkheap",
+        "./",
+        "en",
+    )
+    .unwrap();
+    assert!(cmp.contains("onlynelchilling"));
+}

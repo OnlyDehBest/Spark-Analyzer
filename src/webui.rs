@@ -31,7 +31,11 @@ pub fn render_report(r: &Report, heap_report: Option<&HeapReport>) -> Rendered {
         if html.contains(anchor) {
             html = html.replacen(anchor, &format!("{section}{anchor}"), 1);
         } else {
-            html = html.replacen("</main>", &format!("{section}</main>"), 1);
+            html = html.replacen(
+                r#"<footer class="copy">"#,
+                &format!(r#"{section}<footer class="copy">"#),
+                1,
+            );
         }
         let label = crate::i18n::t("Memoria (heap)", "Memory (heap)");
         html = html.replacen(
@@ -245,7 +249,7 @@ pub fn shell(p: &Page) -> String {
         format!(r#"<script type="module">{}</script>"#, p.module_script)
     };
     format!(
-        r#"<!doctype html><html lang="{}" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">{}<title>{}</title><style>{}{}</style></head><body><div class="shell"><aside class="side"><a class="brand" href="{}" title="Home"><span class="logo">{}</span><span>Spark-Analyzer</span></a><nav><a class="on" href="{}">{}<span>{}</span></a></nav>{}<div class="sidefoot"><div class="srv"><b>Spark-Analyzer</b><span>v{}</span></div><button id="langbtn" class="ghost lang" data-to="{}" data-href="{}" title="Lingua / Language">{}</button><button id="theme" class="ghost" title="{}">{}</button></div></aside><main class="content">{}{}</main></div><script>{}{}{}{}{}</script>{}</body></html>"#,
+        r#"<!doctype html><html lang="{}" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">{}<title>{}</title><style>{}{}</style></head><body><div class="shell"><aside class="side"><a class="brand" href="{}" title="Home"><span class="logo">{}</span><span>Spark-Analyzer</span></a><nav><a class="on" href="{}">{}<span>{}</span></a></nav>{}<div class="sidefoot"><div class="srv"><b>Spark-Analyzer</b><span>v{}</span></div><button id="langbtn" class="ghost lang" data-to="{}" data-href="{}" title="Lingua / Language">{}</button><button id="theme" class="ghost" title="{}">{}</button></div></aside><main class="content">{}{}{}</main></div><script>{}{}{}{}{}</script>{}</body></html>"#,
         crate::i18n::lang().code(),
         FAVICON,
         esc(p.title),
@@ -265,6 +269,7 @@ pub fn shell(p: &Page) -> String {
         icon("moon"),
         crate::report::html::topbar(p.crumb, None),
         p.main,
+        crate::report::html::copyright_footer(),
         THEME_JS,
         ANIM_JS,
         messages_js(),
