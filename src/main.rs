@@ -63,6 +63,12 @@ enum Cmd {
         #[arg(
             long,
             value_name = "FILE",
+            help = "Scrive un .txt con le configurazioni da ottimizzare"
+        )]
+        config: Option<PathBuf>,
+        #[arg(
+            long,
+            value_name = "FILE",
             help = "Scrive tutti i dati dell'analisi in JSON"
         )]
         json: Option<PathBuf>,
@@ -156,6 +162,7 @@ fn main() -> Result<()> {
             common,
             html,
             md,
+            config,
             json,
             top,
             all,
@@ -178,6 +185,13 @@ fn main() -> Result<()> {
                     &p,
                     &sparkscope::webui::render_report(&r, heap_report.as_ref()).html,
                     "Report HTML",
+                )?;
+            }
+            if let Some(p) = config {
+                write_file(
+                    &p,
+                    &report::config_txt::render(&r),
+                    "Configurazioni da ottimizzare",
                 )?;
             }
             if let Some(p) = md {

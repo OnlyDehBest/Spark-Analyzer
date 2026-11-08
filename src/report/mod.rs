@@ -1,5 +1,6 @@
 #[cfg(feature = "cli")]
 pub mod cli;
+pub mod config_txt;
 pub mod heapdiff_html;
 pub mod html;
 pub mod localize;
@@ -10,6 +11,7 @@ use serde::Serialize;
 use crate::analysis::Analysis;
 use crate::model::Profile;
 use crate::proto::sampler_metadata::SamplerEngine;
+pub use crate::rules::ConfigChange;
 use crate::rules::{self, Finding};
 
 #[derive(Clone, Debug, Serialize, Default)]
@@ -218,6 +220,7 @@ pub struct Report {
     pub plugins: Vec<(String, String)>,
     pub alloc: Option<crate::alloc::AllocReport>,
     pub summary: Summary,
+    pub config_changes: Vec<ConfigChange>,
 }
 
 /// Riassunto in cima al report: punteggio, causa principale e primo intervento.
@@ -360,7 +363,7 @@ pub fn build(
     viewer_url: Option<String>,
     kind: &str,
 ) -> Report {
-    let mut findings = rules::diagnose(&a, p);
+    let (mut findings, config_changes) = rules::diagnose_with_config(&a, p);
     let alloc = (p.mode == crate::model::Mode::Allocation).then(|| crate::alloc::analyze(p));
     if let Some(ar) = &alloc {
         findings.extend(crate::alloc::findings(ar, p));
@@ -469,6 +472,7 @@ pub fn build(
         plugins,
         alloc,
         summary,
+        config_changes,
     }
 }
 

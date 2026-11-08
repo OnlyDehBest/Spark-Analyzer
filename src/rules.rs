@@ -45,6 +45,58 @@ pub struct Ctx<'a> {
     pub lagging: bool,
     pub tps: Option<f64>,
     pub mspt: Option<f64>,
+    changes: std::cell::RefCell<Vec<ConfigChange>>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ConfigChange {
+    pub file: String,
+    pub path: String,
+    pub current: Option<String>,
+    pub recommended: String,
+    pub note: String,
+    pub gameplay: bool,
+    pub severity: Severity,
+    pub reason: String,
+    #[serde(skip)]
+    text: String,
+}
+
+const GAMEPLAY_NEUTRAL: &[&str] = &[
+    "optimize-explosions",
+    "network-compression-threshold",
+    "ignore-occluding-blocks",
+    "max-auto-save-chunks-per-tick",
+    "merge-radius.exp",
+    "spawn-limits.ambient",
+];
+
+fn split_recommendation(rec: &str) -> (String, String) {
+    match rec.split_once(" (") {
+        Some((value, rest)) if rest.ends_with(')') => (
+            value.trim().to_string(),
+            rest[..rest.len() - 1].trim().to_string(),
+        ),
+        _ => (rec.trim().to_string(), String::new()),
+    }
+}
+
+impl ConfigChange {
+    fn new(file: &str, path: &str, current: Option<String>, rec: &str, text: &str) -> ConfigChange {
+        let (recommended, note) = split_recommendation(rec);
+        let gameplay = !note.is_empty() && !GAMEPLAY_NEUTRAL.iter().any(|n| path.ends_with(n));
+        ConfigChange {
+            file: file.to_string(),
+            path: path.to_string(),
+            current,
+            recommended,
+            note,
+            gameplay,
+            severity: Severity::Info,
+            reason: String::new(),
+            text: text.to_string(),
+        }
+    }
 }
 
 fn f(v: f64) -> String {
@@ -80,6 +132,7 @@ impl<'a> Ctx<'a> {
             || a.main.busy_per_tick.map(|b| b > 45.0).unwrap_or(false)
             || p.ticked_threshold().is_some();
         Ctx {
+            changes: std::cell::RefCell::new(Vec::new()),
             a,
             p,
             cfg,
@@ -279,12 +332,20 @@ impl<'a> Ctx<'a> {
         match found {
             Some(x) => {
                 if bad(&x.value) {
-                    Some(tf!(
+                    let text = tf!(
                         "{} → consigliato {}",
                         "{} → recommended {}",
                         x.describe(),
                         rec
-                    ))
+                    );
+                    self.changes.borrow_mut().push(ConfigChange::new(
+                        &x.file,
+                        &x.path,
+                        Some(x.value.text()),
+                        rec,
+                        &text,
+                    ));
+                    Some(text)
                 } else {
                     None
                 }
@@ -294,10 +355,14 @@ impl<'a> Ctx<'a> {
                     || (file.contains("paper-world-defaults") && self.cfg.has("paper/"))
                     || (file.contains("paper-global") && self.cfg.has("paper/"));
                 if self.cfg.is_empty() || !file_known {
-                    Some(tf!(
+                    let text = tf!(
                         "{file} › {path}: verifica e imposta {rec}",
                         "{file} › {path}: check and set {rec}"
-                    ))
+                    );
+                    self.changes
+                        .borrow_mut()
+                        .push(ConfigChange::new(file, path, None, rec, &text));
+                    Some(text)
                 } else {
                     None
                 }
@@ -435,6 +500,56 @@ fn push_some(v: &mut Vec<String>, items: Vec<Option<String>>) {
 }
 
 pub fn diagnose(a: &Analysis, p: &Profile) -> Vec<Finding> {
+    diagnose_with_config(a, p).0
+}
+
+fn link_config_changes(recorded: Vec<ConfigChange>, findings: &[Finding]) -> Vec<ConfigChange> {
+    let config_area = crate::i18n::t("Configurazione", "Configuration");
+    let mut out: Vec<ConfigChange> = Vec::with_capacity(recorded.len());
+    for mut change in recorded {
+        let mut best: Option<&Finding> = None;
+        let mut general = false;
+        for f in findings {
+            if !f.solutions.iter().any(|s| s.contains(&change.text)) {
+                continue;
+            }
+            if f.area == config_area {
+                general = true;
+                continue;
+            }
+            if best.is_none_or(|b| f.severity < b.severity) {
+                best = Some(f);
+            }
+        }
+        match best {
+            Some(f) => {
+                change.severity = f.severity;
+                change.reason = plain_pv(&f.title);
+            }
+            None if general => {
+                change.severity = Severity::Basso;
+                change.reason = crate::i18n::t(
+                    "Impostazione generale da ottimizzare",
+                    "General setting to optimize",
+                )
+                .to_string();
+            }
+            None => continue,
+        }
+        match out
+            .iter_mut()
+            .find(|c| c.file == change.file && c.path == change.path)
+        {
+            Some(existing) if change.severity < existing.severity => *existing = change,
+            Some(_) => {}
+            None => out.push(change),
+        }
+    }
+    out.sort_by_key(|c| (crate::report::config_txt::file_rank(&c.file), c.severity));
+    out
+}
+
+pub fn diagnose_with_config(a: &Analysis, p: &Profile) -> (Vec<Finding>, Vec<ConfigChange>) {
     let ctx = Ctx::new(a, p);
     let mut out: Vec<Finding> = Vec::new();
     overview(&ctx, &mut out);
@@ -491,7 +606,8 @@ pub fn diagnose(a: &Analysis, p: &Profile) -> Vec<Finding> {
     world_rules(ctx.p.meta.platform_statistics.as_ref(), &mut out);
     config_rules(&ctx, &mut out);
     sort_findings(&mut out);
-    out
+    let changes = link_config_changes(ctx.changes.take(), &out);
+    (out, changes)
 }
 
 pub fn sort_findings(out: &mut [Finding]) {

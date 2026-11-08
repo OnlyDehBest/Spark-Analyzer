@@ -33,6 +33,9 @@ configurazione da cambiare.
 - **Punteggio di salute**: in cima al report un voto da 0 a 100 calcolato da TPS, MSPT, lag spike e
   gravità dei problemi, con causa principale e primo intervento in tre righe (pulsante *Copia riassunto*
   per incollarlo su Discord o in un ticket).
+- **Configurazioni da ottimizzare in un .txt**: link «Scarica le N configurazioni da cambiare (.txt)» accanto
+  al titolo Diagnosi (oppure `--config FILE` da terminale). Per ogni impostazione: file, valore attuale, valore
+  consigliato, il problema del profilo da cui nasce e una nota; le righe con [!] cambiano il gameplay.
 - **Comando consigliato**: se il profilo non basta a vedere la causa (troppo corto, lag a picchi in un
   profilo normale, pochi tick sopra la soglia di `--only-ticks-over`, nessun giocatore online, GC
   molto attivo, profilo di allocazione su un server in lag) propone il comando `/spark` esatto da rilanciare.

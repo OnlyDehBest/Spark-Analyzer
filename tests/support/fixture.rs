@@ -1096,3 +1096,12 @@ pub fn sample_malicious() -> SamplerData {
         "</script><script>window.__xss=3</script>".into();
     s
 }
+
+#[allow(dead_code)]
+pub fn sample_without_config() -> SamplerData {
+    let mut s = sample();
+    if let Some(m) = s.metadata.as_mut() {
+        m.server_configurations.clear();
+    }
+    s
+}

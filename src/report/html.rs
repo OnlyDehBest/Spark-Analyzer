@@ -384,6 +384,7 @@ pub(crate) fn icon(name: &str) -> String {
     let d = match name {
         "activity" => "M3 12h4l3 8l4-16l3 8h4",
         "check" => "M5 12l5 5L20 7",
+        "download" => "M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2M7 11l5 5l5-5M12 4v12",
         "x" => "M18 6L6 18M6 6l12 12",
         "clock" => "M3 12a9 9 0 1 0 18 0a9 9 0 0 0-18 0M12 7v5l3 3",
         "bolt" => "M13 3v7h6l-8 11v-7H5l8-11",
@@ -846,7 +847,27 @@ pub fn render(r: &Report) -> String {
             f.severity == Severity::Info && f.area != crate::i18n::t("Panoramica", "Overview")
         })
         .count();
-    b.push_str(r#"<section id="diagnosi"><h2>Diagnosi</h2>"#);
+    let config_link = if r.config_changes.is_empty() {
+        String::new()
+    } else {
+        let txt = super::config_txt::render(r);
+        format!(
+            r#"<a class="cfgdl" download="{}" href="{}">{}<span>{}</span></a>"#,
+            super::config_txt::file_name(),
+            super::config_txt::data_uri(&txt),
+            icon("download"),
+            esc(&tf!(
+                "Scarica le {} configurazioni da cambiare (.txt)",
+                "Download the {} settings to change (.txt)",
+                r.config_changes.len()
+            ))
+        )
+    };
+    let _ = write!(
+        b,
+        r#"<section id="diagnosi"><h2>{}{config_link}</h2>"#,
+        crate::i18n::t("Diagnosi", "Diagnosis")
+    );
     if hidable > 0 {
         let _ = write!(
             b,
@@ -1549,7 +1570,7 @@ body.noside .side{margin-left:-249px}
 h1{font-size:36px;font-weight:700;letter-spacing:-.025em}.sub{font-size:15px;margin-top:8px}
 .top{margin-bottom:22px}
 .btn{background:var(--hd);color:var(--bg);border-radius:10px;padding:9px 16px}.btn:hover{background:var(--fg)}
-.btn.sec{background:var(--card);color:var(--hd);border:1px solid var(--line)}.btn[hidden]{display:none!important}.copy{margin:28px 0 12px;padding:14px 0 6px;border-top:1px solid var(--line2);text-align:center;color:var(--muted);font-size:12px;letter-spacing:.01em}.copy b{color:var(--fg);font-weight:600}.sharebox{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--card);border:1px solid var(--acc);border-radius:12px;padding:12px 14px;margin:-4px 0 16px;color:var(--fg);font-size:13px}.sharebox span{flex:1 1 320px}.sharebox input{flex:1 1 320px;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--code);color:var(--hd);font:12px "JetBrains Mono",monospace}.btn.sec.ok{border-color:var(--ok);color:var(--ok)}.btn.sec:hover{background:var(--card2);border-color:var(--muted)}
+.btn.sec{background:var(--card);color:var(--hd);border:1px solid var(--line)}.btn[hidden]{display:none!important}.cfgdl{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:var(--acc);text-align:right}.cfgdl svg{width:15px;height:15px;flex:none}.cfgdl:hover{text-decoration:underline}@media(max-width:700px){#diagnosi h2{flex-wrap:wrap}.cfgdl{margin-left:0;width:100%;text-align:left}}.copy{margin:28px 0 12px;padding:14px 0 6px;border-top:1px solid var(--line2);text-align:center;color:var(--muted);font-size:12px;letter-spacing:.01em}.copy b{color:var(--fg);font-weight:600}.sharebox{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--card);border:1px solid var(--acc);border-radius:12px;padding:12px 14px;margin:-4px 0 16px;color:var(--fg);font-size:13px}.sharebox span{flex:1 1 320px}.sharebox input{flex:1 1 320px;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--code);color:var(--hd);font:12px "JetBrains Mono",monospace}.btn.sec.ok{border-color:var(--ok);color:var(--ok)}.btn.sec:hover{background:var(--card2);border-color:var(--muted)}
 .stats{gap:12px}
 .stat{border-radius:14px;padding:14px;background:var(--card);box-shadow:none}
 .stat:hover{box-shadow:none;border-color:var(--card3)}
