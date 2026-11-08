@@ -267,7 +267,7 @@ pub fn shell(p: &Page) -> String {
         crate::report::html::lang_to().to_ascii_uppercase(),
         crate::i18n::t("Tema chiaro/scuro", "Light/dark theme"),
         icon("moon"),
-        crate::report::html::topbar(p.crumb, None),
+        crate::report::html::topbar(p.crumb),
         p.main,
         crate::report::html::copyright_footer(),
         THEME_JS,

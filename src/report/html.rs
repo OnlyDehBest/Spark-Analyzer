@@ -322,21 +322,12 @@ fn pct_bar(p: f64) -> String {
 pub(crate) const LOGO_SVG: &str = r##"<svg viewBox="0 0 32 32" width="32" height="32" aria-hidden="true"><rect x=".5" y=".5" width="31" height="31" rx="9" style="fill:var(--card3);stroke:var(--line)"/><circle cx="14" cy="14" r="7.2" fill="none" style="stroke:var(--hd)" stroke-width="2.2"/><path d="M19.4 19.4L24.6 24.6" style="stroke:var(--hd)" stroke-width="2.8" stroke-linecap="round"/><path d="M9 14.4h2.1l1.4-3.2l2.2 5.9l1.6-3.8H19" fill="none" style="stroke:var(--ok)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>"##;
 pub(crate) const FAVICON: &str = r##"<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='.5' y='.5' width='31' height='31' rx='9' fill='%231a1a1a' stroke='%23333'/%3E%3Ccircle cx='14' cy='14' r='7.2' fill='none' stroke='%23fafafa' stroke-width='2.2'/%3E%3Cpath d='M19.4 19.4L24.6 24.6' stroke='%23fafafa' stroke-width='2.8' stroke-linecap='round'/%3E%3Cpath d='M9 14.4h2.1l1.4-3.2l2.2 5.9l1.6-3.8H19' fill='none' stroke='%23a3e635' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">"##;
 
-pub(crate) fn topbar(page: &str, viewer: Option<&str>) -> String {
-    let right = viewer
-        .map(|v| {
-            format!(
-                r#"<a href="{}" target="_blank" rel="noopener">spark viewer ↗</a>"#,
-                esc(v)
-            )
-        })
-        .unwrap_or_default();
+pub(crate) fn topbar(page: &str) -> String {
     format!(
-        r#"<div class="topbar"><button class="ghost tg" id="sidetoggle" type="button" title="{}">{}</button><div class="crumb"><a href="./" id="crumbhome">Spark-Analyzer</a><span class="sep">›</span><b>{}</b></div><div class="tr">{}</div></div>"#,
+        r#"<div class="topbar"><button class="ghost tg" id="sidetoggle" type="button" title="{}">{}</button><div class="crumb"><a href="./" id="crumbhome">Spark-Analyzer</a><span class="sep">›</span><b>{}</b></div></div>"#,
         crate::i18n::t("Mostra/nascondi barra laterale", "Show/hide sidebar"),
         icon("sidebar"),
-        esc(page),
-        right
+        esc(page)
     )
 }
 
@@ -781,10 +772,7 @@ pub fn render(r: &Report) -> String {
         lang_to(),
         lang_to().to_ascii_uppercase(),
         icon("moon"),
-        topbar(
-            crate::i18n::t("Analisi profilo", "Profile analysis"),
-            m.viewer_url.as_deref()
-        )
+        topbar(crate::i18n::t("Analisi profilo", "Profile analysis"))
     );
     let _ = write!(
         b,
@@ -1549,7 +1537,7 @@ body.noside .side{margin-left:-249px}
 .topbar{position:sticky;top:0;z-index:6;display:flex;align-items:center;gap:14px;height:58px;margin:0 -32px 26px;padding:0 32px;border-bottom:1px solid var(--line);background:var(--glass);backdrop-filter:saturate(1.2) blur(10px);-webkit-backdrop-filter:saturate(1.2) blur(10px)}
 .topbar .tg{width:34px;height:34px;border:0;background:transparent;color:var(--fg)}.topbar .tg:hover{background:var(--card2)}
 .crumb{display:flex;align-items:center;gap:10px;font-size:15px;color:var(--muted);min-width:0}.crumb a{color:var(--muted)}.crumb a:hover{color:var(--hd);text-decoration:none}.crumb b{color:var(--hd);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.crumb .sep{opacity:.5}
-.topbar .tr{margin-left:auto;display:flex;align-items:center;gap:16px;font-size:14px}.topbar .tr a{color:var(--muted)}.topbar .tr a:hover{color:var(--hd);text-decoration:none}
+
 h1{font-size:36px;font-weight:700;letter-spacing:-.025em}.sub{font-size:15px;margin-top:8px}
 .top{margin-bottom:22px}
 .btn{background:var(--hd);color:var(--bg);border-radius:10px;padding:9px 16px}.btn:hover{background:var(--fg)}

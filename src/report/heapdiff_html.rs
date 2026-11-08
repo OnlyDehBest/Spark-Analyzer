@@ -122,7 +122,7 @@ pub fn render(c: &HeapComparison) -> String {
         lang_to().to_ascii_uppercase(),
         t("Tema chiaro/scuro", "Light/dark theme"),
         icon("moon"),
-        topbar(title, None)
+        topbar(title)
     );
 
     let uptime = match (c.before.uptime_ms, c.after.uptime_ms) {
