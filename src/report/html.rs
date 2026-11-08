@@ -126,6 +126,9 @@ pub(crate) fn script_json(json: &str) -> String {
     out
 }
 
+const CHART_SPLIT_MS: f64 = 100.0;
+const CHART_LOW_SHARE: f64 = 0.72;
+
 fn timeline_svg(r: &Report) -> Option<String> {
     let ws = &r.analysis.windows;
     if ws.len() < 2 {
@@ -147,45 +150,77 @@ fn timeline_svg(r: &Report) -> Option<String> {
         .map(|w| if has_mspt { w.mspt_median } else { 0.0 })
         .collect();
     let vals_c: Vec<f64> = ws.iter().map(|w| w.busy_per_tick).collect();
-    let max = vals_a
+    let peak = vals_a
         .iter()
         .chain(vals_c.iter())
+        .chain(vals_b.iter())
         .cloned()
-        .fold(50.0f64, f64::max)
-        * 1.1;
+        .fold(0.0f64, f64::max);
     let wd = 960.0;
-    let ht = 220.0;
+    let ht = 250.0;
     let pad_l = 44.0;
+    let pad_t = 28.0;
     let pad_b = 26.0;
     let pw = wd - pad_l - 10.0;
-    let ph = ht - pad_b - 10.0;
+    let ph = ht - pad_b - pad_t;
+    let base = pad_t + ph;
+    let split = CHART_SPLIT_MS;
+    let broken = peak > split * 1.1;
+    let top = if broken { peak } else { peak.max(60.0) * 1.1 };
+    let low_share = if broken { CHART_LOW_SHARE } else { 1.0 };
     let n = ws.len() as f64;
     let x = |i: usize| pad_l + pw * (i as f64 + 0.5) / n;
-    let y = |v: f64| 10.0 + ph - (v / max) * ph;
+    let y = |v: f64| {
+        let v = v.max(0.0);
+        if !broken {
+            return base - (v / top) * ph;
+        }
+        if v <= split {
+            base - v / split * ph * low_share
+        } else {
+            let f = (v / split).ln() / (top / split).ln();
+            base - ph * low_share - f.min(1.0) * ph * (1.0 - low_share)
+        }
+    };
     let mut s = String::new();
     let _ = write!(
         s,
         r#"<svg viewBox="0 0 {wd} {ht}" class="chart" role="img" aria-label="Timeline MSPT per finestra">"#
     );
-    for i in 0..ws.len() {
-        if ws[i].is_spike {
-            let bw = pw / n;
+    let budget_y = y(50.0);
+    let _ = write!(
+        s,
+        r#"<rect x="{pad_l}" y="{pad_t}" width="{pw:.1}" height="{:.1}" class="zone-bad"/><rect x="{pad_l}" y="{budget_y:.1}" width="{pw:.1}" height="{:.1}" class="zone-ok"/>"#,
+        (budget_y - pad_t).max(0.0),
+        base - budget_y
+    );
+    let bw = pw / n;
+    for (i, w) in ws.iter().enumerate() {
+        if w.is_spike {
             let _ = write!(
                 s,
-                r#"<rect x="{:.1}" y="10" width="{:.1}" height="{:.1}" class="spikebg"><title>Finestra #{} — lag spike</title></rect>"#,
-                pad_l + bw * i as f64,
-                bw,
-                ph,
-                i + 1
+                r#"<rect x="{:.1}" y="{pad_t}" width="{:.1}" height="{ph:.1}" rx="6" class="spikebg"><title>Finestra #{} — lag spike</title></rect>"#,
+                pad_l + bw * i as f64 + bw * 0.1,
+                bw * 0.8,
+                w.index + 1
             );
         }
     }
-    for g in [0.0, 25.0, 50.0, 100.0, 200.0, 400.0, 800.0] {
-        if g > max {
-            break;
-        }
+    let mut ticks: Vec<f64> = vec![0.0, 25.0, 50.0, 75.0, 100.0];
+    if broken {
+        ticks.push(top.round());
+    } else {
+        ticks.retain(|g| *g <= top);
+    }
+    for g in ticks {
         let gy = y(g);
-        let cls = if g == 50.0 { "grid budget" } else { "grid" };
+        let cls = if g == 50.0 {
+            "grid budget"
+        } else if broken && g == split {
+            "grid brk"
+        } else {
+            "grid"
+        };
         let _ = write!(
             s,
             r#"<line x1="{pad_l}" x2="{:.1}" y1="{gy:.1}" y2="{gy:.1}" class="{cls}"/><text x="{:.1}" y="{:.1}" class="axis" text-anchor="end">{g:.0}</text>"#,
@@ -194,6 +229,12 @@ fn timeline_svg(r: &Report) -> Option<String> {
             gy + 4.0
         );
     }
+    let _ = write!(
+        s,
+        r#"<text x="{:.1}" y="{:.1}" class="blabel">budget 50 ms</text>"#,
+        pad_l + 8.0,
+        budget_y + 15.0
+    );
     let line = |vals: &[f64], cls: &str, s: &mut String| {
         let pts: Vec<String> = vals
             .iter()
@@ -202,36 +243,42 @@ fn timeline_svg(r: &Report) -> Option<String> {
             .collect();
         let _ = write!(s, r#"<polyline points="{}" class="{cls}"/>"#, pts.join(" "));
     };
-    line(&vals_a, "l1", &mut s);
-    if has_mspt {
-        line(&vals_b, "l2", &mut s);
-    }
     if ws.iter().any(|w| w.ticks > 0) {
         line(&vals_c, "l3", &mut s);
     }
+    if has_mspt {
+        line(&vals_b, "l2", &mut s);
+    }
+    line(&vals_a, "l1", &mut s);
     for (i, w) in ws.iter().enumerate() {
         let _ = write!(
             s,
-            r#"<circle cx="{:.1}" cy="{:.1}" r="3" class="dot{}" data-i="{i}"/>"#,
+            r#"<circle cx="{:.1}" cy="{:.1}" r="{}" class="dot{}" data-i="{i}"/>"#,
             x(i),
             y(vals_a[i]),
+            if w.is_spike { 5 } else { 3 },
             if w.is_spike { " sp" } else { "" }
         );
+        if w.is_spike && vals_a[i] > 0.0 {
+            let _ = write!(
+                s,
+                r#"<text x="{:.1}" y="{:.1}" class="spk" text-anchor="middle">{} ms</text>"#,
+                x(i),
+                y(vals_a[i]) - 10.0,
+                fmt_num(vals_a[i])
+            );
+        }
     }
     let _ = write!(
         s,
-        r#"<line class="guide" x1="0" x2="0" y1="10" y2="{:.1}" style="display:none"/><rect class="brush" x="0" y="10" width="0" height="{:.1}" style="display:none"/>"#,
-        10.0 + ph,
-        ph
+        r#"<line class="guide" x1="0" x2="0" y1="{pad_t}" y2="{base:.1}" style="display:none"/><rect class="brush" x="0" y="{pad_t}" width="0" height="{ph:.1}" style="display:none"/>"#
     );
-    let bw = pw / n;
     for i in 0..ws.len() {
         let _ = write!(
             s,
-            r#"<rect class="hov" x="{:.1}" y="10" width="{:.1}" height="{:.1}" data-i="{i}" data-x="{:.1}"/>"#,
+            r#"<rect class="hov" x="{:.1}" y="{pad_t}" width="{:.1}" height="{ph:.1}" data-i="{i}" data-x="{:.1}"/>"#,
             pad_l + bw * i as f64,
             bw,
-            ph,
             x(i)
         );
     }
@@ -1591,7 +1638,7 @@ body.noside .side{margin-left:-249px}
 h1{font-size:36px;font-weight:700;letter-spacing:-.025em}.sub{font-size:15px;margin-top:8px}
 .top{margin-bottom:22px}
 .btn{background:var(--hd);color:var(--bg);border-radius:10px;padding:9px 16px}.btn:hover{background:var(--fg)}
-.btn.sec{background:var(--card);color:var(--hd);border:1px solid var(--line)}.btn[hidden]{display:none!important}.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:1px;background:var(--line2);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin:0 0 16px}.kpi{background:var(--card);padding:12px 16px;min-width:0}.kpi .sl{font-family:Inter,system-ui,sans-serif;font-size:12px;line-height:1.3;color:var(--muted)}.kpi{display:flex;flex-direction:column;justify-content:space-between;gap:2px}.kpi .sv{font-size:20px;font-weight:600;line-height:1.3;color:var(--hd);white-space:nowrap}.kpi .sv small{font-size:12px;font-weight:400;color:var(--muted);margin-left:3px}.kpi.bad .sv{color:var(--crit)}.kpi.wrn .sv{color:var(--high)}.kpi.ok .sv{color:var(--hd)}details.finding summary{flex-wrap:wrap}details.finding .fa{flex-basis:100%;order:9;color:var(--muted);font-size:13px;font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}details.finding .fa b{color:var(--acc);font-weight:500}details.finding[open] .fa{display:none}.brand span:last-child{font-size:14px;white-space:nowrap;letter-spacing:-.01em}.cfgdl{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:var(--acc);text-align:right}.cfgdl svg{width:15px;height:15px;flex:none}.cfgdl:hover{text-decoration:underline}@media(max-width:700px){#diagnosi h2{flex-wrap:wrap}.cfgdl{margin-left:0;width:100%;text-align:left}}.copy{margin:28px 0 12px;padding:14px 0 6px;border-top:1px solid var(--line2);text-align:center;color:var(--muted);font-size:12px;letter-spacing:.01em}.copy b{color:var(--fg);font-weight:600}.sharebox{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--card);border:1px solid var(--acc);border-radius:12px;padding:12px 14px;margin:-4px 0 16px;color:var(--fg);font-size:13px}.sharebox span{flex:1 1 320px}.sharebox input{flex:1 1 320px;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--code);color:var(--hd);font:12px "JetBrains Mono",monospace}.btn.sec.ok{border-color:var(--ok);color:var(--ok)}.btn.sec:hover{background:var(--card2);border-color:var(--muted)}
+.btn.sec{background:var(--card);color:var(--hd);border:1px solid var(--line)}.btn[hidden]{display:none!important}.chart .zone-ok{fill:rgba(163,230,53,.05)}.chart .zone-bad{fill:rgba(239,68,68,.045)}.chart .grid.brk{stroke-dasharray:2 6;opacity:.7}.chart .spk{fill:var(--crit);font-size:12px;font-weight:600;font-family:Inter,system-ui,sans-serif}.chart .blabel{fill:var(--crit);font-size:11px;font-family:Inter,system-ui,sans-serif}.chart circle.dot{stroke:var(--card2);stroke-width:2}.chart polyline{stroke-linejoin:round;stroke-linecap:round}.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:1px;background:var(--line2);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin:0 0 16px}.kpi{background:var(--card);padding:12px 16px;min-width:0}.kpi .sl{font-family:Inter,system-ui,sans-serif;font-size:12px;line-height:1.3;color:var(--muted)}.kpi{display:flex;flex-direction:column;justify-content:space-between;gap:2px}.kpi .sv{font-size:20px;font-weight:600;line-height:1.3;color:var(--hd);white-space:nowrap}.kpi .sv small{font-size:12px;font-weight:400;color:var(--muted);margin-left:3px}.kpi.bad .sv{color:var(--crit)}.kpi.wrn .sv{color:var(--high)}.kpi.ok .sv{color:var(--hd)}details.finding summary{flex-wrap:wrap}details.finding .fa{flex-basis:100%;order:9;color:var(--muted);font-size:13px;font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}details.finding .fa b{color:var(--acc);font-weight:500}details.finding[open] .fa{display:none}.brand span:last-child{font-size:14px;white-space:nowrap;letter-spacing:-.01em}.cfgdl{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:var(--acc);text-align:right}.cfgdl svg{width:15px;height:15px;flex:none}.cfgdl:hover{text-decoration:underline}@media(max-width:700px){#diagnosi h2{flex-wrap:wrap}.cfgdl{margin-left:0;width:100%;text-align:left}}.copy{margin:28px 0 12px;padding:14px 0 6px;border-top:1px solid var(--line2);text-align:center;color:var(--muted);font-size:12px;letter-spacing:.01em}.copy b{color:var(--fg);font-weight:600}.sharebox{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--card);border:1px solid var(--acc);border-radius:12px;padding:12px 14px;margin:-4px 0 16px;color:var(--fg);font-size:13px}.sharebox span{flex:1 1 320px}.sharebox input{flex:1 1 320px;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--code);color:var(--hd);font:12px "JetBrains Mono",monospace}.btn.sec.ok{border-color:var(--ok);color:var(--ok)}.btn.sec:hover{background:var(--card2);border-color:var(--muted)}
 .stats{gap:12px}
 .stat{border-radius:14px;padding:14px;background:var(--card);box-shadow:none}
 .stat:hover{box-shadow:none;border-color:var(--card3)}

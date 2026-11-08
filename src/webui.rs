@@ -249,7 +249,7 @@ pub fn shell(p: &Page) -> String {
         format!(r#"<script type="module">{}</script>"#, p.module_script)
     };
     format!(
-        r#"<!doctype html><html lang="{}" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">{}<title>{}</title><style>{}{}</style></head><body><div class="shell"><aside class="side"><a class="brand" href="{}" title="Home"><span class="logo">{}</span><span>Spark Resource Analyzer</span></a><nav><a class="on" href="{}">{}<span>{}</span></a></nav>{}<div class="sidefoot"><div class="srv"><b>Spark Resource Analyzer</b><span>v{}</span></div><button id="langbtn" class="ghost lang" data-to="{}" data-href="{}" title="Lingua / Language">{}</button><button id="theme" class="ghost" title="{}">{}</button></div></aside><main class="content">{}{}{}</main></div><script>{}{}{}{}{}</script>{}</body></html>"#,
+        r#"<!doctype html><html lang="{}" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">{}<title>{}</title><style>{}{}</style></head><body><div class="shell"><aside class="side"><a class="brand" href="{}" title="Home"><span class="logo">{}</span><span>Spark Resource Analyzer</span></a><nav><a class="on" href="{}">{}<span>{}</span></a></nav>{}<div class="sidefoot"><div class="srv"><b>v{}</b><span>GPL-3.0</span></div><button id="langbtn" class="ghost lang" data-to="{}" data-href="{}" title="Lingua / Language">{}</button><button id="theme" class="ghost" title="{}">{}</button></div></aside><main class="content">{}{}{}</main></div><script>{}{}{}{}{}</script>{}</body></html>"#,
         crate::i18n::lang().code(),
         FAVICON,
         esc(p.title),
@@ -277,6 +277,35 @@ pub fn shell(p: &Page) -> String {
         p.script,
         module
     )
+}
+
+pub fn spark_commands_html() -> String {
+    let t = crate::i18n::t;
+    let items = [
+        (
+            t("Profilo CPU (5 minuti)", "CPU profile (5 minutes)"),
+            "/spark profiler start --timeout 300",
+        ),
+        (
+            t("Solo i tick lenti", "Only slow ticks"),
+            "/spark profiler start --only-ticks-over 100",
+        ),
+        (t("Memoria", "Memory"), "/spark heapsummary"),
+    ];
+    let mut out = format!(
+        r#"<div class="cmds"><h5>{}</h5>"#,
+        t("Comandi spark", "spark commands")
+    );
+    for (label, cmd) in items {
+        out.push_str(&format!(
+            r#"<div><span>{}</span><code title="{}">{}</code></div>"#,
+            esc(label),
+            t("Clic per copiare", "Click to copy"),
+            esc(cmd)
+        ));
+    }
+    out.push_str("</div>");
+    out
 }
 
 pub fn recent_html(recent: &[Recent]) -> (String, String) {
@@ -390,11 +419,11 @@ pub fn index_main(subtitle: &str, recent_panel: &str) -> String {
         r#"<div class="top"><div><h1>{h1}</h1><p class="sub">{}</p></div></div>
 <div class="modesel"><div class="seg big" id="modesel"><button type="button" class="on" data-mode="one">{mode_one}</button><button type="button" data-mode="cmp">{mode_cmp}</button></div><span class="dim small" id="modehint">{mode_hint}</span></div>
 <div id="mode-one">
-<section class="panel"><h2><span class="hi">{link}</span>{link_t}</h2>
+<section id="drop" class="hero"><span class="dicon">{upload}</span><h2>{hero_t}</h2><p>{hero_p}</p>
 <form id="lform" class="lrow"><input id="link" autocomplete="off" placeholder="{ph}"><button class="btn" type="submit">{bolt}{go}</button></form>
-<p class="note">{note1} <code>/spark profiler stop</code>.</p></section>
-<section class="panel"><h2><span class="hi">{upload}</span>{file_t}</h2>
-<label id="drop" class="drop"><input id="file" type="file" accept=".sparkprofile,.sparkheap,.sparkhealth" hidden><span class="dicon">{upload}</span><b>{drop}</b><span>{click}</span><small>{saved} <code>/spark profiler stop --save-to-file</code> {in_dir} <code>plugins/spark/</code></small></label></section>
+<div class="or">{or}</div>
+<label class="btn sec pick"><input id="file" type="file" accept=".sparkprofile,.sparkheap,.sparkhealth" hidden>{upload}<span>{pick}</span></label>
+<p class="hint">{note1} <code>/spark profiler stop</code> · {saved} <code>--save-to-file</code> {in_dir} <code>plugins/spark/</code></p></section>
 </div>
 <div id="mode-cmp" hidden>{compare}</div>
 <div id="busy" class="busy" hidden><span class="spin"></span><span id="busytext">{busy}</span></div>
@@ -402,8 +431,16 @@ pub fn index_main(subtitle: &str, recent_panel: &str) -> String {
 <div id="recentbox">{recent_panel}</div>"#,
         esc(subtitle),
         h1 = t("Nuova analisi", "New analysis"),
-        link = icon("link"),
-        link_t = t("Link del profilo", "Profile link"),
+        hero_t = t("Analizza un profilo spark", "Analyze a spark profile"),
+        hero_p = t(
+            "Incolla il link che spark scrive in chat, oppure trascina qui il file.",
+            "Paste the link spark prints in chat, or drop the file here.",
+        ),
+        or = t("oppure", "or"),
+        pick = t(
+            "Scegli un file .sparkprofile / .sparkheap",
+            "Choose a .sparkprofile / .sparkheap file",
+        ),
         ph = t(
             "https://spark.lucko.me/AbCd1234 oppure solo il codice",
             "https://spark.lucko.me/AbCd1234 or just the code"
@@ -415,9 +452,6 @@ pub fn index_main(subtitle: &str, recent_panel: &str) -> String {
             "It is the link spark prints in chat after"
         ),
         upload = icon("upload"),
-        file_t = t("File del profilo", "Profile file"),
-        drop = t("Trascina qui il file", "Drop the file here"),
-        click = t("oppure clicca per sceglierlo", "or click to choose it"),
         saved = t("I file salvati con", "Files saved with"),
         in_dir = t("sono in", "are in"),
         busy = t("Analisi in corso…", "Analyzing…"),
@@ -473,7 +507,7 @@ pub fn local_index(recent: &[Recent]) -> String {
         crumb: t("Nuova analisi", "New analysis"),
         lang_switch: &switch,
         title: t("Spark Resource Analyzer", "Spark Resource Analyzer"),
-        side_extra: &side,
+        side_extra: &format!("{side}{}", spark_commands_html()),
         main: &main,
         script: LOCAL_JS,
         module_script: "",
@@ -561,7 +595,7 @@ fn static_index_page() -> String {
         crumb: t("Nuova analisi", "New analysis"),
         lang_switch: other,
         title: t("Spark Resource Analyzer", "Spark Resource Analyzer"),
-        side_extra: r#"<div id="recentside"></div>"#,
+        side_extra: &format!(r#"<div id="recentside"></div>{}"#, spark_commands_html()),
         main: &main,
         script: "",
         module_script: STATIC_JS,
@@ -587,7 +621,9 @@ pub const EXTRA_CSS: &str = r#"
 .recent{margin-top:10px;padding-top:10px;border-top:1px solid var(--line2);overflow:auto}.recent h5{margin:0 8px 6px}.recent a{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:5px;color:var(--fg);font-size:12px}.recent a:hover{background:var(--card2);text-decoration:none}.recent a span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.recent i{width:8px;height:8px;border-radius:50%;flex:none;background:var(--ok)}.recent i.bad{background:var(--crit)}
 .ghost.lang{font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--muted)}
 pre.heap{margin:0;background:var(--code);border:1px solid var(--line);border-radius:6px;padding:12px;overflow:auto;font:12px ui-monospace,Menlo,Consolas,monospace}
-@media (max-width:900px){.recent{display:none}}
+@media (max-width:900px){.recent,.cmds{display:none}}
+.hero{border:2px dashed var(--line);border-radius:16px;background:var(--card2);padding:34px 28px;text-align:center;transition:border-color .15s,background .15s;margin:0 0 14px}.hero:hover,.hero.over{border-color:var(--acc)}.hero.over{background:var(--accl)}.hero .dicon{margin:0 auto 10px}.hero h2{justify-content:center;font-size:20px;margin:0 0 6px}.hero>p{color:var(--muted);margin:0 0 18px}.hero .lrow{max-width:720px;margin:0 auto}.hero .or{display:flex;align-items:center;gap:12px;max-width:720px;margin:16px auto;color:var(--muted);font-size:12px}.hero .or:before,.hero .or:after{content:'';flex:1;height:1px;background:var(--line)}.hero .pick{cursor:pointer}.hero .pick svg{width:18px;height:18px}.hero .hint{margin:18px auto 0;max-width:720px;color:var(--muted);font-size:12px;line-height:1.9}.hero .hint code{white-space:nowrap}@media(min-width:901px){#recentbox{display:none}}
+.cmds{margin-top:10px;padding-top:10px;border-top:1px solid var(--line2)}.cmds h5{margin:0 8px 6px}.cmds div{padding:5px 8px;font-size:12px;color:var(--fg)}.cmds code{display:block;white-space:normal;word-break:normal;overflow-wrap:normal;font:11px "JetBrains Mono",monospace;color:var(--hd);background:var(--code);border:1px solid var(--line);border-radius:6px;padding:4px 6px;margin-top:3px;cursor:copy}.cmds code.ok{border-color:var(--ok);color:var(--ok)}
 .modesel{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:0 0 18px}.seg.big{border-radius:12px}.seg.big button{padding:10px 18px;font-size:13px;font-family:Inter,system-ui,sans-serif;cursor:pointer}.seg.big button.on{background:var(--card3);color:var(--hd)}
 .cmp2{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media(max-width:800px){.cmp2{grid-template-columns:1fr}}.slot{border:1px solid var(--line);border-radius:14px;padding:16px;background:var(--card2)}.slot h3{margin:0 0 4px;font-size:15px;color:var(--hd);display:flex;gap:8px;align-items:center}.slot .tag{font:600 11px "JetBrains Mono",monospace;border:1px solid var(--line);border-radius:999px;padding:2px 8px;color:var(--muted)}.slot p.h{margin:0 0 12px;color:var(--muted);font-size:13px}.slot .lrow{margin-bottom:10px}.slot .drop{min-height:150px;padding:20px 12px}.slot.busy-slot{opacity:.6;pointer-events:none}
 .schip{display:flex;gap:12px;align-items:center;border:1px solid var(--ok);background:rgba(163,230,53,.06);border-radius:12px;padding:12px 14px}.schip[hidden],.sinput[hidden]{display:none}.schip .sok{color:var(--ok);flex:none;display:grid}.schip .stxt{flex:1;min-width:0}.schip .sname{display:block;color:var(--hd);font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.schip .sdet{display:block;color:var(--muted);font-size:12px}.schip .sclear{flex:none}
@@ -621,6 +657,7 @@ refresh();
 "#;
 
 pub const THEME_JS: &str = r#"
+document.querySelectorAll('.cmds code').forEach(function(c){c.addEventListener('click',function(){var t=c.textContent;function ok(){c.classList.add('ok');setTimeout(function(){c.classList.remove('ok')},1200)}if(navigator.clipboard&&window.isSecureContext)navigator.clipboard.writeText(t).then(ok,function(){});else{var a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();try{document.execCommand('copy');ok()}catch(e){}a.remove()}})});
 (function(){var d=document.documentElement;try{var t=localStorage.getItem('sparkscope-theme');if(t)d.dataset.theme=t}catch(e){}var b=document.getElementById('theme');if(b)b.addEventListener('click',function(){var n=d.dataset.theme==='dark'?'light':'dark';d.dataset.theme=n;try{localStorage.setItem('sparkscope-theme',n)}catch(e){}})})();
 "#;
 
