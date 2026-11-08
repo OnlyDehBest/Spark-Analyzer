@@ -198,3 +198,34 @@ fn site_has_social_preview_tags() {
         std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/static/og-image.png")).exists()
     );
 }
+
+#[test]
+fn site_description_is_english_and_icons_are_real_files() {
+    use sparkscope::i18n::Lang;
+    for lang in [Lang::It, Lang::En] {
+        let _g = sparkscope::i18n::scoped(lang);
+        let html = sparkscope::webui::static_index();
+        let d = sparkscope::webui::SITE_DESCRIPTION;
+        assert!(d.starts_with("Analyze spark profiles"));
+        assert!(html.contains(&format!("<meta name=\"description\" content=\"{d}\">")));
+        assert!(html.contains(&format!("og:description\" content=\"{d}\"")));
+        assert!(html.contains("\"@type\":\"WebSite\",\"name\":\"Spark Resource Analyzer\""));
+        assert!(html.contains("href=\"./favicon.ico\""));
+        assert!(html.contains("href=\"./apple-touch-icon.png\""));
+        assert!(
+            !html.contains("rel=\"icon\" href=\"data:"),
+            "icona inline nel sito"
+        );
+    }
+    for f in [
+        "favicon.ico",
+        "favicon.svg",
+        "favicon-48.png",
+        "favicon-96.png",
+        "favicon-192.png",
+        "apple-touch-icon.png",
+    ] {
+        let p = format!("{}/static/{f}", env!("CARGO_MANIFEST_DIR"));
+        assert!(std::path::Path::new(&p).exists(), "manca {f}");
+    }
+}

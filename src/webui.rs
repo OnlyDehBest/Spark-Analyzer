@@ -572,16 +572,22 @@ pub fn static_index_versioned(version: &str) -> String {
     static_index_page().replace("__SA_V__", &suffix)
 }
 
+pub const SITE_DESCRIPTION: &str = "Analyze spark profiles: find what makes your Minecraft server lag, which plugin and method, and how to fix it.";
+
+const SITE_ICONS: &str = r#"<link rel="icon" href="./favicon.ico" sizes="16x16 32x32 48x48"><link rel="icon" href="./favicon.svg" type="image/svg+xml"><link rel="icon" href="./favicon-96.png" type="image/png" sizes="96x96"><link rel="icon" href="./favicon-192.png" type="image/png" sizes="192x192"><link rel="apple-touch-icon" href="./apple-touch-icon.png">"#;
+
+fn data_uri_icon() -> &'static str {
+    let start = FAVICON.find("<link rel=\"icon\"").unwrap_or(FAVICON.len());
+    let end = FAVICON[start..].find('>').map_or(start, |e| start + e + 1);
+    &FAVICON[start..end]
+}
+
 fn social_meta() -> String {
-    let t = crate::i18n::t;
     let site = crate::report::html::PUBLIC_SITE;
     let title = "Spark Resource Analyzer";
-    let description = t(
-        "Analizza i profili spark: trova cosa fa laggare il server Minecraft, quale plugin e metodo, e come risolverlo.",
-        "Analyze spark profiles: find what makes your Minecraft server lag, which plugin and method, and how to fix it.",
-    );
+    let description = SITE_DESCRIPTION;
     format!(
-        r##"<meta name="description" content="{d}"><meta name="theme-color" content="#0e0e0e"><meta property="og:type" content="website"><meta property="og:site_name" content="{title}"><meta property="og:title" content="{title}"><meta property="og:description" content="{d}"><meta property="og:url" content="{site}"><meta property="og:image" content="{site}og-image.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="{title}"><meta name="twitter:description" content="{d}"><meta name="twitter:image" content="{site}og-image.png">"##,
+        r##"<meta name="description" content="{d}"><meta name="theme-color" content="#0e0e0e"><meta property="og:type" content="website"><meta property="og:site_name" content="{title}"><meta property="og:title" content="{title}"><meta property="og:description" content="{d}"><meta property="og:url" content="{site}"><meta property="og:image" content="{site}og-image.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="{title}"><meta name="twitter:description" content="{d}"><meta name="twitter:image" content="{site}og-image.png"><script type="application/ld+json">{{"@context":"https://schema.org","@type":"WebSite","name":"{title}","alternateName":"Spark Analyzer","url":"{site}","description":"{d}"}}</script>"##,
         d = esc(description)
     )
 }
@@ -619,7 +625,7 @@ fn static_index_page() -> String {
             "analysis runs in your browser",
         ),
     });
-    page.replacen(
+    page.replacen(data_uri_icon(), SITE_ICONS, 1).replacen(
         "</head>",
         &format!(
             r#"{}<link rel="modulepreload" href="./pkg/sparkscope_web.js__SA_V__"><link rel="preload" href="./pkg/sparkscope_web_bg.wasm__SA_V__" as="fetch" type="application/wasm" crossorigin></head>"#,
