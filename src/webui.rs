@@ -640,7 +640,7 @@ btns.forEach(function(b){b.addEventListener('click',function(){setMode(b.dataset
 function refresh(){var n=(slots[0]?1:0)+(slots[1]?1:0);var same=n===2&&slots[0].detail===slots[1].detail&&slots[0].size===slots[1].size;go.disabled=n<2||same;msg.textContent=same?M.cmpSame:n===2?M.cmpReady:n===1?M.cmpOneLeft:M.cmpMissing}
 function show(i){var el=document.querySelector('.slot[data-slot="'+i+'"]'),s=slots[i],chip=el.querySelector('.schip'),inp=el.querySelector('.sinput');chip.hidden=!s;inp.hidden=!!s;if(s){chip.querySelector('.sname').textContent=s.name;chip.querySelector('.sdet').textContent=s.detail}refresh()}
 function fail(e){err.textContent=(e&&e.message)||String(e);err.hidden=false}
-function accept(i,p){var el=document.querySelector('.slot[data-slot="'+i+'"]');err.hidden=true;el.classList.add('busy-slot');return p.then(function(s){slots[i]=s;show(i)}).catch(fail).then(function(){el.classList.remove('busy-slot')})}
+function accept(i,p){var el=document.querySelector('.slot[data-slot="'+i+'"]'),d=document.documentElement;err.hidden=true;el.classList.add('busy-slot');d.classList.add('sa-busy');return p.then(function(s){slots[i]=s;show(i)}).catch(fail).then(function(){el.classList.remove('busy-slot');d.classList.remove('sa-busy')})}
 document.querySelectorAll('.slot').forEach(function(el){var i=+el.dataset.slot,file=el.querySelector('.sfile'),drop=el.querySelector('.sdrop');
 el.querySelector('.slinkform').addEventListener('submit',function(e){e.preventDefault();var v=el.querySelector('.slink').value.trim();if(!v){fail(M.pasteFirst);return}accept(i,api.fromLink(v))});
 file.addEventListener('change',function(){if(file.files[0])accept(i,api.fromFile(file.files[0]));file.value=''});
@@ -667,8 +667,8 @@ var LQ=M.lang==='it'?'lang=it':'';
 try{var pref=localStorage.getItem('sa-lang');if(pref&&pref!==M.lang&&!/[?&]lang=/.test(location.search)){location.replace('/?lang='+pref+location.hash);return}}catch(e){}
 var lb=document.getElementById('langbtn');if(lb)lb.addEventListener('click',function(){try{localStorage.setItem('sa-lang',lb.dataset.to)}catch(e){}location.href=lb.dataset.href+(window.__saMode==='cmp'?'#confronta':'')});
 var busy=document.getElementById('busy'),bt=document.getElementById('busytext'),err=document.getElementById('err');
-function start(t){err.hidden=true;bt.textContent=t;busy.hidden=false}
-function fail(m){busy.hidden=true;err.textContent=m;err.hidden=false}
+function start(t){err.hidden=true;bt.textContent=t;busy.hidden=false;document.documentElement.classList.add('sa-busy')}
+function fail(m){busy.hidden=true;err.textContent=m;err.hidden=false;document.documentElement.classList.remove('sa-busy')}
 function done(r){return r.json().then(function(j){if(j.id){location.href='/r/'+j.id+(LQ?'?'+LQ:'')}else{fail(j.error||M.unknown)}})}
 document.getElementById('lform').addEventListener('submit',function(e){e.preventDefault();var v=document.getElementById('link').value.trim();if(!v){fail(M.pasteFirst);return}start(M.downloading);fetch('/api/link?'+LQ,{method:'POST',body:v}).then(done).catch(function(x){fail(M.lost+x)})});
 function send(f){if(!f)return;start(M.analyzingFile.replace('{f}',f.name).replace('{s}',(f.size/1048576).toFixed(1)));fetch('/api/file?name='+encodeURIComponent(f.name)+'&'+LQ,{method:'POST',body:f}).then(done).catch(function(x){fail(M.lost+x)})}
@@ -695,8 +695,8 @@ var REDIR=false;try{var pref=localStorage.getItem('sa-lang');if(pref&&pref!==M.l
 if(REDIR)await new Promise(function(){});
 document.getElementById('langbtn').addEventListener('click',function(){try{localStorage.setItem('sa-lang',this.dataset.to)}catch(e){}location.href=OTHER+location.search+(window.__saMode==='cmp'?'#confronta':'')});
 var busy=document.getElementById('busy'),bt=document.getElementById('busytext'),err=document.getElementById('err');
-function start(t){err.hidden=true;bt.textContent=t;busy.hidden=false}
-function fail(m){busy.hidden=true;err.textContent=m;err.hidden=false}
+function start(t){err.hidden=true;bt.textContent=t;busy.hidden=false;document.documentElement.classList.add('sa-busy')}
+function fail(m){busy.hidden=true;err.textContent=m;err.hidden=false;document.documentElement.classList.remove('sa-busy')}
 var ready=init({module_or_path:'./pkg/sparkscope_web_bg.wasm__SA_V__'}).catch(function(e){fail(M.wasm+e);throw e});
 function extractKey(v){v=v.trim();var m=v.match(/^(?:https?:\/\/)?[^\/\s]+\/([A-Za-z0-9]+)/);if(m)return m[1];return /^[A-Za-z0-9]{4,64}$/.test(v)?v:null}
 var RKEY='sparkscope-recent';

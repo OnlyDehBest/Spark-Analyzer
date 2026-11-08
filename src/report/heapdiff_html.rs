@@ -1,7 +1,7 @@
 use std::fmt::Write;
 
 use super::html::{
-    ANIM_JS, CSS, FAVICON, JS, LOGO_SVG, copy_link_button, copyright_footer, esc, icon, lang_to,
+    ANIM_JS, CSS, FAVICON, JS, copy_link_button, copyright_footer, esc, icon, lang_to, logo_svg,
     time_title, topbar,
 };
 use super::{fmt_duration, fmt_time, fmt_utc};
@@ -96,7 +96,7 @@ pub fn render(c: &HeapComparison) -> String {
     let _ = write!(
         b,
         r##"<div class="shell"><aside class="side"><a class="brand" id="brandlink" href="./" title="Home"><span class="logo">{}</span><span>Spark Resource Analyzer</span></a><div class="status {}"><i></i>{}</div><nav><a href="#riassunto" class="on">{}<span>{}</span></a><a href="#cmp">{}<span>{}</span></a><a href="#java">{}<span>{}</span></a><a href="#azioni">{}<span>{}</span></a></nav><div class="sidefoot"><div class="srv"><b>{}</b><span>{}</span></div><button id="langbtn" class="ghost lang" data-to="{}" title="Lingua / Language">{}</button><button id="theme" class="ghost" title="{}">{}</button></div></aside><main class="content">{}"##,
-        LOGO_SVG,
+        logo_svg(leaks > 0),
         if bad { "lag" } else { "okk" },
         if leaks > 0 {
             t("Leak trovato", "Leak found")
