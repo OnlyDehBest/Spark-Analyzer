@@ -249,7 +249,7 @@ pub fn shell(p: &Page) -> String {
         format!(r#"<script type="module">{}</script>"#, p.module_script)
     };
     format!(
-        r#"<!doctype html><html lang="{}" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">{}<title>{}</title><style>{}{}</style></head><body><div class="shell"><aside class="side"><a class="brand" href="{}" title="Home"><span class="logo">{}</span><span>Spark-Analyzer</span></a><nav><a class="on" href="{}">{}<span>{}</span></a></nav>{}<div class="sidefoot"><div class="srv"><b>Spark-Analyzer</b><span>v{}</span></div><button id="langbtn" class="ghost lang" data-to="{}" data-href="{}" title="Lingua / Language">{}</button><button id="theme" class="ghost" title="{}">{}</button></div></aside><main class="content">{}{}{}</main></div><script>{}{}{}{}{}</script>{}</body></html>"#,
+        r#"<!doctype html><html lang="{}" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">{}<title>{}</title><style>{}{}</style></head><body><div class="shell"><aside class="side"><a class="brand" href="{}" title="Home"><span class="logo">{}</span><span>Spark Resource Analyzer</span></a><nav><a class="on" href="{}">{}<span>{}</span></a></nav>{}<div class="sidefoot"><div class="srv"><b>Spark Resource Analyzer</b><span>v{}</span></div><button id="langbtn" class="ghost lang" data-to="{}" data-href="{}" title="Lingua / Language">{}</button><button id="theme" class="ghost" title="{}">{}</button></div></aside><main class="content">{}{}{}</main></div><script>{}{}{}{}{}</script>{}</body></html>"#,
         crate::i18n::lang().code(),
         FAVICON,
         esc(p.title),
@@ -441,7 +441,7 @@ fn messages_js() -> String {
         "downloadingKey": t("Scarico il profilo {k} da spark…", "Downloading profile {k} from spark…"),
         "analyzing": t("Analizzo il profilo…", "Analyzing the profile…"),
         "analyzingFile": t("Analizzo {f} ({s} MB)…", "Analyzing {f} ({s} MB)…"),
-        "lost": t("Connessione a Spark-Analyzer persa: ", "Lost connection to Spark-Analyzer: "),
+        "lost": t("Connessione a Spark Resource Analyzer persa: ", "Lost connection to Spark Resource Analyzer: "),
         "wasm": t("Impossibile caricare il modulo di analisi: ", "Could not load the analysis module: "),
         "notFound": t("Profilo non trovato: il link potrebbe essere scaduto (spark conserva i profili per un periodo limitato).", "Profile not found: the link may have expired (spark keeps profiles for a limited time)."),
         "httpFail": t("Download fallito (HTTP {s})", "Download failed (HTTP {s})"),
@@ -492,15 +492,18 @@ pub fn local_not_found() -> String {
         r#"<div class="top"><div><h1>{}</h1><p class="sub">{} <a href="/">{}</a>.</p></div></div>"#,
         t("Report non trovato", "Report not found"),
         t(
-            "I report restano disponibili finché Spark-Analyzer è aperto.",
-            "Reports stay available while Spark-Analyzer is running."
+            "I report restano disponibili finché Spark Resource Analyzer è aperto.",
+            "Reports stay available while Spark Resource Analyzer is running."
         ),
         t("Torna alla pagina iniziale", "Back to the home page")
     );
     shell(&Page {
         crumb: t("Report non trovato", "Report not found"),
         lang_switch: "/",
-        title: t("Spark-Analyzer — non trovato", "Spark-Analyzer — not found"),
+        title: t(
+            "Spark Resource Analyzer — non trovato",
+            "Spark Resource Analyzer — not found",
+        ),
         side_extra: "",
         main: &main,
         script: "",

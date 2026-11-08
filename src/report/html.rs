@@ -324,7 +324,7 @@ pub(crate) const FAVICON: &str = r##"<link rel="preconnect" href="https://fonts.
 
 pub(crate) fn topbar(page: &str) -> String {
     format!(
-        r#"<div class="topbar"><button class="ghost tg" id="sidetoggle" type="button" title="{}">{}</button><div class="crumb"><a href="./" id="crumbhome">Spark-Analyzer</a><span class="sep">›</span><b>{}</b></div></div>"#,
+        r#"<div class="topbar"><button class="ghost tg" id="sidetoggle" type="button" title="{}">{}</button><div class="crumb"><a href="./" id="crumbhome">Spark Resource Analyzer</a><span class="sep">›</span><b>{}</b></div></div>"#,
         crate::i18n::t("Mostra/nascondi barra laterale", "Show/hide sidebar"),
         icon("sidebar"),
         esc(page)
@@ -333,6 +333,26 @@ pub(crate) fn topbar(page: &str) -> String {
 
 /// `"{prefix} @ 2:05 PM, 08/11/2026"` (UTC) plus a script that rewrites it in the viewer's local time.
 /// `prefix` is a fixed i18n string (no quotes), so embedding it in JS is safe.
+fn page_heading(m: &super::MetaInfo) -> String {
+    let brand = m.platform.split_whitespace().next().unwrap_or("");
+    let server = match (brand.is_empty(), m.minecraft_version.is_empty()) {
+        (false, false) => format!("{brand} {}", m.minecraft_version),
+        (false, true) => m.platform.clone(),
+        (true, false) => format!("Minecraft {}", m.minecraft_version),
+        (true, true) => crate::i18n::t("Analisi profilo", "Profile analysis").to_string(),
+    };
+    if m.start_time <= 0 {
+        return format!("<h1>{}</h1>", esc(&server));
+    }
+    format!(
+        r#"<h1 id="ptitle" data-ms="{}" data-lang="{}"><span>{}</span> · <span class="when">{}</span></h1>"#,
+        m.start_time,
+        crate::i18n::lang().code(),
+        esc(&server),
+        esc(&super::fmt_utc(m.start_time))
+    )
+}
+
 pub(crate) fn time_title(prefix: &'static str, ms: i64) -> (String, String) {
     if ms <= 0 {
         return (prefix.to_string(), String::new());
@@ -384,7 +404,6 @@ pub(crate) fn icon(name: &str) -> String {
     let d = match name {
         "activity" => "M3 12h4l3 8l4-16l3 8h4",
         "check" => "M5 12l5 5L20 7",
-        "download" => "M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2M7 11l5 5l5-5M12 4v12",
         "x" => "M18 6L6 18M6 6l12 12",
         "clock" => "M3 12a9 9 0 1 0 18 0a9 9 0 0 0-18 0M12 7v5l3 3",
         "bolt" => "M13 3v7h6l-8 11v-7H5l8-11",
@@ -623,11 +642,10 @@ pub fn render(r: &Report) -> String {
         .filter(|f| f.severity <= Severity::Alto)
         .count();
     let mut cards = String::new();
-    let mut card = |ic: &str, label: &str, value: String, suffix: &str, cls: &str| {
+    let mut card = |_icon: &str, label: &str, value: String, suffix: &str, cls: &str| {
         let _ = write!(
             cards,
-            r#"<div class="stat {cls}"><div class="si">{}</div><div><div class="sl">{}</div><div class="sv">{}<small>{}</small></div></div></div>"#,
-            icon(ic),
+            r#"<div class="kpi {cls}"><div class="sl">{}</div><div class="sv">{}<small>{}</small></div></div>"#,
             esc(label),
             value,
             esc(suffix)
@@ -767,7 +785,7 @@ pub fn render(r: &Report) -> String {
     };
     let _ = write!(
         b,
-        r#"<div class="shell"><aside class="side"><a class="brand" id="brandlink" href="./" title="Home"><span class="logo">{}</span><span>Spark-Analyzer</span></a><div class="status {}"><i></i>{}</div><nav>{nav}</nav><div class="sidefoot"><div class="srv"><b>{}</b><span>{}</span></div><button id="langbtn" class="ghost lang" data-to="{}" title="Lingua / Language">{}</button><button id="theme" class="ghost" title="Tema chiaro/scuro">{}</button></div></aside><main class="content">{}"#,
+        r#"<div class="shell"><aside class="side"><a class="brand" id="brandlink" href="./" title="Home"><span class="logo">{}</span><span>Spark Resource Analyzer</span></a><div class="status {}"><i></i>{}</div><nav>{nav}</nav><div class="sidefoot"><div class="srv"><b>{}</b><span>{}</span></div><button id="langbtn" class="ghost lang" data-to="{}" title="Lingua / Language">{}</button><button id="theme" class="ghost" title="Tema chiaro/scuro">{}</button></div></aside><main class="content">{}"#,
         LOGO_SVG,
         if lag { "lag" } else { "okk" },
         if lag { "In lag" } else { "Stabile" },
@@ -784,7 +802,8 @@ pub fn render(r: &Report) -> String {
     );
     let _ = write!(
         b,
-        r#"<div class="top"><div><h1>Analisi profilo</h1><p class="sub">{}</p></div><div class="actions">{}</div></div>"#,
+        r#"<div class="top"><div>{}<p class="sub">{}</p></div><div class="actions">{}</div></div>"#,
+        page_heading(m),
         esc(&format!(
             "{} · {} · {} · spark {} · inizio {} · {} plugin/mod{}",
             m.kind,
@@ -832,7 +851,7 @@ pub fn render(r: &Report) -> String {
         );
     }
     b.push_str(&summary_html(&r.summary));
-    let _ = write!(b, r#"<section class="stats">{cards}</section>"#);
+    let _ = write!(b, r#"<section class="kpis">{cards}</section>"#);
     if let Some(th) = m.ticked_threshold {
         let _ = write!(
             b,
@@ -893,20 +912,22 @@ pub fn render(r: &Report) -> String {
                 r#"<div class="infonotes" id="infonotes"><h3>Note informative ({hidable})</h3>"#
             );
         }
-        let open =
-            if f.severity <= Severity::Alto || f.area == crate::i18n::t("Panoramica", "Overview") {
-                " open"
-            } else {
-                ""
-            };
         let impact = if f.impact_pct > 0.0 {
             format!(r#"<span class="imp">{}</span>"#, pvh(f.impact_pct))
         } else {
             String::new()
         };
+        let first_action = f
+            .solutions
+            .first()
+            .and_then(|s| s.lines().next())
+            .map(|s| s.trim_end_matches(':').trim())
+            .filter(|s| !s.is_empty())
+            .map(|s| format!(r#"<span class="fa"><b>→</b> {}</span>"#, pv_html(&esc(s))))
+            .unwrap_or_default();
         let _ = write!(
             b,
-            r#"<details class="finding {}{hide}"{open}><summary><span class="sev">{}</span><span class="ft">{}</span><span class="area">{}</span>{impact}</summary><div class="fb">"#,
+            r#"<details class="finding {}{hide}"><summary><span class="sev">{}</span><span class="ft">{}</span><span class="area">{}</span>{impact}{first_action}</summary><div class="fb">"#,
             sev_class(f.severity),
             f.severity.label(),
             esc(&f.title),
@@ -1570,7 +1591,7 @@ body.noside .side{margin-left:-249px}
 h1{font-size:36px;font-weight:700;letter-spacing:-.025em}.sub{font-size:15px;margin-top:8px}
 .top{margin-bottom:22px}
 .btn{background:var(--hd);color:var(--bg);border-radius:10px;padding:9px 16px}.btn:hover{background:var(--fg)}
-.btn.sec{background:var(--card);color:var(--hd);border:1px solid var(--line)}.btn[hidden]{display:none!important}.cfgdl{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:var(--acc);text-align:right}.cfgdl svg{width:15px;height:15px;flex:none}.cfgdl:hover{text-decoration:underline}@media(max-width:700px){#diagnosi h2{flex-wrap:wrap}.cfgdl{margin-left:0;width:100%;text-align:left}}.copy{margin:28px 0 12px;padding:14px 0 6px;border-top:1px solid var(--line2);text-align:center;color:var(--muted);font-size:12px;letter-spacing:.01em}.copy b{color:var(--fg);font-weight:600}.sharebox{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--card);border:1px solid var(--acc);border-radius:12px;padding:12px 14px;margin:-4px 0 16px;color:var(--fg);font-size:13px}.sharebox span{flex:1 1 320px}.sharebox input{flex:1 1 320px;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--code);color:var(--hd);font:12px "JetBrains Mono",monospace}.btn.sec.ok{border-color:var(--ok);color:var(--ok)}.btn.sec:hover{background:var(--card2);border-color:var(--muted)}
+.btn.sec{background:var(--card);color:var(--hd);border:1px solid var(--line)}.btn[hidden]{display:none!important}.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:1px;background:var(--line2);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin:0 0 16px}.kpi{background:var(--card);padding:12px 16px;min-width:0}.kpi .sl{font-family:Inter,system-ui,sans-serif;font-size:12px;line-height:1.3;color:var(--muted)}.kpi{display:flex;flex-direction:column;justify-content:space-between;gap:2px}.kpi .sv{font-size:20px;font-weight:600;line-height:1.3;color:var(--hd);white-space:nowrap}.kpi .sv small{font-size:12px;font-weight:400;color:var(--muted);margin-left:3px}.kpi.bad .sv{color:var(--crit)}.kpi.wrn .sv{color:var(--high)}.kpi.ok .sv{color:var(--hd)}details.finding summary{flex-wrap:wrap}details.finding .fa{flex-basis:100%;order:9;color:var(--muted);font-size:13px;font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}details.finding .fa b{color:var(--acc);font-weight:500}details.finding[open] .fa{display:none}.brand span:last-child{font-size:14px;white-space:nowrap;letter-spacing:-.01em}.cfgdl{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:var(--acc);text-align:right}.cfgdl svg{width:15px;height:15px;flex:none}.cfgdl:hover{text-decoration:underline}@media(max-width:700px){#diagnosi h2{flex-wrap:wrap}.cfgdl{margin-left:0;width:100%;text-align:left}}.copy{margin:28px 0 12px;padding:14px 0 6px;border-top:1px solid var(--line2);text-align:center;color:var(--muted);font-size:12px;letter-spacing:.01em}.copy b{color:var(--fg);font-weight:600}.sharebox{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--card);border:1px solid var(--acc);border-radius:12px;padding:12px 14px;margin:-4px 0 16px;color:var(--fg);font-size:13px}.sharebox span{flex:1 1 320px}.sharebox input{flex:1 1 320px;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--code);color:var(--hd);font:12px "JetBrains Mono",monospace}.btn.sec.ok{border-color:var(--ok);color:var(--ok)}.btn.sec:hover{background:var(--card2);border-color:var(--muted)}
 .stats{gap:12px}
 .stat{border-radius:14px;padding:14px;background:var(--card);box-shadow:none}
 .stat:hover{box-shadow:none;border-color:var(--card3)}
@@ -1606,6 +1627,7 @@ footer{text-align:left}
 "#;
 
 pub(crate) const ANIM_JS: &str = r#"
+(function(){var h=document.getElementById('ptitle');if(!h)return;try{var d=new Date(+h.dataset.ms),w=h.querySelector('.when');w.textContent=d.toLocaleString(h.dataset.lang==='it'?'it-IT':'en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}catch(e){}})();
 (function(){var d=document.documentElement;d.classList.add('js');
 try{if(localStorage.getItem('sa-noside')==='1')document.body.classList.add('noside')}catch(e){}var tgb=document.getElementById('sidetoggle');if(tgb)tgb.addEventListener('click',function(){var on=document.body.classList.toggle('noside');try{localStorage.setItem('sa-noside',on?'1':'0')}catch(e){}});
 var red=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;

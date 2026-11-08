@@ -10,11 +10,10 @@ use crate::heapdiff::{HeapComparison, PluginDelta, signed_bytes};
 
 const PAGE_CSS: &str = ".lv{display:inline-block;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:600;margin-bottom:4px;border:1px solid var(--line)}.lv2{color:var(--crit);border-color:var(--crit)}.lv1{color:var(--high);border-color:var(--high)}.lv0{color:var(--ok)}.up{color:var(--crit);font-weight:600}.down{color:var(--ok)}table.hd{table-layout:fixed;width:100%}table.hd td{vertical-align:top;white-space:normal}table.hd td.n{white-space:nowrap}table.hd td code{white-space:nowrap}table.hd .cl{display:block;margin-bottom:3px}table.hd .why{margin-top:2px}#cmp th:nth-child(1){width:15%}#cmp th:nth-child(2),#cmp th:nth-child(3),#cmp th:nth-child(4),#cmp th:nth-child(5){width:8.5%}#cmp th:nth-child(6){width:24%}#cmp th:nth-child(7){width:27%}.warnbox{background:rgba(249,115,22,.08);border:1px solid var(--high);border-radius:12px;padding:12px 16px;margin:0 0 14px;color:var(--hd)}.sol li{margin:6px 0}@media(max-width:900px){table.hd{table-layout:auto}}";
 
-fn stat(out: &mut String, ic: &str, label: &str, value: &str, suffix: &str, cls: &str) {
+fn stat(out: &mut String, _icon: &str, label: &str, value: &str, suffix: &str, cls: &str) {
     let _ = write!(
         out,
-        r#"<div class="stat {cls}"><div class="si">{}</div><div><div class="sl">{}</div><div class="sv">{}<small>{}</small></div></div></div>"#,
-        icon(ic),
+        r#"<div class="kpi {cls}"><div class="sl">{}</div><div class="sv">{}<small>{}</small></div></div>"#,
         esc(label),
         esc(value),
         esc(suffix)
@@ -96,7 +95,7 @@ pub fn render(c: &HeapComparison) -> String {
 
     let _ = write!(
         b,
-        r##"<div class="shell"><aside class="side"><a class="brand" id="brandlink" href="./" title="Home"><span class="logo">{}</span><span>Spark-Analyzer</span></a><div class="status {}"><i></i>{}</div><nav><a href="#riassunto" class="on">{}<span>{}</span></a><a href="#cmp">{}<span>{}</span></a><a href="#java">{}<span>{}</span></a><a href="#azioni">{}<span>{}</span></a></nav><div class="sidefoot"><div class="srv"><b>{}</b><span>{}</span></div><button id="langbtn" class="ghost lang" data-to="{}" title="Lingua / Language">{}</button><button id="theme" class="ghost" title="{}">{}</button></div></aside><main class="content">{}"##,
+        r##"<div class="shell"><aside class="side"><a class="brand" id="brandlink" href="./" title="Home"><span class="logo">{}</span><span>Spark Resource Analyzer</span></a><div class="status {}"><i></i>{}</div><nav><a href="#riassunto" class="on">{}<span>{}</span></a><a href="#cmp">{}<span>{}</span></a><a href="#java">{}<span>{}</span></a><a href="#azioni">{}<span>{}</span></a></nav><div class="sidefoot"><div class="srv"><b>{}</b><span>{}</span></div><button id="langbtn" class="ghost lang" data-to="{}" title="Lingua / Language">{}</button><button id="theme" class="ghost" title="{}">{}</button></div></aside><main class="content">{}"##,
         LOGO_SVG,
         if bad { "lag" } else { "okk" },
         if leaks > 0 {
@@ -225,7 +224,7 @@ pub fn render(c: &HeapComparison) -> String {
         "",
         if leaks > 0 { "bad" } else { "ok" },
     );
-    let _ = write!(b, r#"<section class="stats">{stats}</section>"#);
+    let _ = write!(b, r#"<section class="kpis">{stats}</section>"#);
 
     let _ = write!(
         b,

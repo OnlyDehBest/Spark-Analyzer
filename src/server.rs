@@ -72,7 +72,7 @@ pub fn serve(o: ServeOptions) -> Result<()> {
         o.host.as_str()
     };
     let url = format!("http://{shown_host}:{port}/");
-    eprintln!("Spark-Analyzer è in esecuzione: apri {url}  (running: open {url})");
+    eprintln!("Spark Resource Analyzer è in esecuzione: apri {url}  (running: open {url})");
     eprintln!("Lascia aperta questa finestra; chiudila (o premi Ctrl+C) per fermarlo.");
     if o.host != "127.0.0.1" && o.host != "localhost" {
         eprintln!(

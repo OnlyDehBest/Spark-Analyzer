@@ -744,7 +744,7 @@ pub fn render_text(c: &HeapComparison) -> String {
     let mut o = String::with_capacity(4096);
     let _ = writeln!(
         o,
-        "\n━━ Spark-Analyzer · {} ━━",
+        "\n━━ Spark Resource Analyzer · {} ━━",
         t("confronto heap", "heap comparison")
     );
     let _ = writeln!(o, "{}", c.headline);
