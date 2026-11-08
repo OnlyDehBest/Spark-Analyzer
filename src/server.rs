@@ -607,9 +607,9 @@ fn index_page(st: &State) -> String {
         .iter()
         .map(|r| webui::Recent {
             href: if i18n::is_en() {
-                format!("/r/{}?lang=en", r.id)
-            } else {
                 format!("/r/{}", r.id)
+            } else {
+                format!("/r/{}?lang=it", r.id)
             },
             title: r.title.clone(),
             detail: r.detail.clone(),
@@ -628,7 +628,7 @@ fn with_actions(html: &str) -> String {
         r#"<div class="actions">"#,
         &format!(
             r#"<div class="actions"><a class="btn sec" href="{}">{}{}</a>"#,
-            if i18n::is_en() { "/?lang=en" } else { "/" },
+            if i18n::is_en() { "/" } else { "/?lang=it" },
             icon("plus"),
             i18n::t("Nuova analisi", "New analysis")
         ),

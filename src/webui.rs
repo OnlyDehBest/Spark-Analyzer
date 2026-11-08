@@ -478,9 +478,9 @@ pub fn local_index(recent: &[Recent]) -> String {
         script: LOCAL_JS,
         module_script: "",
         home: if crate::i18n::is_en() {
-            "/?lang=en"
-        } else {
             "/"
+        } else {
+            "/?lang=it"
         },
         footer: t("in esecuzione sul tuo computer", "running on your computer"),
     })
@@ -512,8 +512,8 @@ pub fn local_not_found() -> String {
 
 pub fn static_page_name(l: crate::i18n::Lang) -> &'static str {
     match l {
-        crate::i18n::Lang::It => "index.html",
-        crate::i18n::Lang::En => "en.html",
+        crate::i18n::Lang::It => "it.html",
+        crate::i18n::Lang::En => "index.html",
     }
 }
 
@@ -545,14 +545,14 @@ fn static_index_page() -> String {
         "",
     );
     let other = if crate::i18n::is_en() {
-        "./"
+        "./it.html"
     } else {
-        "./en.html"
+        "./"
     };
     let home = if crate::i18n::is_en() {
-        "./en.html"
-    } else {
         "./"
+    } else {
+        "./it.html"
     };
     let page = shell(&Page {
         crumb: t("Nuova analisi", "New analysis"),
@@ -623,7 +623,7 @@ pub const THEME_JS: &str = r#"
 
 pub const LOCAL_JS: &str = r#"
 (function(){
-var LQ=M.lang==='en'?'lang=en':'';
+var LQ=M.lang==='it'?'lang=it':'';
 try{var pref=localStorage.getItem('sa-lang');if(pref&&pref!==M.lang&&!/[?&]lang=/.test(location.search)){location.replace('/?lang='+pref+location.hash);return}}catch(e){}
 var lb=document.getElementById('langbtn');if(lb)lb.addEventListener('click',function(){try{localStorage.setItem('sa-lang',lb.dataset.to)}catch(e){}location.href=lb.dataset.href+(window.__saMode==='cmp'?'#confronta':'')});
 var busy=document.getElementById('busy'),bt=document.getElementById('busytext'),err=document.getElementById('err');

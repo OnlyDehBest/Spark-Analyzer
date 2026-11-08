@@ -8,11 +8,11 @@ pub enum Lang {
 }
 
 impl Lang {
-    pub fn parse(s: &str) -> Lang {
-        if s.trim().to_ascii_lowercase().starts_with("en") {
-            Lang::En
-        } else {
+    pub fn parse(s: &str) -> Lang { 
+        if s.trim().to_ascii_lowercase().starts_with("it") {
             Lang::It
+        } else {
+            Lang::En
         }
     }
     pub fn code(self) -> &'static str {

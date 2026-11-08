@@ -171,3 +171,12 @@ fn copyright_on_every_page() {
     .unwrap();
     assert!(cmp.contains("onlynelchilling"));
 }
+
+#[test]
+fn english_is_the_default_language() {
+    use sparkscope::i18n::Lang;
+    assert_eq!(Lang::parse(""), Lang::En);
+    assert_eq!(Lang::parse("it"), Lang::It);
+    assert_eq!(sparkscope::webui::static_page_name(Lang::En), "index.html");
+    assert_eq!(sparkscope::webui::static_page_name(Lang::It), "it.html");
+}
