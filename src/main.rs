@@ -276,7 +276,7 @@ fn main() -> Result<()> {
             output,
         } => {
             let (r, _, _) = load_report(&input, &common)?;
-            if r.analysis.folded.is_empty() {
+            if r.analysis.flame.is_empty() {
                 bail!("nessun dato da disegnare");
             }
             let mut opts = inferno::flamegraph::Options::default();
@@ -288,7 +288,8 @@ fn main() -> Result<()> {
             opts.min_width = 0.05;
             let file = std::fs::File::create(&output)
                 .with_context(|| format!("impossibile creare {}", output.display()))?;
-            let lines: Vec<&str> = r.analysis.folded.iter().map(|s| s.as_str()).collect();
+            let folded = r.analysis.flame.folded_lines();
+            let lines: Vec<&str> = folded.iter().map(|s| s.as_str()).collect();
             inferno::flamegraph::from_lines(&mut opts, lines, std::io::BufWriter::new(file))?;
             eprintln!("✔ Flamegraph scritto in {}", output.display());
         }

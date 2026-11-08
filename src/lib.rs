@@ -10,6 +10,7 @@ pub mod alloc;
 pub mod analysis;
 pub mod config;
 pub mod diff;
+pub mod flame;
 pub mod heap;
 pub mod heapdiff;
 pub mod loader;

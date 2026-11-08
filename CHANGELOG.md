@@ -1,5 +1,16 @@
 # Novità
 
+## Non ancora rilasciato
+
+### Velocità
+- Analisi dei profili fino a ~1,7× più veloce: hash veloce, cache per metodo e sorgente,
+  meno allocazioni e selezione dei primi N invece di ordinare tutto.
+- Flamegraph costruito durante l'analisi: generazione del report ~10× più veloce e pagina
+  più leggera (es. da 1,0 a 0,4 MB su un profilo grande).
+- Sul sito il modulo WebAssembly viene ottimizzato con `wasm-opt` e la schermata «Analisi in corso»
+  viene mostrata prima di iniziare il calcolo.
+- Ordine dei risultati stabile: a parità di tempo, stesso ordine a ogni analisi.
+
 ## v1.0.0
 
 Prima versione stabile di **Spark Resource Analyzer**.

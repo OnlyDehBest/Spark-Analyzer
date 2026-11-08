@@ -36,7 +36,18 @@ jobs:
         run: |
           cargo run -p sparkscope-web --example build_site -- site
           wasm-bindgen target/wasm32-unknown-unknown/release/sparkscope_web.wasm --target web --out-dir site/pkg --no-typescript
-          ls -la site site/pkg
+      - name: Ottimizza il WebAssembly (wasm-opt)
+        continue-on-error: true
+        run: |
+          sudo apt-get install -y -qq binaryen >/dev/null
+          wasm-opt --version
+          f=site/pkg/sparkscope_web_bg.wasm
+          if wasm-opt -O3 --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals --enable-reference-types --enable-multivalue "$f" -o "$f.opt"; then
+            mv "$f.opt" "$f"
+          else
+            echo "::warning::wasm-opt non riuscito, uso il modulo non ottimizzato"
+          fi
+          ls -la site/pkg
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

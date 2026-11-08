@@ -679,3 +679,22 @@ fn malicious_profile_cannot_inject_html() {
         rest = &body[end..];
     }
 }
+
+#[test]
+fn analysis_output_is_deterministic() {
+    let a = serde_json::to_string(&build()).unwrap();
+    for _ in 0..3 {
+        assert_eq!(serde_json::to_string(&build()).unwrap(), a);
+    }
+}
+
+#[test]
+fn flamegraph_has_main_thread_root_and_plugin_labels() {
+    let r = build();
+    let json = r.analysis.flame.to_json();
+    let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(v["names"][0], "main thread");
+    assert!(v["tree"][1].as_u64().unwrap() > 0);
+    assert!(json.contains(" ["), "plugin frames carry their source");
+    assert!(!r.analysis.flame.folded_lines().is_empty());
+}

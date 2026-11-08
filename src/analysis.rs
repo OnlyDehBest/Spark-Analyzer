@@ -1,4 +1,5 @@
-use std::collections::HashMap;
+use rustc_hash::FxHashMap as HashMap;
+use std::cmp::Ordering;
 
 use serde::Serialize;
 
@@ -159,7 +160,7 @@ pub struct Analysis {
     pub spikes: Vec<Spike>,
     pub periodic_spikes: Option<String>,
     #[serde(skip)]
-    pub folded: Vec<String>,
+    pub flame: crate::flame::FlameTree,
 }
 
 struct Acc {
@@ -184,7 +185,7 @@ struct Interner {
 impl Interner {
     fn new() -> Interner {
         Interner {
-            map: HashMap::new(),
+            map: HashMap::default(),
             names: Vec::new(),
         }
     }
@@ -197,6 +198,16 @@ impl Interner {
         self.map.insert(s.to_string(), i);
         i
     }
+}
+
+type EntryKey = ((u32, u32, u32), f64);
+
+#[derive(Clone, Copy)]
+struct FrameInfo {
+    cat: Option<Cat>,
+    entity: Option<u32>,
+    block_entity: Option<u32>,
+    bucket: &'static str,
 }
 
 #[derive(Clone, Copy)]
@@ -271,53 +282,83 @@ pub fn analyze(p: &Profile) -> Analysis {
     let mut strings = Interner::new();
     let mut methods = Interner::new();
 
-    let mut cat_acc: HashMap<Cat, Acc> = HashMap::new();
-    let mut owner_self: HashMap<u32, Acc> = HashMap::new();
-    let mut owner_incl: HashMap<u32, f64> = HashMap::new();
-    let mut bucket_self: HashMap<&'static str, f64> = HashMap::new();
-    let mut method_self: HashMap<u32, Acc> = HashMap::new();
-    let mut method_incl: HashMap<u32, f64> = HashMap::new();
-    let mut method_source: HashMap<u32, Option<u32>> = HashMap::new();
-    let mut cat_owner: HashMap<(Cat, u32), f64> = HashMap::new();
-    let mut cat_method: HashMap<(Cat, u32), f64> = HashMap::new();
-    let mut cat_site: HashMap<(Cat, u32, u32), f64> = HashMap::new();
-    let mut cat_unknown: HashMap<(Cat, u32), f64> = HashMap::new();
+    let mut cat_acc: HashMap<Cat, Acc> = HashMap::default();
+    let mut owner_self: HashMap<u32, Acc> = HashMap::default();
+    let mut owner_incl: HashMap<u32, f64> = HashMap::default();
+    let mut bucket_self: HashMap<&'static str, f64> = HashMap::default();
+    let mut method_self: HashMap<u32, Acc> = HashMap::default();
+    let mut method_incl: HashMap<u32, f64> = HashMap::default();
+    let mut method_source: HashMap<u32, Option<u32>> = HashMap::default();
+    let mut cat_owner: HashMap<(Cat, u32), f64> = HashMap::default();
+    let mut cat_method: HashMap<(Cat, u32), f64> = HashMap::default();
+    let mut cat_site: HashMap<(Cat, u32, u32), f64> = HashMap::default();
+    let mut cat_unknown: HashMap<(Cat, u32), f64> = HashMap::default();
     let unknown_bucket = crate::i18n::t("Sconosciuto", "Unknown");
-    let mut owner_method: HashMap<(u32, u32), f64> = HashMap::new();
-    let mut owner_hazard: HashMap<(u32, Cat), f64> = HashMap::new();
-    let mut entity_self: HashMap<u32, f64> = HashMap::new();
-    let mut be_self: HashMap<u32, f64> = HashMap::new();
-    let mut entries: HashMap<(u32, u32, u32), f64> = HashMap::new();
-    let mut events: HashMap<(u32, u32), f64> = HashMap::new();
-    let mut cat_entry_best: HashMap<Cat, (u32, f64)> = HashMap::new();
+    let mut owner_method: HashMap<(u32, u32), f64> = HashMap::default();
+    let mut owner_hazard: HashMap<(u32, Cat), f64> = HashMap::default();
+    let mut entity_self: HashMap<u32, f64> = HashMap::default();
+    let mut be_self: HashMap<u32, f64> = HashMap::default();
+    let mut entries: HashMap<(u32, u32, u32), f64> = HashMap::default();
+    let mut events: HashMap<(u32, u32), f64> = HashMap::default();
+    let mut cat_entry_best: HashMap<Cat, (u32, f64)> = HashMap::default();
     let mut hot: Vec<(f64, u32, Option<Cat>, Option<u32>)> = Vec::new();
     let mut busy_win = vec![0.0f64; w];
     let mut idle_total = 0.0;
     let mut blocking_total = 0.0;
 
-    let mut owner_depth: HashMap<u32, u32> = HashMap::new();
-    let mut method_depth: HashMap<u32, u32> = HashMap::new();
+    let mut owner_depth: HashMap<u32, u32> = HashMap::default();
+    let mut method_depth: HashMap<u32, u32> = HashMap::default();
     let mut entity_stack: Vec<Option<u32>> = Vec::new();
     let mut be_stack: Vec<Option<u32>> = Vec::new();
-    let mut label_stack: Vec<String> = Vec::new();
-    let mut folded: Vec<String> = Vec::new();
+    let mut flame = crate::flame::FlameTree::new("main thread");
+    let mut flame_stack: Vec<u32> = Vec::new();
+    let mut flame_names: HashMap<(&str, &str, Option<u32>), u32> = HashMap::default();
     let fold_min = thread.total * 0.00002;
 
+    let mut method_ids: HashMap<(&str, &str), u32> =
+        HashMap::with_capacity_and_hasher(thread.nodes.len() / 4, Default::default());
     let node_method_id: Vec<u32> = thread
         .nodes
         .iter()
-        .map(|n| methods.id(&n.label()))
+        .map(|n| {
+            *method_ids
+                .entry((n.class.as_str(), n.method.as_str()))
+                .or_insert_with(|| methods.id(&n.label()))
+        })
         .collect();
+    let mut source_cache: HashMap<(&str, &str, &str, i32), Option<u32>> =
+        HashMap::with_capacity_and_hasher(thread.nodes.len() / 4, Default::default());
     let node_source: Vec<Option<u32>> = thread
         .nodes
         .iter()
         .map(|n| {
-            p.sources
-                .resolve(n)
-                .filter(|s| !p.sources.is_builtin(s))
-                .map(|s| strings.id(s))
+            *source_cache
+                .entry((n.class.as_str(), n.method.as_str(), n.desc.as_str(), n.line))
+                .or_insert_with(|| {
+                    p.sources
+                        .resolve(n)
+                        .filter(|s| !p.sources.is_builtin(s))
+                        .map(|s| strings.id(s))
+                })
         })
         .collect();
+    let mut frame_cache: HashMap<(&str, &str, bool), FrameInfo> =
+        HashMap::with_capacity_and_hasher(thread.nodes.len() / 4, Default::default());
+    let node_frame: Vec<FrameInfo> = thread
+        .nodes
+        .iter()
+        .map(|n| {
+            *frame_cache
+                .entry((n.class.as_str(), n.method.as_str(), n.parent.is_some()))
+                .or_insert_with(|| FrameInfo {
+                    cat: patterns::categorize(n),
+                    entity: patterns::entity_type(n).map(|s| strings.id(&s)),
+                    block_entity: patterns::block_entity_type(n).map(|s| strings.id(&s)),
+                    bucket: patterns::package_bucket(&n.class),
+                })
+        })
+        .collect();
+    let mut self_win = vec![0.0f64; w];
     for (i, m) in node_method_id.iter().enumerate() {
         method_source.entry(*m).or_insert(node_source[i]);
     }
@@ -351,7 +392,7 @@ pub fn analyze(p: &Profile) -> Analysis {
             }
             entity_stack.pop();
             be_stack.pop();
-            label_stack.pop();
+            flame_stack.pop();
             continue;
         }
         top.entered = true;
@@ -364,7 +405,8 @@ pub fn analyze(p: &Profile) -> Analysis {
         let idle = idle_mask[id as usize];
         let active = node.total - idle_sub[id as usize];
 
-        let mut own_cat = patterns::categorize(node);
+        let info = node_frame[id as usize];
+        let mut own_cat = info.cat;
         if let (Some(oc), Some(pc)) = (own_cat, st.cat) {
             let sticky_parent = matches!(
                 pc,
@@ -395,10 +437,9 @@ pub fn analyze(p: &Profile) -> Analysis {
         } else {
             st.owner_frame
         };
-        let unknown_frame = st.unknown_frame.or_else(|| {
-            (src.is_none() && patterns::package_bucket(&node.class) == unknown_bucket)
-                .then_some(mid)
-        });
+        let unknown_frame = st
+            .unknown_frame
+            .or_else(|| (src.is_none() && info.bucket == unknown_bucket).then_some(mid));
         let ctx = match own_cat {
             Some(c @ (Cat::PluginEvents | Cat::PluginTasks | Cat::Commands | Cat::Network))
                 if src.is_none() =>
@@ -415,19 +456,28 @@ pub fn analyze(p: &Profile) -> Analysis {
             event_caller = Some(strings.id(&thread.node(par).short_label()));
         }
 
-        let ent = patterns::entity_type(node)
-            .map(|s| strings.id(&s))
+        let ent = info
+            .entity
             .or_else(|| entity_stack.last().copied().flatten());
-        let be = patterns::block_entity_type(node)
-            .map(|s| strings.id(&s))
+        let be = info
+            .block_entity
             .or_else(|| be_stack.last().copied().flatten());
         entity_stack.push(ent);
         be_stack.push(be);
-        let label = match src {
-            Some(s) => format!("{} [{}]", node.short_label(), strings.names[s as usize]),
-            None => node.short_label(),
+        let flame_name = match flame_names.get(&(node.class.as_str(), node.method.as_str(), src)) {
+            Some(n) => *n,
+            None => {
+                let label = match src {
+                    Some(s) => format!("{} [{}]", node.short_label(), strings.names[s as usize]),
+                    None => node.short_label(),
+                };
+                let n = flame.intern(&label);
+                flame_names.insert((node.class.as_str(), node.method.as_str(), src), n);
+                n
+            }
         };
-        label_stack.push(label);
+        let flame_node = flame.child(flame_stack.last().copied().unwrap_or(0), flame_name);
+        flame_stack.push(flame_node);
 
         let first_method = *method_depth.get(&mid).unwrap_or(&0) == 0;
         *method_depth.entry(mid).or_insert(0) += 1;
@@ -488,13 +538,16 @@ pub fn analyze(p: &Profile) -> Analysis {
                 idle_total += self_t;
             } else {
                 let times = thread.times_of(id);
-                let mut self_win = vec![0.0f64; w];
-                for (wi, slot) in self_win.iter_mut().enumerate() {
-                    let mut v = times[wi] as f64;
-                    for c in &node.children {
-                        v -= thread.times_of(*c)[wi] as f64;
+                for (slot, t) in self_win.iter_mut().zip(times) {
+                    *slot = *t as f64;
+                }
+                for c in &node.children {
+                    for (slot, t) in self_win.iter_mut().zip(thread.times_of(*c)) {
+                        *slot -= *t as f64;
                     }
-                    *slot = v.max(0.0);
+                }
+                for slot in self_win.iter_mut() {
+                    *slot = slot.max(0.0);
                 }
                 for wi in 0..w {
                     busy_win[wi] += self_win[wi];
@@ -536,9 +589,7 @@ pub fn analyze(p: &Profile) -> Analysis {
                         if let Some(u) = unknown_frame {
                             *cat_unknown.entry((c, u)).or_insert(0.0) += self_t;
                         }
-                        *bucket_self
-                            .entry(patterns::package_bucket(&node.class))
-                            .or_insert(0.0) += self_t;
+                        *bucket_self.entry(info.bucket).or_insert(0.0) += self_t;
                     }
                 }
                 if let Some(e) = ent {
@@ -549,12 +600,7 @@ pub fn analyze(p: &Profile) -> Analysis {
                 }
                 hot.push((self_t, id, cat, owner));
                 if self_t >= fold_min {
-                    let line = format!(
-                        "{} {}",
-                        label_stack.join(";"),
-                        (self_t * 1000.0).round() as u64
-                    );
-                    folded.push(line);
+                    flame.add(flame_node, (self_t * 1000.0).round() as u64);
                 }
             }
         }
@@ -580,59 +626,62 @@ pub fn analyze(p: &Profile) -> Analysis {
 
     let name_of = |i: u32| strings.names[i as usize].clone();
     let mname = |i: u32| methods.names[i as usize].clone();
+    let snames: &[String] = &strings.names;
+    let mnames: &[String] = &methods.names;
+    let sname = |i: &u32| snames[*i as usize].as_str();
+    let mstr = |i: &u32| mnames[*i as usize].as_str();
+    let stats = |v: Vec<(u32, f64)>, k: usize, names: &[String]| -> Vec<Stat> {
+        top_k(v, k, |a, b| by_time(a, b, names))
+            .into_iter()
+            .map(|(i, t)| Stat {
+                name: names[i as usize].clone(),
+                time: t,
+                pct: pct(t),
+            })
+            .collect()
+    };
+
+    let mut cat_owner_g: HashMap<Cat, Vec<(u32, f64)>> = HashMap::default();
+    for ((c, o), t) in &cat_owner {
+        cat_owner_g.entry(*c).or_default().push((*o, *t));
+    }
+    let mut cat_method_g: HashMap<Cat, Vec<(u32, f64)>> = HashMap::default();
+    for ((c, m), t) in &cat_method {
+        cat_method_g.entry(*c).or_default().push((*m, *t));
+    }
+    let mut cat_unknown_g: HashMap<Cat, Vec<(u32, f64)>> = HashMap::default();
+    for ((c, m), t) in &cat_unknown {
+        cat_unknown_g.entry(*c).or_default().push((*m, *t));
+    }
+    let mut cat_site_g: HashMap<Cat, Vec<(u32, u32, f64)>> = HashMap::default();
+    for ((c, o, m), t) in &cat_site {
+        cat_site_g.entry(*c).or_default().push((*o, *m, *t));
+    }
 
     let mut categories: Vec<CatStat> = cat_acc
         .iter()
         .map(|(c, a)| {
-            let mut owners: Vec<Stat> = cat_owner
-                .iter()
-                .filter(|((cc, _), _)| cc == c)
-                .map(|((_, o), t)| Stat {
-                    name: name_of(*o),
-                    time: *t,
-                    pct: pct(*t),
-                })
-                .collect();
-            sort_stats(&mut owners);
-            owners.truncate(5);
-            let mut ms: Vec<Stat> = cat_method
-                .iter()
-                .filter(|((cc, _), _)| cc == c)
-                .map(|((_, m), t)| Stat {
-                    name: mname(*m),
-                    time: *t,
-                    pct: pct(*t),
-                })
-                .collect();
-            sort_stats(&mut ms);
-            ms.truncate(6);
+            let owners = stats(cat_owner_g.remove(c).unwrap_or_default(), 5, snames);
+            let ms = stats(cat_method_g.remove(c).unwrap_or_default(), 6, mnames);
             let example_stack = cat_entry_best
                 .get(c)
                 .map(|(nid, _)| example_stack(thread, *nid))
                 .unwrap_or_default();
-            let mut culprit_sites: Vec<CulpritSite> = cat_site
-                .iter()
-                .filter(|((cc, _, _), _)| cc == c)
-                .map(|((_, o, m), t)| CulpritSite {
-                    source: name_of(*o),
-                    method: mname(*m),
-                    time: *t,
-                    pct: pct(*t),
+            let culprit_sites: Vec<CulpritSite> =
+                top_k(cat_site_g.remove(c).unwrap_or_default(), 6, |a, b| {
+                    b.2.total_cmp(&a.2)
+                        .then_with(|| mstr(&a.1).cmp(mstr(&b.1)))
+                        .then_with(|| sname(&a.0).cmp(sname(&b.0)))
+                })
+                .into_iter()
+                .map(|(o, m, t)| CulpritSite {
+                    source: name_of(o),
+                    method: mname(m),
+                    time: t,
+                    pct: pct(t),
                 })
                 .collect();
-            culprit_sites.sort_by(|a, b| b.time.total_cmp(&a.time).then(a.method.cmp(&b.method)));
-            culprit_sites.truncate(6);
-            let mut unknown_sites: Vec<Stat> = cat_unknown
-                .iter()
-                .filter(|((cc, _), _)| cc == c)
-                .map(|((_, m), t)| Stat {
-                    name: mname(*m),
-                    time: *t,
-                    pct: pct(*t),
-                })
-                .collect();
-            sort_stats(&mut unknown_sites);
-            unknown_sites.truncate(4);
+            let unknown_sites = stats(cat_unknown_g.remove(c).unwrap_or_default(), 4, mnames);
             CatStat {
                 unknown_sites,
                 culprit_sites,
@@ -646,7 +695,37 @@ pub fn analyze(p: &Profile) -> Analysis {
             }
         })
         .collect();
-    categories.sort_by(|a, b| b.time.total_cmp(&a.time));
+    categories.sort_by(|a, b| {
+        b.time
+            .total_cmp(&a.time)
+            .then_with(|| a.label.cmp(&b.label))
+    });
+
+    let entry_cmp = |a: &((u32, u32, u32), f64), b: &((u32, u32, u32), f64)| {
+        b.1.total_cmp(&a.1)
+            .then_with(|| sname(&a.0.0).cmp(sname(&b.0.0)))
+            .then_with(|| mstr(&a.0.1).cmp(mstr(&b.0.1)))
+            .then_with(|| sname(&a.0.2).cmp(sname(&b.0.2)))
+    };
+    let entry_stat = |((s, m, c), t): ((u32, u32, u32), f64)| EntryStat {
+        source: name_of(s),
+        entry: mname(m),
+        context: name_of(c),
+        time: t,
+        pct: pct(t),
+    };
+    let mut owner_entries: HashMap<u32, Vec<EntryKey>> = HashMap::default();
+    for (k, t) in &entries {
+        owner_entries.entry(k.0).or_default().push((*k, *t));
+    }
+    let mut owner_methods: HashMap<u32, Vec<(u32, f64)>> = HashMap::default();
+    for ((o, m), t) in &owner_method {
+        owner_methods.entry(*o).or_default().push((*m, *t));
+    }
+    let mut owner_hazards: HashMap<u32, Vec<(Cat, f64)>> = HashMap::default();
+    for ((o, c), t) in &owner_hazard {
+        owner_hazards.entry(*o).or_default().push((*c, *t));
+    }
 
     let mut sources: Vec<SourceStat> = owner_self
         .keys()
@@ -657,40 +736,27 @@ pub fn analyze(p: &Profile) -> Analysis {
         .map(|s| {
             let st = owner_self.get(&s).map(|a| a.total).unwrap_or(0.0);
             let it = owner_incl.get(&s).copied().unwrap_or(0.0);
-            let mut ents: Vec<EntryStat> = entries
-                .iter()
-                .filter(|((o, _, _), _)| *o == s)
-                .map(|((_, m, c), t)| EntryStat {
-                    source: name_of(s),
-                    entry: mname(*m),
-                    context: name_of(*c),
-                    time: *t,
-                    pct: pct(*t),
-                })
-                .collect();
-            ents.sort_by(|a, b| b.time.total_cmp(&a.time));
-            ents.truncate(8);
-            let mut ms: Vec<Stat> = owner_method
-                .iter()
-                .filter(|((o, _), _)| *o == s)
-                .map(|((_, m), t)| Stat {
-                    name: mname(*m),
-                    time: *t,
-                    pct: pct(*t),
-                })
-                .collect();
-            sort_stats(&mut ms);
-            ms.truncate(8);
-            let mut hz: Vec<Stat> = owner_hazard
-                .iter()
-                .filter(|((o, _), _)| *o == s)
-                .map(|((_, c), t)| Stat {
-                    name: c.label().to_string(),
-                    time: *t,
-                    pct: pct(*t),
-                })
-                .collect();
-            sort_stats(&mut hz);
+            let ents: Vec<EntryStat> =
+                top_k(owner_entries.remove(&s).unwrap_or_default(), 8, entry_cmp)
+                    .into_iter()
+                    .map(entry_stat)
+                    .collect();
+            let ms = stats(owner_methods.remove(&s).unwrap_or_default(), 8, mnames);
+            let hz: Vec<Stat> = top_k(
+                owner_hazards.remove(&s).unwrap_or_default(),
+                usize::MAX,
+                |a, b| {
+                    b.1.total_cmp(&a.1)
+                        .then_with(|| a.0.label().cmp(b.0.label()))
+                },
+            )
+            .into_iter()
+            .map(|(c, t)| Stat {
+                name: c.label().to_string(),
+                time: t,
+                pct: pct(t),
+            })
+            .collect();
             let n = name_of(s);
             SourceStat {
                 display: p.sources.display_name(&n),
@@ -706,7 +772,11 @@ pub fn analyze(p: &Profile) -> Analysis {
             }
         })
         .collect();
-    sources.sort_by(|a, b| b.incl_time.total_cmp(&a.incl_time));
+    sources.sort_by(|a, b| {
+        b.incl_time
+            .total_cmp(&a.incl_time)
+            .then_with(|| a.source.cmp(&b.source))
+    });
 
     let mut buckets: Vec<Stat> = bucket_self
         .iter()
@@ -718,86 +788,76 @@ pub fn analyze(p: &Profile) -> Analysis {
         .collect();
     sort_stats(&mut buckets);
 
-    let mut method_list: Vec<MethodStat> = method_self
-        .iter()
-        .map(|(m, a)| {
-            let it = method_incl.get(m).copied().unwrap_or(0.0);
-            MethodStat {
-                method: mname(*m),
-                source: method_source.get(m).copied().flatten().map(name_of),
-                self_time: a.total,
-                self_pct: pct(a.total),
-                incl_time: it,
-                incl_pct: pct(it),
-            }
-        })
-        .collect();
-    method_list.sort_by(|a, b| b.self_time.total_cmp(&a.self_time));
-    let mut incl_list: Vec<MethodStat> = method_incl
-        .iter()
-        .map(|(m, it)| {
-            let st = method_self.get(m).map(|a| a.total).unwrap_or(0.0);
-            MethodStat {
-                method: mname(*m),
-                source: method_source.get(m).copied().flatten().map(name_of),
-                self_time: st,
-                self_pct: pct(st),
-                incl_time: *it,
-                incl_pct: pct(*it),
-            }
-        })
-        .filter(|m| m.incl_pct < 99.5)
-        .collect();
-    incl_list.sort_by(|a, b| b.incl_time.total_cmp(&a.incl_time));
-    incl_list.truncate(60);
+    let method_stat = |m: u32, self_time: f64, incl_time: f64| MethodStat {
+        method: mname(m),
+        source: method_source.get(&m).copied().flatten().map(name_of),
+        self_time,
+        self_pct: pct(self_time),
+        incl_time,
+        incl_pct: pct(incl_time),
+    };
+    let method_list: Vec<MethodStat> = top_k(
+        method_self.iter().map(|(m, a)| (*m, a.total)).collect(),
+        80,
+        |a, b| by_time(a, b, mnames),
+    )
+    .into_iter()
+    .map(|(m, st)| method_stat(m, st, method_incl.get(&m).copied().unwrap_or(0.0)))
+    .collect();
+    let incl_list: Vec<MethodStat> = top_k(
+        method_incl
+            .iter()
+            .filter(|(_, it)| pct(**it) < 99.5)
+            .map(|(m, it)| (*m, *it))
+            .collect(),
+        60,
+        |a, b| by_time(a, b, mnames),
+    )
+    .into_iter()
+    .map(|(m, it)| method_stat(m, method_self.get(&m).map(|a| a.total).unwrap_or(0.0), it))
+    .collect();
 
-    let mut entity_types: Vec<Stat> = entity_self
-        .iter()
-        .map(|(k, v)| Stat {
-            name: name_of(*k),
-            time: *v,
-            pct: pct(*v),
-        })
-        .collect();
-    sort_stats(&mut entity_types);
-    let mut block_entity_types: Vec<Stat> = be_self
-        .iter()
-        .map(|(k, v)| Stat {
-            name: name_of(*k),
-            time: *v,
-            pct: pct(*v),
-        })
-        .collect();
-    sort_stats(&mut block_entity_types);
+    let entity_types = stats(
+        entity_self.iter().map(|(k, v)| (*k, *v)).collect(),
+        usize::MAX,
+        snames,
+    );
+    let block_entity_types = stats(
+        be_self.iter().map(|(k, v)| (*k, *v)).collect(),
+        usize::MAX,
+        snames,
+    );
 
-    let mut event_list: Vec<EntryStat> = events
-        .iter()
-        .map(|((s, e), t)| EntryStat {
-            source: name_of(*s),
-            entry: name_of(*e),
-            context: crate::i18n::t("Evento", "Event").into(),
-            time: *t,
-            pct: pct(*t),
-        })
-        .collect();
-    event_list.sort_by(|a, b| b.time.total_cmp(&a.time));
-    let mut entry_list: Vec<EntryStat> = entries
-        .iter()
-        .map(|((s, m, c), t)| EntryStat {
-            source: name_of(*s),
-            entry: mname(*m),
-            context: name_of(*c),
-            time: *t,
-            pct: pct(*t),
-        })
-        .collect();
-    entry_list.sort_by(|a, b| b.time.total_cmp(&a.time));
-    entry_list.truncate(40);
+    let event_list: Vec<EntryStat> = top_k(
+        events.iter().map(|(k, t)| (*k, *t)).collect(),
+        usize::MAX,
+        |a: &((u32, u32), f64), b: &((u32, u32), f64)| {
+            b.1.total_cmp(&a.1)
+                .then_with(|| sname(&a.0.0).cmp(sname(&b.0.0)))
+                .then_with(|| sname(&a.0.1).cmp(sname(&b.0.1)))
+        },
+    )
+    .into_iter()
+    .map(|((s, e), t)| EntryStat {
+        source: name_of(s),
+        entry: name_of(e),
+        context: crate::i18n::t("Evento", "Event").into(),
+        time: t,
+        pct: pct(t),
+    })
+    .collect();
+    let entry_list: Vec<EntryStat> = top_k(
+        entries.iter().map(|(k, t)| (*k, *t)).collect(),
+        40,
+        entry_cmp,
+    )
+    .into_iter()
+    .map(entry_stat)
+    .collect();
 
-    hot.sort_by(|a, b| b.0.total_cmp(&a.0));
+    let hot = top_k(hot, 20, |a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
     let hot_paths: Vec<HotPath> = hot
         .iter()
-        .take(20)
         .map(|(t, id, c, o)| HotPath {
             time: *t,
             pct: pct(*t),
@@ -856,12 +916,29 @@ pub fn analyze(p: &Profile) -> Analysis {
         windows,
         spikes,
         periodic_spikes: periodic,
-        folded,
+        flame,
     }
 }
 
 fn sort_stats(v: &mut [Stat]) {
-    v.sort_by(|a, b| b.time.total_cmp(&a.time));
+    v.sort_by(|a, b| b.time.total_cmp(&a.time).then_with(|| a.name.cmp(&b.name)));
+}
+
+fn by_time(a: &(u32, f64), b: &(u32, f64), names: &[String]) -> Ordering {
+    b.1.total_cmp(&a.1)
+        .then_with(|| names[a.0 as usize].cmp(&names[b.0 as usize]))
+}
+
+fn top_k<T>(mut v: Vec<T>, k: usize, cmp: impl Fn(&T, &T) -> Ordering) -> Vec<T> {
+    if k == 0 {
+        return Vec::new();
+    }
+    if v.len() > k {
+        v.select_nth_unstable_by(k - 1, &cmp);
+        v.truncate(k);
+    }
+    v.sort_unstable_by(cmp);
+    v
 }
 
 pub fn event_name(desc: &str) -> Option<String> {
@@ -957,7 +1034,7 @@ fn summarize_threads(p: &Profile, main_idx: usize, main: &MainStats) -> Vec<Thre
             continue;
         }
         let (busy, mut tops, owner) = thread_busy(p, t);
-        tops.sort_by(|a, b| b.1.total_cmp(&a.1));
+        tops.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
         let top_methods = tops
             .iter()
             .take(3)
@@ -981,7 +1058,7 @@ fn summarize_threads(p: &Profile, main_idx: usize, main: &MainStats) -> Vec<Thre
             plugin_hint: thread_plugin_hint(&t.name),
         });
     }
-    out.sort_by(|a, b| b.busy.total_cmp(&a.busy));
+    out.sort_by(|a, b| b.busy.total_cmp(&a.busy).then_with(|| a.name.cmp(&b.name)));
     out
 }
 
@@ -1025,39 +1102,44 @@ fn thread_plugin_hint(name: &str) -> Option<String> {
 
 fn thread_busy(p: &Profile, t: &Thread) -> (f64, Vec<(String, f64)>, Option<String>) {
     let mut busy = 0.0;
-    let mut tops: HashMap<String, f64> = HashMap::new();
-    let mut owners: HashMap<String, f64> = HashMap::new();
+    let mut tops: HashMap<(&str, &str), f64> = HashMap::default();
+    let mut owners: HashMap<&str, f64> = HashMap::default();
+    let mut resolved: HashMap<(&str, &str, &str, i32), Option<&str>> = HashMap::default();
     let mask = idle_mask(t);
-    let mut stack: Vec<(u32, Option<String>)> = t.roots.iter().map(|r| (*r, None)).collect();
+    let mut stack: Vec<(u32, Option<&str>)> = t.roots.iter().map(|r| (*r, None)).collect();
     while let Some((id, owner_parent)) = stack.pop() {
         let n = t.node(id);
         let idle = mask[id as usize];
-        let owner = p
-            .sources
-            .resolve(n)
-            .filter(|s| !p.sources.is_builtin(s))
-            .map(|s| s.to_string())
-            .or(owner_parent);
+        let own = *resolved
+            .entry((n.class.as_str(), n.method.as_str(), n.desc.as_str(), n.line))
+            .or_insert_with(|| p.sources.resolve(n).filter(|s| !p.sources.is_builtin(s)));
+        let owner = own.or(owner_parent);
         if !idle {
             let s = t.self_time(id);
             if s > 0.0 {
                 busy += s;
-                *tops.entry(n.short_label()).or_insert(0.0) += s;
-                if let Some(o) = &owner {
-                    *owners.entry(o.clone()).or_insert(0.0) += s;
+                *tops
+                    .entry((n.simple_class(), n.method.as_str()))
+                    .or_insert(0.0) += s;
+                if let Some(o) = owner {
+                    *owners.entry(o).or_insert(0.0) += s;
                 }
             }
         }
         for c in &n.children {
-            stack.push((*c, owner.clone()));
+            stack.push((*c, owner));
         }
     }
     let owner = owners
         .into_iter()
-        .max_by(|a, b| a.1.total_cmp(&b.1))
+        .max_by(|a, b| a.1.total_cmp(&b.1).then_with(|| b.0.cmp(a.0)))
         .filter(|(_, v)| *v > busy * 0.2)
-        .map(|(k, _)| k);
-    (busy, tops.into_iter().collect(), owner)
+        .map(|(k, _)| k.to_string());
+    let mut merged: HashMap<String, f64> = HashMap::default();
+    for ((c, m), v) in tops {
+        *merged.entry(format!("{c}.{m}")).or_insert(0.0) += v;
+    }
+    (busy, merged.into_iter().collect(), owner)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1154,42 +1236,45 @@ fn analyze_windows(
         base_idx
     };
 
-    let deltas = |accs: Vec<(String, &Acc)>, wi: usize| -> Vec<Delta> {
-        let mut out: Vec<Delta> = accs
+    let deltas = |accs: Vec<(&str, &Acc)>, wi: usize| -> Vec<Delta> {
+        let mut base_vals: Vec<f64> = Vec::with_capacity(base_idx.len());
+        let out: Vec<(&str, f64, f64)> = accs
             .into_iter()
-            .map(|(name, a)| {
-                let base_vals: Vec<f64> = base_idx.iter().map(|b| norm(*b, a.win[*b])).collect();
-                let baseline = median(&base_vals);
+            .filter_map(|(name, a)| {
                 let value = norm(wi, a.win[wi]);
-                Delta {
-                    name,
-                    baseline,
-                    value,
-                    delta: value - baseline,
+                if value <= 0.0 {
+                    return None;
                 }
+                base_vals.clear();
+                base_vals.extend(base_idx.iter().map(|b| norm(*b, a.win[*b])));
+                let baseline = median(&base_vals);
+                (value - baseline > 0.0).then_some((name, baseline, value))
             })
-            .filter(|d| d.delta > 0.0)
             .collect();
-        out.sort_by(|a, b| b.delta.total_cmp(&a.delta));
-        out.truncate(6);
-        out
+        top_k(out, 6, |a, b| {
+            (b.2 - b.1)
+                .total_cmp(&(a.2 - a.1))
+                .then_with(|| a.0.cmp(b.0))
+        })
+        .into_iter()
+        .map(|(name, baseline, value)| Delta {
+            name: name.to_string(),
+            baseline,
+            value,
+            delta: value - baseline,
+        })
+        .collect()
     };
 
     let mut spikes = Vec::new();
     for i in 0..w {
         if let Some(r) = &reasons[i] {
             windows[i].is_spike = true;
-            let cat_deltas = deltas(
-                cat_acc
-                    .iter()
-                    .map(|(c, a)| (c.label().to_string(), a))
-                    .collect(),
-                i,
-            );
+            let cat_deltas = deltas(cat_acc.iter().map(|(c, a)| (c.label(), a)).collect(), i);
             let owner_deltas = deltas(
                 owner_self
                     .iter()
-                    .map(|(o, a)| (strings.names[*o as usize].clone(), a))
+                    .map(|(o, a)| (strings.names[*o as usize].as_str(), a))
                     .collect(),
                 i,
             );
@@ -1197,7 +1282,7 @@ fn analyze_windows(
                 method_self
                     .iter()
                     .filter(|(_, a)| a.total > 0.0)
-                    .map(|(m, a)| (methods.names[*m as usize].clone(), a))
+                    .map(|(m, a)| (methods.names[*m as usize].as_str(), a))
                     .collect(),
                 i,
             );
@@ -1235,7 +1320,7 @@ fn detect_periodic(windows: &[WindowStat]) -> Option<String> {
         return None;
     }
     let gaps: Vec<i32> = ids.windows(2).map(|p| p[1] - p[0]).collect();
-    let mut counts: HashMap<i32, usize> = HashMap::new();
+    let mut counts: HashMap<i32, usize> = HashMap::default();
     for g in &gaps {
         *counts.entry(*g).or_insert(0) += 1;
     }

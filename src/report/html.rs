@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fmt::Write;
 
 use super::{Report, fmt_duration, fmt_num, fmt_time, fmt_utc};
@@ -27,88 +26,6 @@ fn sev_class(s: Severity) -> &'static str {
         Severity::Basso => "low",
         Severity::Info => "info",
     }
-}
-
-struct Trie {
-    names: Vec<String>,
-    name_idx: HashMap<String, u32>,
-    nodes: Vec<(u32, u64, Vec<usize>)>,
-}
-
-impl Trie {
-    fn new() -> Trie {
-        Trie {
-            names: Vec::new(),
-            name_idx: HashMap::new(),
-            nodes: vec![(0, 0, Vec::new())],
-        }
-    }
-    fn name(&mut self, s: &str) -> u32 {
-        if let Some(i) = self.name_idx.get(s) {
-            return *i;
-        }
-        let i = self.names.len() as u32;
-        self.names.push(s.to_string());
-        self.name_idx.insert(s.to_string(), i);
-        i
-    }
-    fn add(&mut self, frames: &[&str], v: u64) {
-        let mut cur = 0usize;
-        self.nodes[0].1 += v;
-        for f in frames {
-            let n = self.name(f);
-            let found = self.nodes[cur]
-                .2
-                .iter()
-                .copied()
-                .find(|c| self.nodes[*c].0 == n);
-            let next = match found {
-                Some(c) => c,
-                None => {
-                    self.nodes.push((n, 0, Vec::new()));
-                    let id = self.nodes.len() - 1;
-                    self.nodes[cur].2.push(id);
-                    id
-                }
-            };
-            self.nodes[next].1 += v;
-            cur = next;
-        }
-    }
-    fn to_json(&self, id: usize, out: &mut String, min: u64) {
-        let (n, v, kids) = &self.nodes[id];
-        let _ = write!(out, "[{},{}", n, v);
-        let mut ks: Vec<usize> = kids
-            .iter()
-            .copied()
-            .filter(|k| self.nodes[*k].1 >= min)
-            .collect();
-        ks.sort_by(|a, b| self.nodes[*b].1.cmp(&self.nodes[*a].1));
-        for k in ks {
-            out.push(',');
-            self.to_json(k, out, min);
-        }
-        out.push(']');
-    }
-}
-
-fn flame_json(folded: &[String]) -> String {
-    let mut t = Trie::new();
-    t.name("main thread");
-    for line in folded {
-        let Some((stack, v)) = line.rsplit_once(' ') else {
-            continue;
-        };
-        let Ok(v) = v.parse::<u64>() else { continue };
-        let frames: Vec<&str> = stack.split(';').collect();
-        t.add(&frames, v);
-    }
-    let total = t.nodes[0].1;
-    let min = total / 4000;
-    let mut tree = String::new();
-    t.to_json(0, &mut tree, min.max(1));
-    let names = serde_json::to_string(&t.names).unwrap_or_else(|_| "[]".into());
-    format!("{{\"names\":{names},\"tree\":{tree}}}")
 }
 
 pub(crate) fn script_json(json: &str) -> String {
@@ -1267,7 +1184,7 @@ pub fn render(r: &Report) -> String {
         }
         b.push_str("</section>");
 
-        let flame = flame_json(&a.folded);
+        let flame = a.flame.to_json();
         let _ = write!(
             b,
             r#"<section id="flame"><h2>Flamegraph del main thread</h2><p class="note">Solo tempo attivo. Clic su un blocco per zoomare, clic sulla radice per tornare indietro. Larghezza = tempo.</p><div class="fbar"><input id="fsearch" placeholder="Cerca metodo o plugin (es. HopperBlockEntity, MyPlugin)"><span id="fmatch"></span><button id="freset">Reset</button></div><div id="fwrap"><canvas id="flamec"></canvas><div id="ftip"></div></div><script type="application/json" id="flamedata">{}</script></section>"#,
