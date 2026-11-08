@@ -180,3 +180,21 @@ fn english_is_the_default_language() {
     assert_eq!(sparkscope::webui::static_page_name(Lang::En), "index.html");
     assert_eq!(sparkscope::webui::static_page_name(Lang::It), "it.html");
 }
+
+#[test]
+fn site_has_social_preview_tags() {
+    let html = sparkscope::webui::static_index();
+    for needle in [
+        "og:title",
+        "og:image\" content=\"https://",
+        "og-image.png",
+        "twitter:card",
+        "summary_large_image",
+        "<meta name=\"description\"",
+    ] {
+        assert!(html.contains(needle), "manca {needle}");
+    }
+    assert!(
+        std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/static/og-image.png")).exists()
+    );
+}

@@ -22,5 +22,12 @@ fn main() {
     )
     .expect("scrittura fallita");
     std::fs::write(format!("{dir}/.nojekyll"), "").expect("scrittura fallita");
+    let assets = concat!(env!("CARGO_MANIFEST_DIR"), "/static");
+    if let Ok(entries) = std::fs::read_dir(assets) {
+        for entry in entries.flatten() {
+            let target = format!("{dir}/{}", entry.file_name().to_string_lossy());
+            std::fs::copy(entry.path(), target).expect("copia dei file statici fallita");
+        }
+    }
     eprintln!("sito scritto in {dir}/");
 }

@@ -3,7 +3,7 @@ members = [".", "web"]
 
 [package]
 name = "sparkscope"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
 description = "Analisi approfondita dei profili spark (Minecraft) per trovare la causa del lag e le soluzioni"
 license = "GPL-3.0-only"

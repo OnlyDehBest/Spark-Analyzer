@@ -60,6 +60,7 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -72,7 +73,9 @@ jobs:
           ls -la dist
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             tag="${GITHUB_REF_NAME}"
-            gh release create "$tag" dist/* --repo "$REPO" --title "$tag" --generate-notes || gh release upload "$tag" dist/* --repo "$REPO" --clobber
+            awk -v v="## ${tag}" '$0==v{on=1;next} on&&/^## /{exit} on' CHANGELOG.md > notes.md
+            if [ ! -s notes.md ]; then echo "Versione ${tag}" > notes.md; fi
+            gh release create "$tag" dist/* --repo "$REPO" --title "Spark Resource Analyzer ${tag}" --notes-file notes.md || gh release upload "$tag" dist/* --repo "$REPO" --clobber
           else
             gh release delete latest --repo "$REPO" --yes --cleanup-tag || true
             gh release create latest dist/* --repo "$REPO" --target "$GITHUB_SHA" --prerelease \

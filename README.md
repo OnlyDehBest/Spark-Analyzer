@@ -1,9 +1,26 @@
-# sparkscope
+# Spark Resource Analyzer
 
-Analizzatore da riga di comando, scritto in Rust, per i profili di [spark](https://spark.lucko.me).
-Legge un profilo (link del viewer o file), scompone il tempo del main thread fino al singolo metodo,
-individua i plugin/mod responsabili, isola i lag spike e propone soluzioni concrete con i valori di
-configurazione da cambiare.
+Analizza i profili di [spark](https://spark.lucko.me) e trova cosa fa laggare il server Minecraft:
+quale plugin, quale classe e quale metodo, cosa sta facendo di pesante e come risolverlo.
+Funziona con i link di spark o con i file `.sparkprofile`, `.sparkheap` e `.sparkhealth`.
+
+**Usalo online:** https://onlydehbest.github.io/Spark-Analyzer/ (l'analisi avviene nel browser)
+· **Scarica l'app:**
+[Windows](https://github.com/OnlyDehBest/Spark-Analyzer/releases/download/latest/spark-analyzer-windows-x64.exe)
+· [Linux](https://github.com/OnlyDehBest/Spark-Analyzer/releases/download/latest/spark-analyzer-linux-x64)
+· [macOS](https://github.com/OnlyDehBest/Spark-Analyzer/releases/download/latest/spark-analyzer-macos-arm64)
+· [Novità](CHANGELOG.md)
+
+| Report | Lag spike |
+|---|---|
+| ![Report](docs/screenshots/report.png) | ![Lag spike](docs/screenshots/lag-spike.png) |
+| **Albero delle chiamate** | **Confronto heap (memory leak)** |
+| ![Albero delle chiamate](docs/screenshots/call-tree.png) | ![Confronto heap](docs/screenshots/heap-comparison.png) |
+| **Home** | **Telefono** |
+| ![Home](docs/screenshots/home.png) | <img src="docs/screenshots/mobile.png" width="240" alt="Telefono"> |
+
+Il codice è in Rust (crate `sparkscope`): la stessa analisi gira nell'app, nel sito (WebAssembly) e
+da terminale.
 
 ## Cosa analizza
 

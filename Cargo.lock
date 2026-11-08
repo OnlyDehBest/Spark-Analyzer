@@ -1294,7 +1294,7 @@ checksum = "d0d5d4b1981b8bbbb7aed204cae5726d683d5d6ac7e74ec54122ea28f315e7c8"
 
 [[package]]
 name = "sparkscope"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1315,7 +1315,7 @@ dependencies = [
 
 [[package]]
 name = "sparkscope-web"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "prost",
  "serde_json",

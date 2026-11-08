@@ -572,6 +572,20 @@ pub fn static_index_versioned(version: &str) -> String {
     static_index_page().replace("__SA_V__", &suffix)
 }
 
+fn social_meta() -> String {
+    let t = crate::i18n::t;
+    let site = crate::report::html::PUBLIC_SITE;
+    let title = "Spark Resource Analyzer";
+    let description = t(
+        "Analizza i profili spark: trova cosa fa laggare il server Minecraft, quale plugin e metodo, e come risolverlo.",
+        "Analyze spark profiles: find what makes your Minecraft server lag, which plugin and method, and how to fix it.",
+    );
+    format!(
+        r##"<meta name="description" content="{d}"><meta name="theme-color" content="#0e0e0e"><meta property="og:type" content="website"><meta property="og:site_name" content="{title}"><meta property="og:title" content="{title}"><meta property="og:description" content="{d}"><meta property="og:url" content="{site}"><meta property="og:image" content="{site}og-image.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="{title}"><meta name="twitter:description" content="{d}"><meta name="twitter:image" content="{site}og-image.png">"##,
+        d = esc(description)
+    )
+}
+
 fn static_index_page() -> String {
     let t = crate::i18n::t;
     let main = index_main(
@@ -607,7 +621,10 @@ fn static_index_page() -> String {
     });
     page.replacen(
         "</head>",
-        r#"<link rel="modulepreload" href="./pkg/sparkscope_web.js__SA_V__"><link rel="preload" href="./pkg/sparkscope_web_bg.wasm__SA_V__" as="fetch" type="application/wasm" crossorigin></head>"#,
+        &format!(
+            r#"{}<link rel="modulepreload" href="./pkg/sparkscope_web.js__SA_V__"><link rel="preload" href="./pkg/sparkscope_web_bg.wasm__SA_V__" as="fetch" type="application/wasm" crossorigin></head>"#,
+            social_meta()
+        ),
         1,
     )
 }
