@@ -331,6 +331,20 @@ pub(crate) fn topbar(page: &str) -> String {
     )
 }
 
+/// `"{prefix} @ 2:05 PM, 08/11/2026"` (UTC) plus a script that rewrites it in the viewer's local time.
+/// `prefix` is a fixed i18n string (no quotes), so embedding it in JS is safe.
+pub(crate) fn time_title(prefix: &'static str, ms: i64) -> (String, String) {
+    if ms <= 0 {
+        return (prefix.to_string(), String::new());
+    }
+    (
+        format!("{prefix} @ {}", super::fmt_ampm(ms)),
+        format!(
+            "<script>(function(){{var d=new Date({ms});document.title='{prefix} @ '+d.toLocaleTimeString('en-US',{{hour:'numeric',minute:'2-digit'}})+', '+d.toLocaleDateString(undefined,{{day:'2-digit',month:'2-digit',year:'numeric'}})}})()</script>"
+        ),
+    )
+}
+
 pub const COPYRIGHT_OWNER: &str = "onlynelchilling";
 pub const COPYRIGHT_YEAR: u16 = 2026;
 
@@ -600,14 +614,7 @@ pub fn render(r: &Report) -> String {
     let m = &r.meta;
     let a = &r.analysis;
     let mut b = String::new();
-    let title = format!(
-        "Spark-Analyzer — {}",
-        if m.platform.is_empty() {
-            "profilo spark"
-        } else {
-            &m.platform
-        }
-    );
+    let (title, local_title) = time_title(crate::i18n::t("Profilo", "Profile"), m.start_time);
 
     let crit = r
         .findings
@@ -1415,13 +1422,14 @@ pub fn render(r: &Report) -> String {
         );
     }
     let page = format!(
-        "<!doctype html><html lang=\"it\" data-theme=\"dark\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">{}<title>{}</title><style>{}</style></head><body>{}<script>{}{}</script></body></html>",
+        "<!doctype html><html lang=\"it\" data-theme=\"dark\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">{}<title>{}</title><style>{}</style></head><body>{}<script>{}{}</script>{}</body></html>",
         FAVICON,
         esc(&title),
         CSS,
         b,
         ANIM_JS,
-        JS
+        JS,
+        local_title
     );
     if crate::i18n::is_en() {
         super::localize::to_english(&page)
@@ -1580,6 +1588,8 @@ pub(crate) const ANIM_JS: &str = r#"
 (function(){var d=document.documentElement;d.classList.add('js');
 try{if(localStorage.getItem('sa-noside')==='1')document.body.classList.add('noside')}catch(e){}var tgb=document.getElementById('sidetoggle');if(tgb)tgb.addEventListener('click',function(){var on=document.body.classList.toggle('noside');try{localStorage.setItem('sa-noside',on?'1':'0')}catch(e){}});
 var red=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+// in-page links scroll without writing #section into the URL
+document.addEventListener('click',function(e){var a=e.target.closest&&e.target.closest('a[href]');if(!a||e.defaultPrevented)return;var h=a.getAttribute('href');if(h.charAt(0)!=='#')return;var t=null;try{t=document.getElementById(decodeURIComponent(h.slice(1)))}catch(x){}if(!t)return;e.preventDefault();t.scrollIntoView({behavior:red?'auto':'smooth',block:'start'});if(!t.hasAttribute('tabindex'))t.setAttribute('tabindex','-1');t.focus({preventScroll:true})});
 document.querySelectorAll('.chart polyline').forEach(function(p){try{var l=Math.ceil(p.getTotalLength())+2;p.style.setProperty('--len',l)}catch(e){}});
 var els=document.querySelectorAll('main section.panel, main .spike');
 if(!('IntersectionObserver' in window)){return}

@@ -531,6 +531,26 @@ pub fn fmt_utc(ms: i64) -> String {
     )
 }
 
+/// "2:05 PM, 08/11/2026" (UTC; the report page rewrites it in the viewer's local time).
+pub fn fmt_ampm(ms: i64) -> String {
+    let secs = ms / 1000;
+    let (y, mo, d) = civil_from_days(secs.div_euclid(86_400));
+    let rem = secs.rem_euclid(86_400);
+    let h = rem / 3600;
+    format!(
+        "{}:{:02} {}, {d:02}/{mo:02}/{y}",
+        (h + 11) % 12 + 1,
+        rem % 3600 / 60,
+        if h < 12 { "AM" } else { "PM" }
+    )
+}
+
+#[test]
+fn ampm_format() {
+    assert_eq!(fmt_ampm(0), "12:00 AM, 01/01/1970");
+    assert_eq!(fmt_ampm(1_778_249_100_000), "2:05 PM, 08/05/2026");
+}
+
 fn civil_from_days(z: i64) -> (i64, u32, u32) {
     let z = z + 719_468;
     let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
