@@ -15,6 +15,12 @@ fn main() {
         )
         .expect("scrittura fallita");
     }
+    // old English page: keep existing links working, query and hash included
+    std::fs::write(
+        format!("{dir}/en.html"),
+        r#"<!doctype html><meta charset="utf-8"><title>Spark Resource Analyzer</title><meta http-equiv="refresh" content="0; url=./"><link rel="canonical" href="./"><script>location.replace('./'+location.search+location.hash)</script><a href="./">Spark Resource Analyzer</a>"#,
+    )
+    .expect("scrittura fallita");
     std::fs::write(format!("{dir}/.nojekyll"), "").expect("scrittura fallita");
     eprintln!("sito scritto in {dir}/");
 }
