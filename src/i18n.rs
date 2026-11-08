@@ -8,7 +8,7 @@ pub enum Lang {
 }
 
 impl Lang {
-    pub fn parse(s: &str) -> Lang { 
+    pub fn parse(s: &str) -> Lang {
         if s.trim().to_ascii_lowercase().starts_with("it") {
             Lang::It
         } else {

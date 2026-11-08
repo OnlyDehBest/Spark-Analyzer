@@ -276,9 +276,28 @@ fn handle(mut req: Request, st: &State) {
         return;
     }
     let resp = match (method, path.as_str()) {
-        (Method::Get, "/") => {
-            html_resp(index_page(st), gz).with_header(header("Cache-Control", "no-cache"))
-        }
+        (Method::Get, "/") => match open_shared(st, &url) {
+            None => html_resp(index_page(st), gz).with_header(header("Cache-Control", "no-cache")),
+            Some(Ok(id)) => {
+                let w: String = query_param(&url, "w")
+                    .unwrap_or_default()
+                    .chars()
+                    .filter(|c| c.is_ascii_digit() || *c == ',')
+                    .collect();
+                let mut loc = format!("/r/{id}?w={w}");
+                if !i18n::is_en() {
+                    loc.push_str("&lang=it");
+                }
+                Response::from_data(Vec::new())
+                    .with_status_code(303)
+                    .with_header(header("Location", &loc))
+            }
+            Some(Err(e)) => html_resp(
+                format!("<pre>{}</pre>", crate::report::html::esc(&format!("{e:#}"))),
+                gz,
+            )
+            .with_status_code(400),
+        },
         (Method::Get, "/favicon.ico") => Response::from_data(Vec::new()).with_status_code(204),
         (Method::Post, "/api/link") => {
             let mut body = String::new();
@@ -314,7 +333,8 @@ fn handle(mut req: Request, st: &State) {
             let id = p["/api/share/".len()..].to_string();
             let windows = query_param(&url, "w").unwrap_or_default();
             let upload = m == Method::Post;
-            match share_link(st, &id, &windows, upload) {
+            let site = share_site(header_value(&req, "Host").as_deref());
+            match share_link(st, &id, &windows, upload, &site) {
                 Ok(link) => json_resp(200, serde_json::json!({ "url": link })),
                 Err(e) => json_resp(400, serde_json::json!({ "error": format!("{e:#}") })),
             }
@@ -470,8 +490,36 @@ fn upload_payload(st: &State, bytes: &[u8], name: &str) -> Result<String> {
     )
 }
 
-fn public_link(key: &str, second: Option<&str>, windows: &str) -> String {
-    let site = crate::report::html::PUBLIC_SITE;
+/// Links point back to the public host serving this page (e.g. sparkanalyzer.me behind nginx);
+/// loopback or LAN `serve` instances fall back to the static site, which others can reach.
+fn share_site(host: Option<&str>) -> String {
+    match host {
+        Some(h)
+            if !is_loopback_host(h)
+                && h.contains('.')
+                && h.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
+                && !h.chars().all(|c| c.is_ascii_digit() || c == '.') =>
+        {
+            format!("https://{}/", h.to_ascii_lowercase())
+        }
+        _ => crate::report::html::PUBLIC_SITE.to_string(),
+    }
+}
+
+/// Opens `/?p=KEY` or `/?a=KEY&b=KEY` share links (the same format the static site reads).
+fn open_shared(st: &State, url: &str) -> Option<Result<String>> {
+    let fetch = |k: &str| loader::fetch_link(k, &st.bytebin);
+    if let Some(p) = query_param(url, "p") {
+        return Some(fetch(&p).and_then(|(bytes, key)| store(st, bytes, key.clone(), Some(key))));
+    }
+    let (a, b) = (query_param(url, "a")?, query_param(url, "b")?);
+    let staged =
+        |k: &str| fetch(k).and_then(|(bytes, key)| stage(st, bytes, key.clone(), Some(key)));
+    Some(staged(&a).and_then(|sa| staged(&b).and_then(|sb| store_comparison(st, &sa.id, &sb.id))))
+}
+
+fn public_link(site: &str, key: &str, second: Option<&str>, windows: &str) -> String {
     let enc = |v: &str| v.replace('%', "%25").replace(',', "%2C");
     match second {
         Some(b) => format!("{site}?a={key}&b={b}"),
@@ -480,7 +528,13 @@ fn public_link(key: &str, second: Option<&str>, windows: &str) -> String {
     }
 }
 
-fn share_link(st: &State, id: &str, windows: &str, upload: bool) -> Result<Option<String>> {
+fn share_link(
+    st: &State,
+    id: &str,
+    windows: &str,
+    upload: bool,
+    site: &str,
+) -> Result<Option<String>> {
     let (bytes, name, key, second, second_key) = {
         let reports = st.reports.lock().unwrap_or_else(|e| e.into_inner());
         let r = reports.iter().find(|r| r.id == id).ok_or_else(|| {
@@ -520,7 +574,12 @@ fn share_link(st: &State, id: &str, windows: &str, upload: bool) -> Result<Optio
             r.second_key.clone_from(&second_key);
         }
     }
-    Ok(Some(public_link(&key, second_key.as_deref(), windows)))
+    Ok(Some(public_link(
+        site,
+        &key,
+        second_key.as_deref(),
+        windows,
+    )))
 }
 
 fn render(bytes: &[u8], name: &str, key: Option<&str>, windows: &str) -> Result<webui::Rendered> {
@@ -704,17 +763,38 @@ mod tests {
     fn public_links() {
         let site = crate::report::html::PUBLIC_SITE;
         assert_eq!(
-            super::public_link("AbCd1234", None, ""),
+            super::public_link(site, "AbCd1234", None, ""),
             format!("{site}?p=AbCd1234")
         );
         assert_eq!(
-            super::public_link("AbCd1234", None, "2,5"),
+            super::public_link(site, "AbCd1234", None, "2,5"),
             format!("{site}?p=AbCd1234&w=2%2C5")
         );
         assert_eq!(
-            super::public_link("Aaaa1", Some("Bbbb2"), ""),
+            super::public_link(site, "Aaaa1", Some("Bbbb2"), ""),
             format!("{site}?a=Aaaa1&b=Bbbb2")
         );
+    }
+
+    #[test]
+    fn share_site_follows_public_host() {
+        let fallback = crate::report::html::PUBLIC_SITE;
+        assert_eq!(
+            super::share_site(Some("SparkAnalyzer.me")),
+            "https://sparkanalyzer.me/"
+        );
+        for h in [
+            None,
+            Some(""),
+            Some("127.0.0.1:8085"),
+            Some("localhost:8085"),
+            Some("192.168.1.5:8085"),
+            Some("10.0.0.2"),
+            Some("evil.me\r\nX: y"),
+            Some("intranet"),
+        ] {
+            assert_eq!(super::share_site(h), fallback, "{h:?}");
+        }
     }
 
     #[test]
