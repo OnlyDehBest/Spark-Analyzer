@@ -229,3 +229,16 @@ fn site_description_is_english_and_icons_are_real_files() {
         assert!(std::path::Path::new(&p).exists(), "manca {f}");
     }
 }
+
+#[test]
+fn home_shows_english_news_banner_linking_to_github() {
+    use sparkscope::i18n::Lang;
+    for lang in [Lang::It, Lang::En] {
+        let _g = sparkscope::i18n::scoped(lang);
+        let html = sparkscope::webui::static_index();
+        assert!(html.contains("id=\"news\""));
+        assert!(html.contains(sparkscope::webui::SITE_NEWS));
+        assert!(html.contains("href=\"https://github.com/OnlyDehBest/Spark-Analyzer/"));
+        assert!(html.contains(">Details →</a>"));
+    }
+}
