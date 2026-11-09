@@ -583,7 +583,7 @@ fn social_meta() -> String {
 }
 
 /// One-line "what's new" notice shown above the home title (always in English).
-pub const SITE_NEWS: &str = "Faster analysis and private history when the app runs on a server";
+pub const SITE_NEWS: &str = "Faster analysis, a page that stays responsive while it works, and private history on self-hosted servers";
 pub const SITE_NEWS_URL: &str =
     "https://github.com/OnlyDehBest/Spark-Analyzer/blob/main/CHANGELOG.md";
 

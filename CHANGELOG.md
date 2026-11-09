@@ -10,6 +10,16 @@
 - Sul sito il modulo WebAssembly viene ottimizzato con `wasm-opt` e la schermata «Analisi in corso»
   viene mostrata prima di iniziare il calcolo.
 - Ordine dei risultati stabile: a parità di tempo, stesso ordine a ogni analisi.
+- Sul sito l'analisi gira in un Web Worker: la pagina resta reattiva anche con profili grandi.
+
+### Privacy e sicurezza
+- App sul server (`serve` raggiungibile da altri): ogni visitatore vede solo le proprie analisi,
+  id dei report casuali e non indovinabili.
+
+### Sito
+- Avviso «New» in home con link alle novità; icona del sito come file veri e logo per Google;
+  descrizione sempre in inglese.
+- Grafico senza la scritta «budget 50 ms».
 
 ## v1.0.0
 
