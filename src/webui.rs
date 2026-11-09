@@ -413,13 +413,15 @@ fn compare_panel() -> String {
     )
 }
 
-pub fn index_main(subtitle: &str, recent_panel: &str) -> String {
+const HERO_WAVE: &str = r#"<svg class="wave" viewBox="0 0 600 120" preserveAspectRatio="none" aria-hidden="true"><polyline points="0,90 60,90 80,70 100,95 130,88 170,88 190,30 205,105 225,80 280,80 300,60 320,92 360,85 420,85 440,20 455,110 470,78 530,78 560,70 600,72"/></svg>"#;
+
+pub fn index_main(recent_panel: &str) -> String {
     let t = crate::i18n::t;
     format!(
-        r#"<div class="top"><div><h1>{h1}</h1><p class="sub">{}</p></div></div>
-<div class="modesel"><div class="seg big" id="modesel"><button type="button" class="on" data-mode="one">{mode_one}</button><button type="button" data-mode="cmp">{mode_cmp}</button></div><span class="dim small" id="modehint">{mode_hint}</span></div>
+        r#"<section class="hcard">{wave}<div class="hrow"><span class="hlogo">{logo}</span><h1>Spark Analyzer</h1></div><p class="htag">{tagline}</p><div class="chips"><span>{chip1}</span><span>{chip2}</span><span>{chip3}</span><span>{chip4}</span></div></section>
+<div class="modesel"><div class="seg big" id="modesel"><button type="button" class="on" data-mode="one">{mode_one}</button><button type="button" data-mode="cmp">{mode_cmp}</button></div><span id="modehint" hidden></span></div>
 <div id="mode-one">
-<section id="drop" class="hero"><span class="dicon">{upload}</span><h2>{hero_t}</h2><p>{hero_p}</p>
+<section id="drop" class="hero"><span class="dicon">{upload}</span><h2>{hero_t}</h2>
 <form id="lform" class="lrow"><input id="link" autocomplete="off" placeholder="{ph}"><button class="btn" type="submit">{bolt}{go}</button></form>
 <div class="or">{or}</div>
 <label class="btn sec pick"><input id="file" type="file" accept=".sparkprofile,.sparkheap,.sparkhealth" hidden>{upload}<span>{pick}</span></label>
@@ -429,12 +431,19 @@ pub fn index_main(subtitle: &str, recent_panel: &str) -> String {
 <div id="busy" class="busy" hidden><span class="spin"></span><span id="busytext">{busy}</span></div>
 <div id="err" class="errbox" hidden></div>
 <div id="recentbox">{recent_panel}</div>"#,
-        esc(subtitle),
-        h1 = t("Nuova analisi", "New analysis"),
-        hero_t = t("Analizza un profilo spark", "Analyze a spark profile"),
-        hero_p = t(
-            "Incolla il link che spark scrive in chat, oppure trascina qui il file.",
-            "Paste the link spark prints in chat, or drop the file here.",
+        wave = HERO_WAVE,
+        logo = LOGO_SVG,
+        tagline = t(
+            "Analisi avanzata dei profili spark per server Minecraft: individua il plugin, la classe e il metodo che causano il lag e ricevi le correzioni consigliate.",
+            "Advanced spark profile analysis for Minecraft servers: pinpoint the plugin, class and method causing lag and get recommended fixes.",
+        ),
+        chip1 = t("Diagnosi del lag", "Lag diagnosis"),
+        chip2 = t("Lag spike", "Lag spikes"),
+        chip3 = t("Memory leak", "Memory leaks"),
+        chip4 = t("Ottimizzazione configurazioni", "Configuration tuning"),
+        hero_t = t(
+            "Incolla il link del profilo spark o carica il file",
+            "Paste a spark profile link or upload the file",
         ),
         or = t("oppure", "or"),
         pick = t(
@@ -457,10 +466,6 @@ pub fn index_main(subtitle: &str, recent_panel: &str) -> String {
         busy = t("Analisi in corso…", "Analyzing…"),
         mode_one = t("Analizza un profilo", "Analyze a profile"),
         mode_cmp = t("Confronta due heap", "Compare two heaps"),
-        mode_hint = t(
-            "oppure scegli «Confronta due heap» per trovare i memory leak",
-            "or pick “Compare two heaps” to find memory leaks",
-        ),
         compare = compare_panel(),
     )
 }
@@ -495,13 +500,7 @@ fn messages_js() -> String {
 pub fn local_index(recent: &[Recent]) -> String {
     let t = crate::i18n::t;
     let (side, panel) = recent_html(recent);
-    let main = news_banner() + &index_main(
-        t(
-            "Incolla il link del profilo spark oppure carica un file .sparkprofile, .sparkheap o .sparkhealth. L'analisi avviene sul tuo computer.",
-            "Paste the spark profile link or upload a .sparkprofile, .sparkheap or .sparkhealth file. The analysis runs on your computer.",
-        ),
-        &panel,
-    );
+    let main = news_banner() + &index_main(&panel);
     let switch = format!("/?lang={}", crate::report::html::lang_to());
     shell(&Page {
         crumb: t("Nuova analisi", "New analysis"),
@@ -600,14 +599,7 @@ fn news_banner() -> String {
 
 fn static_index_page() -> String {
     let t = crate::i18n::t;
-    let main = news_banner()
-        + &index_main(
-            t(
-                "Incolla il link del profilo spark oppure carica un file .sparkprofile, .sparkheap o .sparkhealth. L'analisi avviene nel tuo browser: il file non viene inviato a nessun server.",
-                "Paste the spark profile link or upload a .sparkprofile, .sparkheap or .sparkhealth file. The analysis runs in your browser: the file is not sent to any server.",
-            ),
-            "",
-        );
+    let main = news_banner() + &index_main("");
     let other = if crate::i18n::is_en() {
         "./it.html"
     } else {
@@ -643,6 +635,13 @@ fn static_index_page() -> String {
 }
 
 pub const EXTRA_CSS: &str = r#"
+.hcard{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:16px;padding:32px 30px 28px;margin:4px 0 22px;background:radial-gradient(120% 140% at 0% 0%,rgba(163,230,53,.10),transparent 55%),radial-gradient(90% 120% at 100% 100%,rgba(56,189,248,.10),transparent 60%),var(--card);animation:sa-fade .4s ease both}
+.hcard .wave{position:absolute;right:-10px;top:18px;width:46%;height:90px;opacity:.5;pointer-events:none}.hcard .wave polyline{fill:none;stroke:var(--ok);stroke-width:3;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke}
+.hrow{position:relative;display:flex;align-items:center;gap:16px}.hlogo{width:58px;height:58px;flex:none}.hlogo svg{width:100%;height:100%}
+.hcard h1{margin:0;font-size:42px;letter-spacing:-.03em;line-height:1.05;color:var(--hd)}
+.htag{position:relative;margin:14px 0 0;color:var(--fg);font-size:16px;max-width:640px}
+.chips{position:relative;display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}.chips span{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:5px 10px;color:var(--muted);background:var(--card2)}
+@media(max-width:700px){.hcard{padding:22px 18px}.hcard h1{font-size:30px}.hlogo{width:44px;height:44px}.hcard .wave{width:100%;right:0;top:auto;bottom:6px;height:56px;opacity:.18}.htag{font-size:15px}}
 .news{display:flex;align-items:center;gap:10px;margin:0 0 18px;padding:9px 10px 9px 14px;border:1px solid var(--line);border-radius:999px;background:var(--card);font-size:13px;color:var(--fg);width:fit-content;max-width:100%;box-sizing:border-box;min-width:0}.news[hidden]{display:none}.news .nb{font-weight:600;font-size:11px;line-height:1;text-transform:uppercase;letter-spacing:.05em;color:var(--ok);background:rgba(163,230,53,.12);padding:5px 8px;border-radius:999px;flex:none}.news .nt{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.news a{color:var(--muted);white-space:nowrap}.news a:hover{color:var(--hd);text-decoration:none}.news button{display:grid;place-items:center;padding:0;flex:none;width:24px;height:24px;border-radius:50%;border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:16px;line-height:1}.news button:hover{background:var(--card3);color:var(--hd)}
 @media(max-width:700px){.news{width:100%;border-radius:12px;flex-wrap:wrap}.news .nt{white-space:normal;flex-basis:calc(100% - 110px)}.news a{order:3;margin-left:auto}}
 .lrow{display:flex;gap:8px;flex-wrap:wrap}.lrow input{flex:1;min-width:220px;padding:10px 12px;border:1px solid var(--line);border-radius:5px;background:var(--code);color:var(--fg);font:inherit;outline:none}.lrow input:focus{border-color:var(--acc)}
