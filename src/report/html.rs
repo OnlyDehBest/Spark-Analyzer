@@ -28,21 +28,6 @@ fn sev_class(s: Severity) -> &'static str {
     }
 }
 
-fn axis_label(v: f64) -> String {
-    if v >= 10_000.0 {
-        format!("{:.0}k", v / 1000.0)
-    } else if v >= 1000.0 {
-        let s = format!("{:.1}k", v / 1000.0);
-        if crate::i18n::is_en() {
-            s
-        } else {
-            s.replace('.', ",")
-        }
-    } else {
-        format!("{v:.0}")
-    }
-}
-
 pub(crate) fn script_json(json: &str) -> String {
     let mut out = String::with_capacity(json.len() + 16);
     for c in json.chars() {
@@ -59,7 +44,87 @@ pub(crate) fn script_json(json: &str) -> String {
 }
 
 const CHART_SPLIT_MS: f64 = 100.0;
-const CHART_LOW_SHARE: f64 = 0.72;
+const CHART_LOW_SHARE: f64 = 0.62;
+const NICE_MS: [f64; 12] = [
+    200.0,
+    500.0,
+    1000.0,
+    2000.0,
+    5000.0,
+    10_000.0,
+    20_000.0,
+    50_000.0,
+    100_000.0,
+    200_000.0,
+    500_000.0,
+    1_000_000.0,
+];
+
+fn nice_log_top(peak: f64) -> f64 {
+    NICE_MS.iter().copied().find(|v| *v >= peak).unwrap_or(peak)
+}
+
+fn ms_label(v: f64) -> String {
+    if v >= 1000.0 {
+        format!("{:.0} s", v / 1000.0)
+    } else {
+        format!("{v:.0} ms")
+    }
+}
+
+fn x_label(w: &crate::analysis::WindowStat) -> String {
+    if w.start_time > 0 {
+        let secs = w.start_time / 1000;
+        format!("{:02}:{:02}", (secs / 3600) % 24, (secs / 60) % 60)
+    } else {
+        format!("#{}", w.index + 1)
+    }
+}
+
+/// Monotone cubic (Fritsch–Carlson) path through points with increasing x.
+fn smooth_path(p: &[(f64, f64)]) -> String {
+    let mut d = String::new();
+    if p.is_empty() {
+        return d;
+    }
+    let _ = write!(d, "M{:.1},{:.1}", p[0].0, p[0].1);
+    if p.len() < 3 {
+        for q in &p[1..] {
+            let _ = write!(d, " L{:.1},{:.1}", q.0, q.1);
+        }
+        return d;
+    }
+    let n = p.len();
+    let dx: Vec<f64> = (0..n - 1).map(|i| p[i + 1].0 - p[i].0).collect();
+    let sl: Vec<f64> = (0..n - 1)
+        .map(|i| (p[i + 1].1 - p[i].1) / dx[i].max(1e-9))
+        .collect();
+    let mut m = vec![0.0; n];
+    m[0] = sl[0];
+    m[n - 1] = sl[n - 2];
+    for i in 1..n - 1 {
+        m[i] = if sl[i - 1] * sl[i] <= 0.0 {
+            0.0
+        } else {
+            3.0 * (dx[i - 1] + dx[i])
+                / ((2.0 * dx[i] + dx[i - 1]) / sl[i - 1] + (dx[i] + 2.0 * dx[i - 1]) / sl[i])
+        };
+    }
+    for i in 0..n - 1 {
+        let h = dx[i] / 3.0;
+        let _ = write!(
+            d,
+            " C{:.1},{:.1} {:.1},{:.1} {:.1},{:.1}",
+            p[i].0 + h,
+            p[i].1 + m[i] * h,
+            p[i + 1].0 - h,
+            p[i + 1].1 - m[i + 1] * h,
+            p[i + 1].0,
+            p[i + 1].1
+        );
+    }
+    d
+}
 
 fn timeline_svg(r: &Report) -> Option<String> {
     let ws = &r.analysis.windows;
@@ -88,24 +153,30 @@ fn timeline_svg(r: &Report) -> Option<String> {
         .chain(vals_b.iter())
         .cloned()
         .fold(0.0f64, f64::max);
+    let peak_a = vals_a.iter().copied().fold(0.0f64, f64::max);
     let wd = 960.0;
-    let ht = 250.0;
-    let pad_l = 44.0;
-    let pad_t = 28.0;
-    let pad_b = 26.0;
-    let pw = wd - pad_l - 10.0;
+    let ht = 260.0;
+    let pad_l = 60.0;
+    let pad_r = 12.0;
+    let pad_t = 14.0;
+    let pad_b = 30.0;
+    let pw = wd - pad_l - pad_r;
     let ph = ht - pad_b - pad_t;
     let base = pad_t + ph;
     let split = CHART_SPLIT_MS;
     let broken = peak > split * 1.1;
-    let top = if broken { peak } else { peak.max(60.0) * 1.1 };
+    let top = if broken {
+        nice_log_top(peak)
+    } else {
+        ((peak.max(60.0) * 1.05) / 25.0).ceil() * 25.0
+    };
     let low_share = if broken { CHART_LOW_SHARE } else { 1.0 };
     let n = ws.len() as f64;
     let x = |i: usize| pad_l + pw * (i as f64 + 0.5) / n;
     let y = |v: f64| {
         let v = v.max(0.0);
         if !broken {
-            return base - (v / top) * ph;
+            return base - (v / top).min(1.0) * ph;
         }
         if v <= split {
             base - v / split * ph * low_share
@@ -117,103 +188,96 @@ fn timeline_svg(r: &Report) -> Option<String> {
     let mut s = String::new();
     let _ = write!(
         s,
-        r#"<svg viewBox="0 0 {wd} {ht}" class="chart" role="img" aria-label="Timeline MSPT per finestra">"#
-    );
-    let budget_y = y(50.0);
-    let _ = write!(
-        s,
-        r#"<rect x="{pad_l}" y="{pad_t}" width="{pw:.1}" height="{:.1}" class="zone-bad"/><rect x="{pad_l}" y="{budget_y:.1}" width="{pw:.1}" height="{:.1}" class="zone-ok"/>"#,
-        (budget_y - pad_t).max(0.0),
-        base - budget_y
+        r#"<svg viewBox="0 0 {wd} {ht}" class="chart" role="img" aria-label="Timeline MSPT per finestra"><defs><linearGradient id="gA" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--high);stop-opacity:.32"/><stop offset="1" style="stop-color:var(--high);stop-opacity:0"/></linearGradient></defs>"#
     );
     let bw = pw / n;
     for (i, w) in ws.iter().enumerate() {
         if w.is_spike {
             let _ = write!(
                 s,
-                r#"<rect x="{:.1}" y="{pad_t}" width="{:.1}" height="{ph:.1}" rx="6" class="spikebg"><title>Finestra #{} — lag spike</title></rect>"#,
-                pad_l + bw * i as f64 + bw * 0.1,
-                bw * 0.8,
+                r#"<rect x="{:.1}" y="{pad_t}" width="{:.1}" height="{ph:.1}" class="spikebg"><title>Finestra #{} — lag spike</title></rect>"#,
+                pad_l + bw * i as f64,
+                bw,
                 w.index + 1
             );
         }
     }
     let mut ticks: Vec<f64> = if broken {
-        vec![0.0, 50.0, split, top.round()]
+        let mut t = vec![0.0, 25.0, 50.0, 75.0, 100.0];
+        let upper: Vec<f64> = NICE_MS
+            .iter()
+            .copied()
+            .filter(|v| *v > split && *v <= top)
+            .collect();
+        if upper.len() > 2 {
+            let mid = (split * top).sqrt();
+            let m = upper.iter().copied().filter(|v| *v < top).min_by(|a, b| {
+                (a.ln() - mid.ln())
+                    .abs()
+                    .total_cmp(&(b.ln() - mid.ln()).abs())
+            });
+            t.extend(m);
+            t.push(top);
+        } else {
+            t.extend(upper);
+        }
+        t
     } else {
-        let step = if top > 120.0 { 50.0 } else { 25.0 };
         (0..)
-            .map(|k| k as f64 * step)
-            .take_while(|g| *g <= top)
+            .map(|k| k as f64 * 25.0)
+            .take_while(|g| *g <= top + 0.1)
             .collect()
     };
     ticks.dedup();
-    let last_tick = ticks.last().copied().unwrap_or(0.0);
     for g in ticks {
         let gy = y(g);
-        let cls = if g == 50.0 {
-            "grid budget"
-        } else if broken && g == split {
-            "grid brk"
-        } else {
-            "grid"
-        };
+        let cls = if g == 50.0 { "grid budget" } else { "grid" };
         let _ = write!(
             s,
             r#"<line x1="{pad_l}" x2="{:.1}" y1="{gy:.1}" y2="{gy:.1}" class="{cls}"/><text x="{:.1}" y="{:.1}" class="axis" text-anchor="end">{}</text>"#,
-            wd - 10.0,
-            pad_l - 6.0,
+            wd - pad_r,
+            pad_l - 10.0,
             gy + 4.0,
-            axis_label(g)
+            ms_label(g)
         );
     }
-    if last_tick > 0.0 {
+    let pts = |vals: &[f64]| -> Vec<(f64, f64)> {
+        vals.iter()
+            .enumerate()
+            .map(|(i, v)| (x(i), y(*v)))
+            .collect()
+    };
+    let pa = pts(&vals_a);
+    let line_a = smooth_path(&pa);
+    let _ = write!(
+        s,
+        r#"<path d="{line_a} L{:.1},{base:.1} L{:.1},{base:.1} Z" class="area"/>"#,
+        pa.last().map_or(0.0, |p| p.0),
+        pa.first().map_or(0.0, |p| p.0)
+    );
+    if ws.iter().any(|w| w.ticks > 0) && has_mspt {
         let _ = write!(
             s,
-            r#"<text x="{:.1}" y="{:.1}" class="axis unit" text-anchor="end">ms</text>"#,
-            pad_l - 6.0,
-            pad_t - 12.0
+            r#"<path d="{}" class="ln l3"/>"#,
+            smooth_path(&pts(&vals_c))
         );
     }
-    let line = |vals: &[f64], cls: &str, s: &mut String| {
-        let pts: Vec<String> = vals
-            .iter()
-            .enumerate()
-            .map(|(i, v)| format!("{:.1},{:.1}", x(i), y(*v)))
-            .collect();
-        let _ = write!(s, r#"<polyline points="{}" class="{cls}"/>"#, pts.join(" "));
-    };
-    if ws.iter().any(|w| w.ticks > 0) {
-        line(&vals_c, "l3", &mut s);
-    }
     if has_mspt {
-        line(&vals_b, "l2", &mut s);
+        let _ = write!(
+            s,
+            r#"<path d="{}" class="ln l2"/>"#,
+            smooth_path(&pts(&vals_b))
+        );
     }
-    line(&vals_a, "l1", &mut s);
-    let worst_spike = ws
-        .iter()
-        .enumerate()
-        .filter(|(i, w)| w.is_spike && vals_a[*i] > 0.0)
-        .max_by(|a, b| vals_a[a.0].total_cmp(&vals_a[b.0]).then(b.0.cmp(&a.0)))
-        .map(|(i, _)| i);
+    let _ = write!(s, r#"<path d="{line_a}" class="ln l1"/>"#);
     for (i, w) in ws.iter().enumerate() {
         let _ = write!(
             s,
-            r#"<circle cx="{:.1}" cy="{:.1}" r="{}" class="dot{}" data-i="{i}"/>"#,
-            x(i),
-            y(vals_a[i]),
-            if w.is_spike { 5 } else { 3 },
+            r#"<circle cx="{:.1}" cy="{:.1}" r="4" class="dot{}" data-i="{i}"/>"#,
+            pa[i].0,
+            pa[i].1,
             if w.is_spike { " sp" } else { "" }
         );
-        if worst_spike == Some(i) {
-            let _ = write!(
-                s,
-                r#"<text x="{:.1}" y="{:.1}" class="spk" text-anchor="middle">{} ms</text>"#,
-                x(i),
-                y(vals_a[i]) - 10.0,
-                fmt_num(vals_a[i])
-            );
-        }
     }
     let _ = write!(
         s,
@@ -228,21 +292,41 @@ fn timeline_svg(r: &Report) -> Option<String> {
             x(i)
         );
     }
-    let step = ((ws.len() as f64) / 12.0).ceil().max(1.0) as usize;
-    for i in (0..ws.len()).step_by(step) {
+    let step = ((ws.len() as f64) / 8.0).ceil().max(1.0) as usize;
+    let shown: Vec<usize> = (0..ws.len()).step_by(step).collect();
+    let mut xl: Vec<String> = shown.iter().map(|i| x_label(&ws[*i])).collect();
+    if xl.windows(2).any(|p| p[0] == p[1]) {
+        xl = shown
+            .iter()
+            .map(|i| format!("#{}", ws[*i].index + 1))
+            .collect();
+    }
+    for (k, i) in shown.into_iter().enumerate() {
         let _ = write!(
             s,
-            r#"<text x="{:.1}" y="{:.1}" class="axis" text-anchor="middle">#{}</text>"#,
+            r#"<text x="{:.1}" y="{:.1}" class="axis" text-anchor="middle">{}</text>"#,
             x(i),
-            ht - 8.0,
-            ws[i].index + 1
+            ht - 9.0,
+            xl[k]
         );
     }
     s.push_str("</svg>");
+    let tl = crate::i18n::t;
     let legend = if has_mspt {
-        r#"<div class="legend"><span class="k1"></span>MSPT massimo <span class="k2"></span>MSPT mediano <span class="k3"></span>lavoro main thread (ms/tick) <span class="kb"></span>budget 50 ms <span class="ks"></span>lag spike</div>"#
+        format!(
+            r#"<div class="legend"><span class="k1"></span>{} <span class="k2"></span>{} <span class="k3"></span>{} <span class="kb"></span>{} <span class="ks"></span>{}</div>"#,
+            tl("MSPT massimo", "Max MSPT"),
+            tl("MSPT mediano", "Median MSPT"),
+            tl("Lavoro main thread", "Main thread work"),
+            tl("Limite 50 ms", "50 ms budget"),
+            tl("Lag spike", "Lag spike")
+        )
     } else {
-        r#"<div class="legend"><span class="k1"></span>carico main thread <span class="ks"></span>lag spike</div>"#
+        format!(
+            r#"<div class="legend"><span class="k1"></span>{} <span class="ks"></span>{}</div>"#,
+            tl("Carico main thread", "Main thread load"),
+            tl("Lag spike", "Lag spike")
+        )
     };
     let t = crate::i18n::t;
     let rows: Vec<serde_json::Value> = ws
@@ -292,8 +376,71 @@ fn timeline_svg(r: &Report) -> Option<String> {
     let data = script_json(
         &serde_json::json!({ "rows": rows, "labels": labels, "mspt": has_mspt }).to_string(),
     );
+    let t = crate::i18n::t;
+    let num = |v: f64| {
+        let txt = if v >= 100.0 {
+            format!("{v:.0}")
+        } else {
+            format!("{v:.1}")
+        };
+        if crate::i18n::is_en() {
+            txt
+        } else {
+            txt.replace('.', ",")
+        }
+    };
+    let spikes = ws.iter().filter(|w| w.is_spike).count();
+    let mut stats: Vec<(String, String, &str)> = Vec::new();
+    if has_mspt {
+        let mut meds: Vec<f64> = ws.iter().map(|w| w.mspt_median).collect();
+        meds.sort_by(|a, b| a.total_cmp(b));
+        let med = meds[meds.len() / 2];
+        let min_tps = ws
+            .iter()
+            .map(|w| w.tps)
+            .filter(|v| *v > 0.0)
+            .fold(f64::INFINITY, f64::min);
+        stats.push((
+            t("MSPT di picco", "Peak MSPT").into(),
+            format!("{} ms", num(peak_a)),
+            if peak_a > 50.0 { "bad" } else { "" },
+        ));
+        stats.push((
+            t("MSPT mediano", "Median MSPT").into(),
+            format!("{} ms", num(med)),
+            if med > 50.0 { "bad" } else { "" },
+        ));
+        if min_tps.is_finite() {
+            stats.push((
+                t("TPS minimo", "Lowest TPS").into(),
+                num(min_tps),
+                if min_tps < 18.0 { "bad" } else { "" },
+            ));
+        }
+    } else {
+        stats.push((
+            t("Carico di picco", "Peak load").into(),
+            format!("{} ms", num(peak_a)),
+            "",
+        ));
+    }
+    stats.push((
+        t("Lag spike", "Lag spikes").into(),
+        spikes.to_string(),
+        if spikes > 0 { "bad" } else { "" },
+    ));
+    let mut head = String::from(r#"<div class="cstats">"#);
+    for (k, v, c) in &stats {
+        let _ = write!(
+            head,
+            r#"<div class="cs {c}"><span>{}</span><b>{}</b></div>"#,
+            esc(k),
+            esc(v)
+        );
+    }
+    head.push_str("</div>");
     Some(format!(
-        r#"<div class="chartwrap">{s}<div class="ctip" hidden></div><script type="application/json" class="chartdata">{data}</script></div>{legend}"#
+        r#"{head}<div class="chartwrap">{s}<div class="ctip" hidden></div><script type="application/json" class="chartdata">{data}</script></div>{legend}"#
     ))
 }
 
@@ -1619,6 +1766,8 @@ code{border-radius:6px;background:var(--card3);border-color:transparent}
 input#fsearch,input#tsearch,.tfilter{border-radius:12px;padding:11px 14px;background:var(--card);font-size:14px}
 .callout{border-radius:12px}
 .ctip{border-radius:12px;background:var(--card2)}
+.chart{background:var(--card);border:1px solid var(--line);border-radius:12px}.chart .grid{stroke:var(--line2);stroke-dasharray:none}.chart .grid.budget{stroke:var(--crit);stroke-dasharray:5 5;opacity:.55}.chart .axis{font-size:10.5px;fill:var(--muted)}.chart .spikebg{fill:var(--crit);opacity:.07}.chart .area{fill:url(#gA);stroke:none}.chart .ln{fill:none;stroke-linejoin:round;stroke-linecap:round}.chart .ln.l1{stroke:var(--high);stroke-width:2.2}.chart .ln.l2{stroke:var(--acc);stroke-width:1.8}.chart .ln.l3{stroke:var(--ok);stroke-width:1.4;stroke-dasharray:4 4;opacity:.75}.chart circle.dot{fill:var(--high);stroke:var(--card);stroke-width:2;opacity:0;transition:opacity .12s}.chart circle.dot.sp{fill:var(--crit);opacity:1}.chart circle.dot.on{opacity:1}.chart circle.dot:not(.sp):not(.on){opacity:0!important}.chart .guide{stroke:var(--muted);stroke-dasharray:none;opacity:.5}
+.chartwrap + .legend{font-family:Inter,system-ui,sans-serif;font-size:12px}.cstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:0 0 10px}.cstats .cs{background:var(--card);padding:10px 14px;display:flex;flex-direction:column;gap:3px}.cstats .cs span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}.cstats .cs b{font:600 18px/1.2 "JetBrains Mono",ui-monospace,monospace;color:var(--hd);font-variant-numeric:tabular-nums}.cstats .cs.bad b{color:var(--crit)}
 .plist span{border-radius:8px;background:var(--card2)}
 footer{text-align:left}
 @media (max-width:900px){.side{height:auto;width:auto;flex-basis:auto;border-width:0 0 1px;margin-left:0!important;padding:8px 12px}.side nav{border-top:0;padding-top:0}.brand{padding:0}.sidefoot{border:0;background:none}.topbar{display:none}.content{padding:16px}}
