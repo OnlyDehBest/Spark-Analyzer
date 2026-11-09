@@ -428,7 +428,7 @@ pub fn index_main(recent_panel: &str) -> String {
 <p class="hint">{note1} <code>/spark profiler stop</code> · {saved} <code>--save-to-file</code> {in_dir} <code>plugins/spark/</code></p></section>
 </div>
 <div id="mode-cmp" hidden>{compare}</div>
-<div id="busy" class="busy" hidden><span class="spin"></span><span id="busytext">{busy}</span></div>
+<div id="busy" class="busy" hidden><span class="spin"></span><span class="pring" id="pring" hidden><svg viewBox="0 0 34 34" aria-hidden="true"><circle class="bg" cx="17" cy="17" r="14"/><circle class="fg" id="pfg" cx="17" cy="17" r="14"/></svg><b id="ppct"></b></span><span id="busytext">{busy}</span><span class="pmeta" id="pmeta" hidden></span></div>
 <div id="err" class="errbox" hidden></div>
 <div id="recentbox">{recent_panel}</div>"#,
         wave = HERO_WAVE,
@@ -635,6 +635,7 @@ fn static_index_page() -> String {
 }
 
 pub const EXTRA_CSS: &str = r#"
+.pring{position:relative;width:44px;height:44px;flex:none}.pring[hidden],.pmeta[hidden],.busy .spin[hidden]{display:none}.pring svg{width:44px;height:44px;transform:rotate(-90deg)}.pring circle{fill:none;stroke-width:3.2}.pring .bg{stroke:var(--line)}.pring .fg{stroke:var(--acc);stroke-linecap:round;stroke-dasharray:88;stroke-dashoffset:88;transition:stroke-dashoffset .15s linear}.pring.ind .fg{stroke-dashoffset:66;transition:none}.pring.ind svg{animation:sa-ring .9s linear infinite}@keyframes sa-ring{from{transform:rotate(-90deg)}to{transform:rotate(270deg)}}.pring b{position:absolute;inset:0;display:grid;place-items:center;font-size:11px;font-weight:700;line-height:1;color:var(--hd)}.pmeta{margin-left:auto;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .hcard{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:16px;padding:32px 30px 28px;margin:4px 0 22px;background:radial-gradient(120% 140% at 0% 0%,rgba(163,230,53,.10),transparent 55%),radial-gradient(90% 120% at 100% 100%,rgba(56,189,248,.10),transparent 60%),var(--card);animation:sa-fade .4s ease both}
 .hcard .wave{position:absolute;right:-10px;top:18px;width:46%;height:90px;opacity:.5;pointer-events:none}.hcard .wave polyline{fill:none;stroke:var(--ok);stroke-width:3;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke}
 .hrow{position:relative;display:flex;align-items:center;gap:16px}.hlogo{width:58px;height:58px;flex:none}.hlogo svg{width:100%;height:100%}
@@ -758,8 +759,8 @@ var REDIR=false;try{var pref=localStorage.getItem('sa-lang');if(pref&&pref!==M.l
 if(REDIR)await new Promise(function(){});
 document.getElementById('langbtn').addEventListener('click',function(){try{localStorage.setItem('sa-lang',this.dataset.to)}catch(e){}location.href=OTHER+location.search+(window.__saMode==='cmp'?'#confronta':'')});
 var busy=document.getElementById('busy'),bt=document.getElementById('busytext'),err=document.getElementById('err');
-function start(t){err.hidden=true;bt.textContent=t;busy.hidden=false;document.documentElement.classList.add('sa-busy')}
-function fail(m){busy.hidden=true;err.textContent=m;err.hidden=false;document.documentElement.classList.remove('sa-busy')}
+function start(t){err.hidden=true;bt.textContent=t;busy.hidden=false;document.documentElement.classList.add('sa-busy');try{busy.scrollIntoView({block:'nearest',behavior:'smooth'})}catch(e){}}
+function fail(m){busy.hidden=true;err.textContent=m;err.hidden=false;document.documentElement.classList.remove('sa-busy');try{err.scrollIntoView({block:'nearest',behavior:'smooth'})}catch(e){}}
 var readyP=null;function ready(){return readyP||(readyP=init({module_or_path:'./pkg/sparkscope_web_bg.wasm__SA_V__'}).catch(function(e){readyP=null;fail(M.wasm+e);throw e}))}
 var FN={analyze:analyze,describe_heap:describe_heap,compare_heaps:compare_heaps};
 function local(fn,args){return ready().then(function(){return FN[fn].apply(null,args)})}
@@ -781,7 +782,13 @@ function setQuery(q){try{history.replaceState(null,'',siteUrl(q))}catch(e){}}
 function render(bytes,name,key,lang,win){lang=lang||CUR;CUR=lang;if(!last||last.bytes!==bytes||Object.keys(cache).length>8)cache={};last={bytes:bytes,name:name,key:key,win:win||null};var ck=lang+'|'+(win||'');return (cache[ck]?Promise.resolve(cache[ck]):call('analyze',[bytes,name,key||undefined,HOME,lang,win||undefined]).then(function(s){return cache[ck]=JSON.parse(s)})).then(function(res){if(key){try{var u=new URL(location.href);u.searchParams.set('p',key);if(win)u.searchParams.set('w',win);else u.searchParams.delete('w');history.replaceState(null,'',u.toString())}catch(e){}}if(key)saveRecent({key:key,title:res.title,detail:res.detail,bad:res.bad});var cur=last;window.__saShare=function(){var q=function(k){return '?p='+encodeURIComponent(k)+(cur.win?'&w='+encodeURIComponent(cur.win):'')};if(cur.key)return {url:siteUrl(q(cur.key)),upload:null};return {url:null,upload:function(){return uploadBytes(cur.bytes,res.ctype||'application/x-spark-sampler').then(function(k){cur.key=k;setQuery(q(k));saveRecent({key:k,title:res.title,detail:res.detail,bad:res.bad});return siteUrl(q(k))})}}};setTimeout(function(){document.open();document.write(res.html);document.close();window.scrollTo(0,0)},0)})}
 window.__saRender=function(l){if(!last)return;render(last.bytes,last.name,last.key,l,last.win).catch(function(e){alert(e.message||String(e))})};
 window.__saFilter=function(w){if(!last)return;render(last.bytes,last.name,last.key,CUR,w||null).catch(function(e){alert(e.message||String(e))})};
-function runKey(key){start(M.downloadingKey.replace('{k}',key));fetch('https://spark-usercontent.lucko.me/'+encodeURIComponent(key)).then(function(r){if(r.status===404)throw new Error(M.notFound);if(!r.ok)throw new Error(M.httpFail.replace('{s}',r.status));return r.arrayBuffer()}).then(function(b){bt.textContent=M.analyzing;return render(new Uint8Array(b),key,key,null,new URLSearchParams(location.search).get('w'))}).catch(function(e){fail(e.message||String(e))})}
+var PR={ring:document.getElementById('pring'),fg:document.getElementById('pfg'),pct:document.getElementById('ppct'),meta:document.getElementById('pmeta'),spin:busy.querySelector('.spin')};
+function mb(n){var s=(n/1048576).toFixed(1);return M.lang==='it'?s.replace('.',','):s}
+function progShow(){PR.spin.hidden=true;PR.ring.hidden=false;PR.meta.hidden=false;progSet(0,0)}
+function progSet(got,total){var known=total>0&&got<=total;PR.ring.classList.toggle('ind',!known);if(known){var p=Math.min(100,Math.floor(got/total*100));PR.fg.style.strokeDashoffset=String(88-88*p/100);PR.pct.textContent=p+'%';PR.meta.textContent=mb(got)+' / '+mb(total)+' MB'}else{PR.fg.style.strokeDashoffset='';PR.pct.textContent='';PR.meta.textContent=mb(got)+' MB'}}
+function progHide(){PR.ring.hidden=true;PR.meta.hidden=true;PR.spin.hidden=false}
+function download(key){return new Promise(function(ok,ko){var x=new XMLHttpRequest();x.open('GET','https://spark-usercontent.lucko.me/'+encodeURIComponent(key));x.responseType='arraybuffer';progShow();x.onprogress=function(e){progSet(e.loaded,e.lengthComputable?e.total:0)};x.onload=function(){if(x.status===404)return ko(new Error(M.notFound));if(x.status<200||x.status>=300)return ko(new Error(M.httpFail.replace('{s}',x.status)));ok(new Uint8Array(x.response))};x.onerror=function(){ko(new Error(M.httpFail.replace('{s}','0')))};x.send()}).then(function(b){progHide();return b},function(e){progHide();throw e})}
+function runKey(key){start(M.downloadingKey.replace('{k}',key));download(key).then(function(b){bt.textContent=M.analyzing;return render(b,key,key,null,new URLSearchParams(location.search).get('w'))}).catch(function(e){fail(e.message||String(e))})}
 document.getElementById('lform').addEventListener('submit',function(e){e.preventDefault();var k=extractKey(document.getElementById('link').value);if(!k){fail(M.badLink);return}location.search='?p='+encodeURIComponent(k)});
 function send(f){if(!f)return;start(M.analyzingFile.replace('{f}',f.name).replace('{s}',(f.size/1048576).toFixed(1)));f.arrayBuffer().then(function(b){return render(new Uint8Array(b),f.name,null)}).catch(function(e){fail(e.message||String(e))})}
 var drop=document.getElementById('drop'),file=document.getElementById('file');
