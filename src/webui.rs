@@ -592,7 +592,7 @@ fn news_banner() -> String {
         (h ^ b as u32).wrapping_mul(16_777_619)
     });
     format!(
-        r#"<div class="news" id="news" data-k="{key:08x}" hidden><span class="nb">New</span><span class="nt">{text}</span><a href="{url}" target="_blank" rel="noopener">Details →</a><button type="button" id="newsx" aria-label="Close">×</button></div><script>(function(){{var n=document.getElementById('news'),k='sa-news';try{{if(localStorage.getItem(k)===n.dataset.k)return}}catch(e){{}}n.hidden=false;document.getElementById('newsx').onclick=function(){{n.remove();try{{localStorage.setItem(k,n.dataset.k)}}catch(e){{}}}}}})()</script>"#,
+        r#"<div class="news" id="news" data-k="{key:08x}" hidden><span class="nb">New</span><span class="nt">{text}</span><a href="{url}" target="_blank" rel="noopener">Details →</a><button type="button" id="newsx" aria-label="Close">×</button></div><script>(function(){{var n=document.getElementById('news'),k='sa-news';try{{if(sessionStorage.getItem(k)===n.dataset.k)return}}catch(e){{}}n.hidden=false;document.getElementById('newsx').onclick=function(){{n.remove();try{{sessionStorage.setItem(k,n.dataset.k)}}catch(e){{}}}}}})()</script>"#,
         text = esc(SITE_NEWS),
         url = esc(SITE_NEWS_URL),
     )
