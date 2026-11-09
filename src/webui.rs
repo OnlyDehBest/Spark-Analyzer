@@ -582,15 +582,32 @@ fn social_meta() -> String {
     )
 }
 
+/// One-line "what's new" notice shown above the home title (always in English).
+pub const SITE_NEWS: &str = "Faster analysis and private history when the app runs on a server";
+pub const SITE_NEWS_URL: &str =
+    "https://github.com/OnlyDehBest/Spark-Analyzer/blob/main/CHANGELOG.md";
+
+fn news_banner() -> String {
+    let key: u32 = SITE_NEWS.bytes().fold(2_166_136_261u32, |h, b| {
+        (h ^ b as u32).wrapping_mul(16_777_619)
+    });
+    format!(
+        r#"<div class="news" id="news" data-k="{key:08x}" hidden><span class="nb">New</span><span class="nt">{text}</span><a href="{url}" target="_blank" rel="noopener">Details →</a><button type="button" id="newsx" aria-label="Close">×</button></div><script>(function(){{var n=document.getElementById('news'),k='sa-news';try{{if(localStorage.getItem(k)===n.dataset.k)return}}catch(e){{}}n.hidden=false;document.getElementById('newsx').onclick=function(){{n.remove();try{{localStorage.setItem(k,n.dataset.k)}}catch(e){{}}}}}})()</script>"#,
+        text = esc(SITE_NEWS),
+        url = esc(SITE_NEWS_URL),
+    )
+}
+
 fn static_index_page() -> String {
     let t = crate::i18n::t;
-    let main = index_main(
-        t(
-            "Incolla il link del profilo spark oppure carica un file .sparkprofile, .sparkheap o .sparkhealth. L'analisi avviene nel tuo browser: il file non viene inviato a nessun server.",
-            "Paste the spark profile link or upload a .sparkprofile, .sparkheap or .sparkhealth file. The analysis runs in your browser: the file is not sent to any server.",
-        ),
-        "",
-    );
+    let main = news_banner()
+        + &index_main(
+            t(
+                "Incolla il link del profilo spark oppure carica un file .sparkprofile, .sparkheap o .sparkhealth. L'analisi avviene nel tuo browser: il file non viene inviato a nessun server.",
+                "Paste the spark profile link or upload a .sparkprofile, .sparkheap or .sparkhealth file. The analysis runs in your browser: the file is not sent to any server.",
+            ),
+            "",
+        );
     let other = if crate::i18n::is_en() {
         "./it.html"
     } else {
@@ -626,6 +643,8 @@ fn static_index_page() -> String {
 }
 
 pub const EXTRA_CSS: &str = r#"
+.news{display:flex;align-items:center;gap:10px;margin:0 0 18px;padding:9px 10px 9px 14px;border:1px solid var(--line);border-radius:999px;background:var(--card);font-size:13px;color:var(--fg);width:fit-content;max-width:100%;box-sizing:border-box;min-width:0}.news[hidden]{display:none}.news .nb{font-weight:600;font-size:11px;line-height:1;text-transform:uppercase;letter-spacing:.05em;color:var(--ok);background:rgba(163,230,53,.12);padding:5px 8px;border-radius:999px;flex:none}.news .nt{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.news a{color:var(--muted);white-space:nowrap}.news a:hover{color:var(--hd);text-decoration:none}.news button{display:grid;place-items:center;padding:0;flex:none;width:24px;height:24px;border-radius:50%;border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:16px;line-height:1}.news button:hover{background:var(--card3);color:var(--hd)}
+@media(max-width:700px){.news{width:100%;border-radius:12px;flex-wrap:wrap}.news .nt{white-space:normal;flex-basis:calc(100% - 110px)}.news a{order:3;margin-left:auto}}
 .lrow{display:flex;gap:8px;flex-wrap:wrap}.lrow input{flex:1;min-width:220px;padding:10px 12px;border:1px solid var(--line);border-radius:5px;background:var(--code);color:var(--fg);font:inherit;outline:none}.lrow input:focus{border-color:var(--acc)}
 .drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;text-align:center;border:2px dashed var(--line);border-radius:8px;padding:34px 16px;cursor:pointer;background:var(--card2);transition:border-color .15s,background .15s}.drop:hover,.drop.over{border-color:var(--acc);background:var(--accl)}.drop b{color:var(--hd);font-size:15px}.drop span{color:var(--muted)}.drop small{color:var(--muted);margin-top:8px}.dicon{display:grid;place-items:center;width:48px;height:48px;border-radius:8px;background:var(--acc);color:#fff!important;margin-bottom:6px}.dicon svg{width:24px;height:24px}
 .busy{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-left:3px solid var(--acc);border-radius:8px;padding:14px 16px;margin-bottom:14px;color:var(--hd)}.busy[hidden],.errbox[hidden]{display:none}.spin{width:18px;height:18px;border:2px solid var(--line);border-top-color:var(--acc);border-radius:50%;animation:sp 0.8s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}
