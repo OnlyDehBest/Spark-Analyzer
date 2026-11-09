@@ -21,6 +21,7 @@ const MAX_STAGED: usize = 12;
 
 struct Staged {
     id: String,
+    owner: String,
     bytes: Arc<Vec<u8>>,
     name: String,
     key: Option<String>,
@@ -28,6 +29,7 @@ struct Staged {
 
 struct Stored {
     id: String,
+    owner: String,
     title: String,
     detail: String,
     bad: bool,
@@ -275,9 +277,14 @@ fn handle(mut req: Request, st: &State) {
         ));
         return;
     }
+    let known_visitor = visitor_id(&req);
+    let new_visitor = known_visitor.is_none();
+    let owner = known_visitor.unwrap_or_else(|| random_hex(16));
+    let owner = owner.as_str();
     let resp = match (method, path.as_str()) {
-        (Method::Get, "/") => match open_shared(st, &url) {
-            None => html_resp(index_page(st), gz).with_header(header("Cache-Control", "no-cache")),
+        (Method::Get, "/") => match open_shared(st, owner, &url) {
+            None => html_resp(index_page(st, owner), gz)
+                .with_header(header("Cache-Control", "no-cache")),
             Some(Ok(id)) => {
                 let w: String = query_param(&url, "w")
                     .unwrap_or_default()
@@ -304,30 +311,32 @@ fn handle(mut req: Request, st: &State) {
             let _ = req.as_reader().take(8192).read_to_string(&mut body);
             let link = body.trim().to_string();
             let result = loader::fetch_link(&link, &st.bytebin)
-                .and_then(|(bytes, key)| store(st, bytes, key.clone(), Some(key)));
+                .and_then(|(bytes, key)| store(st, owner, bytes, key.clone(), Some(key)));
             api_result(result)
         }
         (Method::Post, "/api/file") => {
             let name = query_param(&url, "name").unwrap_or_else(|| "profile".into());
-            let result = read_upload(&mut req).and_then(|bytes| store(st, bytes, name, None));
+            let result =
+                read_upload(&mut req).and_then(|bytes| store(st, owner, bytes, name, None));
             api_result(result)
         }
         (Method::Post, "/api/heap/link") => {
             let mut body = String::new();
             let _ = req.as_reader().take(8192).read_to_string(&mut body);
             let result = loader::fetch_link(body.trim(), &st.bytebin)
-                .and_then(|(bytes, key)| stage(st, bytes, key.clone(), Some(key)));
+                .and_then(|(bytes, key)| stage(st, owner, bytes, key.clone(), Some(key)));
             staged_result(result)
         }
         (Method::Post, "/api/heap/file") => {
             let name = query_param(&url, "name").unwrap_or_else(|| "heap.sparkheap".into());
-            let result = read_upload(&mut req).and_then(|bytes| stage(st, bytes, name, None));
+            let result =
+                read_upload(&mut req).and_then(|bytes| stage(st, owner, bytes, name, None));
             staged_result(result)
         }
         (Method::Post, "/api/heap/compare") => {
             let a = query_param(&url, "a").unwrap_or_default();
             let b = query_param(&url, "b").unwrap_or_default();
-            api_result(store_comparison(st, &a, &b))
+            api_result(store_comparison(st, owner, &a, &b))
         }
         (m @ (Method::Get | Method::Post), p) if p.starts_with("/api/share/") => {
             let id = p["/api/share/".len()..].to_string();
@@ -354,6 +363,14 @@ fn handle(mut req: Request, st: &State) {
             }
         }
         _ => html_resp(not_found(), gz).with_status_code(404),
+    };
+    let resp = if new_visitor {
+        resp.with_header(header(
+            "Set-Cookie",
+            &format!("{VISITOR_COOKIE}={owner}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax"),
+        ))
+    } else {
+        resp
     };
     let _ = req.respond(resp);
 }
@@ -384,12 +401,37 @@ fn read_upload(req: &mut Request) -> Result<Vec<u8>> {
     }
 }
 
-fn next_id(st: &State, len: usize) -> String {
-    let n = st.counter.fetch_add(1, Ordering::Relaxed);
-    format!(
-        "{n}{:x}",
-        (len as u64 ^ n.wrapping_mul(2_654_435_761)) & 0xffff
-    )
+fn random_hex(bytes: usize) -> String {
+    let mut buf = vec![0u8; bytes];
+    if getrandom::fill(&mut buf).is_err() {
+        let seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos());
+        for (i, b) in buf.iter_mut().enumerate() {
+            let h = std::hash::BuildHasher::hash_one(
+                &std::collections::hash_map::RandomState::new(),
+                (seed, i),
+            );
+            *b = h as u8;
+        }
+    }
+    buf.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn next_id(st: &State, _len: usize) -> String {
+    let _ = st.counter.fetch_add(1, Ordering::Relaxed);
+    random_hex(12)
+}
+
+const VISITOR_COOKIE: &str = "sa_vid";
+
+fn visitor_id(req: &Request) -> Option<String> {
+    let cookies = header_value(req, "Cookie")?;
+    cookies.split(';').find_map(|c| {
+        let (k, v) = c.trim().split_once('=')?;
+        (k == VISITOR_COOKIE && v.len() == 32 && v.bytes().all(|b| b.is_ascii_hexdigit()))
+            .then(|| v.to_string())
+    })
 }
 
 struct StageInfo {
@@ -399,7 +441,13 @@ struct StageInfo {
     size: usize,
 }
 
-fn stage(st: &State, bytes: Vec<u8>, name: String, key: Option<String>) -> Result<StageInfo> {
+fn stage(
+    st: &State,
+    owner: &str,
+    bytes: Vec<u8>,
+    name: String,
+    key: Option<String>,
+) -> Result<StageInfo> {
     let info = crate::heapdiff::describe_bytes(&bytes, &name)?;
     let id = next_id(st, bytes.len());
     let size = bytes.len();
@@ -408,6 +456,7 @@ fn stage(st: &State, bytes: Vec<u8>, name: String, key: Option<String>) -> Resul
         0,
         Staged {
             id: id.clone(),
+            owner: owner.to_string(),
             bytes: Arc::new(bytes),
             name: name.clone(),
             key,
@@ -432,11 +481,15 @@ fn staged_result(r: Result<StageInfo>) -> Response<std::io::Cursor<Vec<u8>>> {
     }
 }
 
-fn staged_bytes(st: &State, id: &str) -> Result<(Arc<Vec<u8>>, String, Option<String>)> {
+fn staged_bytes(
+    st: &State,
+    owner: &str,
+    id: &str,
+) -> Result<(Arc<Vec<u8>>, String, Option<String>)> {
     let staged = st.staged.lock().unwrap_or_else(|e| e.into_inner());
     staged
         .iter()
-        .find(|s| s.id == id)
+        .find(|s| s.id == id && s.owner == owner)
         .map(|s| (Arc::clone(&s.bytes), s.name.clone(), s.key.clone()))
         .ok_or_else(|| {
             anyhow!(
@@ -454,9 +507,9 @@ fn render_comparison(a: &[u8], name_a: &str, b: &[u8], name_b: &str) -> Result<w
     Ok(webui::render_comparison(&c))
 }
 
-fn store_comparison(st: &State, a: &str, b: &str) -> Result<String> {
-    let (bytes_a, name_a, key_a) = staged_bytes(st, a)?;
-    let (bytes_b, name_b, key_b) = staged_bytes(st, b)?;
+fn store_comparison(st: &State, owner: &str, a: &str, b: &str) -> Result<String> {
+    let (bytes_a, name_a, key_a) = staged_bytes(st, owner, a)?;
+    let (bytes_b, name_b, key_b) = staged_bytes(st, owner, b)?;
     let out = render_comparison(&bytes_a, &name_a, &bytes_b, &name_b)?;
     let id = next_id(st, bytes_a.len() + bytes_b.len());
     let mut cache = HashMap::new();
@@ -466,6 +519,7 @@ fn store_comparison(st: &State, a: &str, b: &str) -> Result<String> {
         0,
         Stored {
             id: id.clone(),
+            owner: owner.to_string(),
             title: out.title,
             detail: out.detail,
             bad: out.bad,
@@ -508,15 +562,20 @@ fn share_site(host: Option<&str>) -> String {
 }
 
 /// Opens `/?p=KEY` or `/?a=KEY&b=KEY` share links (the same format the static site reads).
-fn open_shared(st: &State, url: &str) -> Option<Result<String>> {
+fn open_shared(st: &State, owner: &str, url: &str) -> Option<Result<String>> {
     let fetch = |k: &str| loader::fetch_link(k, &st.bytebin);
     if let Some(p) = query_param(url, "p") {
-        return Some(fetch(&p).and_then(|(bytes, key)| store(st, bytes, key.clone(), Some(key))));
+        return Some(
+            fetch(&p).and_then(|(bytes, key)| store(st, owner, bytes, key.clone(), Some(key))),
+        );
     }
     let (a, b) = (query_param(url, "a")?, query_param(url, "b")?);
     let staged =
-        |k: &str| fetch(k).and_then(|(bytes, key)| stage(st, bytes, key.clone(), Some(key)));
-    Some(staged(&a).and_then(|sa| staged(&b).and_then(|sb| store_comparison(st, &sa.id, &sb.id))))
+        |k: &str| fetch(k).and_then(|(bytes, key)| stage(st, owner, bytes, key.clone(), Some(key)));
+    Some(
+        staged(&a)
+            .and_then(|sa| staged(&b).and_then(|sb| store_comparison(st, owner, &sa.id, &sb.id))),
+    )
 }
 
 fn public_link(site: &str, key: &str, second: Option<&str>, windows: &str) -> String {
@@ -635,7 +694,13 @@ fn api_result(r: Result<String>) -> Response<std::io::Cursor<Vec<u8>>> {
     }
 }
 
-fn store(st: &State, bytes: Vec<u8>, name: String, key: Option<String>) -> Result<String> {
+fn store(
+    st: &State,
+    owner: &str,
+    bytes: Vec<u8>,
+    name: String,
+    key: Option<String>,
+) -> Result<String> {
     let out = render(&bytes, &name, key.as_deref(), "")?;
     let id = next_id(st, bytes.len());
     let mut cache = HashMap::new();
@@ -645,6 +710,7 @@ fn store(st: &State, bytes: Vec<u8>, name: String, key: Option<String>) -> Resul
         0,
         Stored {
             id: id.clone(),
+            owner: owner.to_string(),
             title: out.title,
             detail: out.detail,
             bad: out.bad,
@@ -660,10 +726,11 @@ fn store(st: &State, bytes: Vec<u8>, name: String, key: Option<String>) -> Resul
     Ok(id)
 }
 
-fn index_page(st: &State) -> String {
+fn index_page(st: &State, owner: &str) -> String {
     let reports = st.reports.lock().unwrap_or_else(|e| e.into_inner());
     let recent: Vec<webui::Recent> = reports
         .iter()
+        .filter(|r| r.owner == owner)
         .map(|r| webui::Recent {
             href: if i18n::is_en() {
                 format!("/r/{}", r.id)
@@ -716,6 +783,16 @@ mod tests {
         ] {
             assert!(!super::is_loopback_host(h), "{h}");
         }
+    }
+
+    #[test]
+    fn report_ids_and_visitor_ids_are_random() {
+        let a = super::random_hex(12);
+        let b = super::random_hex(12);
+        assert_eq!(a.len(), 24);
+        assert_ne!(a, b);
+        assert!(a.bytes().all(|c| c.is_ascii_hexdigit()));
+        assert_eq!(super::random_hex(16).len(), 32);
     }
 
     #[test]

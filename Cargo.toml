@@ -18,7 +18,7 @@ required-features = ["cli"]
 
 [features]
 default = ["cli"]
-cli = ["dep:ureq", "dep:tiny_http", "dep:webbrowser", "dep:comfy-table", "dep:owo-colors", "dep:inferno", "dep:clap"]
+cli = ["dep:getrandom", "dep:ureq", "dep:tiny_http", "dep:webbrowser", "dep:comfy-table", "dep:owo-colors", "dep:inferno", "dep:clap"]
 
 [lib]
 name = "sparkscope"
@@ -29,6 +29,7 @@ anyhow = "1"
 clap = { version = "4.6", features = ["derive"], optional = true }
 comfy-table = { version = "8", optional = true }
 flate2 = "1"
+getrandom = { version = "0.3", optional = true }
 inferno = { version = "0.12", default-features = false, optional = true }
 owo-colors = { version = "4", features = ["supports-colors"], optional = true }
 prost = "0.14"
