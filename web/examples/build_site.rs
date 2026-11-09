@@ -15,6 +15,11 @@ fn main() {
         )
         .expect("scrittura fallita");
     }
+    std::fs::write(
+        format!("{dir}/sa-worker.js"),
+        sparkscope::webui::static_worker_versioned(&version),
+    )
+    .expect("scrittura fallita");
     // old English page: keep existing links working, query and hash included
     std::fs::write(
         format!("{dir}/en.html"),

@@ -559,17 +559,7 @@ pub fn static_index() -> String {
 }
 
 pub fn static_index_versioned(version: &str) -> String {
-    let query: String = version
-        .chars()
-        .filter(char::is_ascii_alphanumeric)
-        .take(40)
-        .collect();
-    let suffix = if query.is_empty() {
-        String::new()
-    } else {
-        format!("?v={query}")
-    };
-    static_index_page().replace("__SA_V__", &suffix)
+    static_index_page().replace("__SA_V__", &version_suffix(version))
 }
 
 pub const SITE_DESCRIPTION: &str = "Analyze spark profiles: find what makes your Minecraft server lag, which plugin and method, and how to fix it.";
@@ -711,6 +701,38 @@ run:function(a,b){start(M.cmpRunning);return fetch('/api/heap/compare?a='+encode
 })();
 "#;
 
+const WORKER_JS: &str = r#"import init, { analyze, describe_heap, compare_heaps } from './pkg/sparkscope_web.js__SA_V__';
+const FN = { analyze, describe_heap, compare_heaps };
+const ready = init({ module_or_path: './pkg/sparkscope_web_bg.wasm__SA_V__' });
+self.onmessage = async (e) => {
+  const { id, fn, args } = e.data;
+  try {
+    await ready;
+    self.postMessage({ id, ok: FN[fn](...args) });
+  } catch (x) {
+    self.postMessage({ id, err: String((x && x.message) || x) });
+  }
+};
+"#;
+
+/// Web Worker that runs the WebAssembly analysis off the page's main thread.
+pub fn static_worker_versioned(version: &str) -> String {
+    WORKER_JS.replace("__SA_V__", &version_suffix(version))
+}
+
+fn version_suffix(version: &str) -> String {
+    let query: String = version
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .take(40)
+        .collect();
+    if query.is_empty() {
+        String::new()
+    } else {
+        format!("?v={query}")
+    }
+}
+
 const STATIC_JS: &str = r#"
 import init, { analyze, describe_heap, compare_heaps } from './pkg/sparkscope_web.js__SA_V__';
 var OTHER=document.getElementById('langbtn').dataset.href;
@@ -720,7 +742,11 @@ document.getElementById('langbtn').addEventListener('click',function(){try{local
 var busy=document.getElementById('busy'),bt=document.getElementById('busytext'),err=document.getElementById('err');
 function start(t){err.hidden=true;bt.textContent=t;busy.hidden=false;document.documentElement.classList.add('sa-busy')}
 function fail(m){busy.hidden=true;err.textContent=m;err.hidden=false;document.documentElement.classList.remove('sa-busy')}
-var ready=init({module_or_path:'./pkg/sparkscope_web_bg.wasm__SA_V__'}).catch(function(e){fail(M.wasm+e);throw e});
+var readyP=null;function ready(){return readyP||(readyP=init({module_or_path:'./pkg/sparkscope_web_bg.wasm__SA_V__'}).catch(function(e){readyP=null;fail(M.wasm+e);throw e}))}
+var FN={analyze:analyze,describe_heap:describe_heap,compare_heaps:compare_heaps};
+function local(fn,args){return ready().then(function(){return FN[fn].apply(null,args)})}
+var W=null,WN=0,WQ={};try{W=new Worker('./sa-worker.js__SA_V__',{type:'module'});W.onmessage=function(e){var q=WQ[e.data.id];if(!q)return;delete WQ[e.data.id];if('ok' in e.data)q.ok(e.data.ok);else q.ko(new Error(e.data.err))};W.onerror=function(){W=null;Object.keys(WQ).forEach(function(k){var q=WQ[k];delete WQ[k];local(q.fn,q.args).then(q.ok,q.ko)})}}catch(e){W=null}
+function call(fn,args){if(!W)return local(fn,args);return new Promise(function(ok,ko){var id=++WN;WQ[id]={ok:ok,ko:ko,fn:fn,args:args};W.postMessage({id:id,fn:fn,args:args})})}
 function extractKey(v){v=v.trim();var m=v.match(/^(?:https?:\/\/)?[^\/\s]+\/([A-Za-z0-9]+)/);if(m)return m[1];return /^[A-Za-z0-9]{4,64}$/.test(v)?v:null}
 var RKEY='sparkscope-recent';
 function loadRecent(){try{return JSON.parse(localStorage.getItem(RKEY)||'[]')}catch(e){return []}}
@@ -734,8 +760,7 @@ var cache={};
 function uploadBytes(bytes,ctype){var h={'Content-Type':ctype};if(bytes.length>2&&bytes[0]===0x1f&&bytes[1]===0x8b)h['Content-Encoding']='gzip';return fetch('https://spark-usercontent.lucko.me/post',{method:'POST',headers:h,body:bytes}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}).then(function(j){if(!j||!/^[A-Za-z0-9]{4,64}$/.test(j.key||''))throw new Error(M.unknown);return j.key})}
 function siteUrl(q){return location.origin+HOME+q}
 function setQuery(q){try{history.replaceState(null,'',siteUrl(q))}catch(e){}}
-function paint(){return new Promise(function(r){var d=0,f=function(){if(!d){d=1;setTimeout(r,0)}};requestAnimationFrame(f);setTimeout(f,60)})}
-function render(bytes,name,key,lang,win){lang=lang||CUR;CUR=lang;if(!last||last.bytes!==bytes||Object.keys(cache).length>8)cache={};last={bytes:bytes,name:name,key:key,win:win||null};return ready.then(paint).then(function(){var ck=lang+'|'+(win||''),res=cache[ck]||(cache[ck]=JSON.parse(analyze(bytes,name,key||undefined,HOME,lang,win||undefined)));if(key){try{var u=new URL(location.href);u.searchParams.set('p',key);if(win)u.searchParams.set('w',win);else u.searchParams.delete('w');history.replaceState(null,'',u.toString())}catch(e){}}if(key)saveRecent({key:key,title:res.title,detail:res.detail,bad:res.bad});var cur=last;window.__saShare=function(){var q=function(k){return '?p='+encodeURIComponent(k)+(cur.win?'&w='+encodeURIComponent(cur.win):'')};if(cur.key)return {url:siteUrl(q(cur.key)),upload:null};return {url:null,upload:function(){return uploadBytes(cur.bytes,res.ctype||'application/x-spark-sampler').then(function(k){cur.key=k;setQuery(q(k));saveRecent({key:k,title:res.title,detail:res.detail,bad:res.bad});return siteUrl(q(k))})}}};setTimeout(function(){document.open();document.write(res.html);document.close();window.scrollTo(0,0)},0)})}
+function render(bytes,name,key,lang,win){lang=lang||CUR;CUR=lang;if(!last||last.bytes!==bytes||Object.keys(cache).length>8)cache={};last={bytes:bytes,name:name,key:key,win:win||null};var ck=lang+'|'+(win||'');return (cache[ck]?Promise.resolve(cache[ck]):call('analyze',[bytes,name,key||undefined,HOME,lang,win||undefined]).then(function(s){return cache[ck]=JSON.parse(s)})).then(function(res){if(key){try{var u=new URL(location.href);u.searchParams.set('p',key);if(win)u.searchParams.set('w',win);else u.searchParams.delete('w');history.replaceState(null,'',u.toString())}catch(e){}}if(key)saveRecent({key:key,title:res.title,detail:res.detail,bad:res.bad});var cur=last;window.__saShare=function(){var q=function(k){return '?p='+encodeURIComponent(k)+(cur.win?'&w='+encodeURIComponent(cur.win):'')};if(cur.key)return {url:siteUrl(q(cur.key)),upload:null};return {url:null,upload:function(){return uploadBytes(cur.bytes,res.ctype||'application/x-spark-sampler').then(function(k){cur.key=k;setQuery(q(k));saveRecent({key:k,title:res.title,detail:res.detail,bad:res.bad});return siteUrl(q(k))})}}};setTimeout(function(){document.open();document.write(res.html);document.close();window.scrollTo(0,0)},0)})}
 window.__saRender=function(l){if(!last)return;render(last.bytes,last.name,last.key,l,last.win).catch(function(e){alert(e.message||String(e))})};
 window.__saFilter=function(w){if(!last)return;render(last.bytes,last.name,last.key,CUR,w||null).catch(function(e){alert(e.message||String(e))})};
 function runKey(key){start(M.downloadingKey.replace('{k}',key));fetch('https://spark-usercontent.lucko.me/'+encodeURIComponent(key)).then(function(r){if(r.status===404)throw new Error(M.notFound);if(!r.ok)throw new Error(M.httpFail.replace('{s}',r.status));return r.arrayBuffer()}).then(function(b){bt.textContent=M.analyzing;return render(new Uint8Array(b),key,key,null,new URLSearchParams(location.search).get('w'))}).catch(function(e){fail(e.message||String(e))})}
@@ -749,8 +774,8 @@ drop.addEventListener('drop',function(e){send(e.dataTransfer.files[0])});
 document.addEventListener('dragover',function(e){e.preventDefault()});document.addEventListener('drop',function(e){e.preventDefault();if(window.__saMode==='cmp')return;if(e.target.closest&&!e.target.closest('#drop'))send(e.dataTransfer.files[0])});
 document.getElementById('link').addEventListener('paste',function(){var i=this;setTimeout(function(){if(extractKey(i.value))document.getElementById('lform').requestSubmit()},50)});
 function fetchKey(key){return fetch('https://spark-usercontent.lucko.me/'+encodeURIComponent(key)).then(function(r){if(r.status===404)throw new Error(M.notFound);if(!r.ok)throw new Error(M.httpFail.replace('{s}',r.status));return r.arrayBuffer()}).then(function(b){return new Uint8Array(b)})}
-function heapSlot(bytes,name,key){return ready.then(function(){var j=JSON.parse(describe_heap(bytes,name,CUR));j.bytes=bytes;j.key=key||null;return j})}
-function renderCmp(a,b,lang){lang=lang||CUR;CUR=lang;return ready.then(paint).then(function(){var res=JSON.parse(compare_heaps(a.bytes,a.name,b.bytes,b.name,HOME,lang));if(a.key&&b.key){try{var u=new URL(location.href);u.search='?a='+encodeURIComponent(a.key)+'&b='+encodeURIComponent(b.key);u.hash='';history.replaceState(null,'',u.toString())}catch(e){}}last=null;window.__saRender=function(l){renderCmp(a,b,l).catch(function(e){alert(e.message||String(e))})};window.__saShare=function(){var q=function(){return '?a='+encodeURIComponent(a.key)+'&b='+encodeURIComponent(b.key)};if(a.key&&b.key)return {url:siteUrl(q()),upload:null};return {url:null,upload:function(){var up=function(s){return s.key?Promise.resolve(s.key):uploadBytes(s.bytes,'application/x-spark-heap').then(function(k){s.key=k;return k})};return up(a).then(function(){return up(b)}).then(function(){setQuery(q());return siteUrl(q())})}}};setTimeout(function(){document.open();document.write(res.html);document.close();window.scrollTo(0,0)},0)})}
+function heapSlot(bytes,name,key){return call('describe_heap',[bytes,name,CUR]).then(function(s){var j=JSON.parse(s);j.bytes=bytes;j.key=key||null;return j})}
+function renderCmp(a,b,lang){lang=lang||CUR;CUR=lang;return call('compare_heaps',[a.bytes,a.name,b.bytes,b.name,HOME,lang]).then(function(s){var res=JSON.parse(s);if(a.key&&b.key){try{var u=new URL(location.href);u.search='?a='+encodeURIComponent(a.key)+'&b='+encodeURIComponent(b.key);u.hash='';history.replaceState(null,'',u.toString())}catch(e){}}last=null;window.__saRender=function(l){renderCmp(a,b,l).catch(function(e){alert(e.message||String(e))})};window.__saShare=function(){var q=function(){return '?a='+encodeURIComponent(a.key)+'&b='+encodeURIComponent(b.key)};if(a.key&&b.key)return {url:siteUrl(q()),upload:null};return {url:null,upload:function(){var up=function(s){return s.key?Promise.resolve(s.key):uploadBytes(s.bytes,'application/x-spark-heap').then(function(k){s.key=k;return k})};return up(a).then(function(){return up(b)}).then(function(){setQuery(q());return siteUrl(q())})}}};setTimeout(function(){document.open();document.write(res.html);document.close();window.scrollTo(0,0)},0)})}
 window.saSetupCompare({
 fromFile:function(f){return f.arrayBuffer().then(function(b){return heapSlot(new Uint8Array(b),f.name,null)})},
 fromLink:function(v){var k=extractKey(v);if(!k)return Promise.reject(new Error(M.badLink));return fetchKey(k).then(function(b){return heapSlot(b,k,k)})},
