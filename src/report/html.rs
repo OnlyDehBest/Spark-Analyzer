@@ -28,6 +28,21 @@ fn sev_class(s: Severity) -> &'static str {
     }
 }
 
+fn axis_label(v: f64) -> String {
+    if v >= 10_000.0 {
+        format!("{:.0}k", v / 1000.0)
+    } else if v >= 1000.0 {
+        let s = format!("{:.1}k", v / 1000.0);
+        if crate::i18n::is_en() {
+            s
+        } else {
+            s.replace('.', ",")
+        }
+    } else {
+        format!("{v:.0}")
+    }
+}
+
 pub(crate) fn script_json(json: &str) -> String {
     let mut out = String::with_capacity(json.len() + 16);
     for c in json.chars() {
@@ -123,12 +138,17 @@ fn timeline_svg(r: &Report) -> Option<String> {
             );
         }
     }
-    let mut ticks: Vec<f64> = vec![0.0, 25.0, 50.0, 75.0, 100.0];
-    if broken {
-        ticks.push(top.round());
+    let mut ticks: Vec<f64> = if broken {
+        vec![0.0, 50.0, split, top.round()]
     } else {
-        ticks.retain(|g| *g <= top);
-    }
+        let step = if top > 120.0 { 50.0 } else { 25.0 };
+        (0..)
+            .map(|k| k as f64 * step)
+            .take_while(|g| *g <= top)
+            .collect()
+    };
+    ticks.dedup();
+    let last_tick = ticks.last().copied().unwrap_or(0.0);
     for g in ticks {
         let gy = y(g);
         let cls = if g == 50.0 {
@@ -140,10 +160,19 @@ fn timeline_svg(r: &Report) -> Option<String> {
         };
         let _ = write!(
             s,
-            r#"<line x1="{pad_l}" x2="{:.1}" y1="{gy:.1}" y2="{gy:.1}" class="{cls}"/><text x="{:.1}" y="{:.1}" class="axis" text-anchor="end">{g:.0}</text>"#,
+            r#"<line x1="{pad_l}" x2="{:.1}" y1="{gy:.1}" y2="{gy:.1}" class="{cls}"/><text x="{:.1}" y="{:.1}" class="axis" text-anchor="end">{}</text>"#,
             wd - 10.0,
             pad_l - 6.0,
-            gy + 4.0
+            gy + 4.0,
+            axis_label(g)
+        );
+    }
+    if last_tick > 0.0 {
+        let _ = write!(
+            s,
+            r#"<text x="{:.1}" y="{:.1}" class="axis unit" text-anchor="end">ms</text>"#,
+            pad_l - 6.0,
+            pad_t - 12.0
         );
     }
     let line = |vals: &[f64], cls: &str, s: &mut String| {
@@ -161,6 +190,12 @@ fn timeline_svg(r: &Report) -> Option<String> {
         line(&vals_b, "l2", &mut s);
     }
     line(&vals_a, "l1", &mut s);
+    let worst_spike = ws
+        .iter()
+        .enumerate()
+        .filter(|(i, w)| w.is_spike && vals_a[*i] > 0.0)
+        .max_by(|a, b| vals_a[a.0].total_cmp(&vals_a[b.0]).then(b.0.cmp(&a.0)))
+        .map(|(i, _)| i);
     for (i, w) in ws.iter().enumerate() {
         let _ = write!(
             s,
@@ -170,7 +205,7 @@ fn timeline_svg(r: &Report) -> Option<String> {
             if w.is_spike { 5 } else { 3 },
             if w.is_spike { " sp" } else { "" }
         );
-        if w.is_spike && vals_a[i] > 0.0 {
+        if worst_spike == Some(i) {
             let _ = write!(
                 s,
                 r#"<text x="{:.1}" y="{:.1}" class="spk" text-anchor="middle">{} ms</text>"#,
@@ -1486,7 +1521,7 @@ code{font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:v
 .bar{display:inline-block;width:110px;height:6px;background:var(--code);border-radius:3px;overflow:hidden;vertical-align:middle}.bar i{display:block;height:100%;background:var(--bar);border-radius:3px}
 .ctx{color:var(--muted);font-size:11px}.unitbar{display:flex;align-items:center;gap:10px;margin:-4px 0 12px;font-size:13px;flex-wrap:wrap}.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--card)}.seg button{border:0;border-radius:0;background:transparent;padding:5px 12px;font-size:12px;font-weight:600;color:var(--muted)}.seg button+button{border-left:1px solid var(--line)}.seg button.on{background:var(--acc);color:#fff}.warn{color:var(--high);font-weight:600}
 .sumcard{display:flex;gap:16px;align-items:center;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);border-left:3px solid var(--ok);border-radius:8px;padding:14px 16px;margin:0 0 12px}.sumcard.wrn{border-left-color:var(--med)}.sumcard.bad{border-left-color:var(--crit)}.score{--c:var(--ok);width:66px;height:66px;border-radius:50%;flex:none;display:grid;place-items:center;background:conic-gradient(var(--c) calc(var(--p)*1%),var(--card3) 0)}.sumcard.wrn .score{--c:var(--med)}.sumcard.bad .score{--c:var(--crit)}.score b{width:54px;height:54px;border-radius:50%;background:var(--card);display:grid;place-items:center;font-size:20px;color:var(--hd);font-variant-numeric:tabular-nums}.sumtxt{flex:1;min-width:220px}.sumtxt p{margin:2px 0}.sumtxt .l1{font-weight:600;color:var(--hd)}.sumtxt .ln{color:var(--fg)}
-.chart{width:100%;height:auto;background:var(--card2);border:1px solid var(--line);border-radius:6px}.chart .grid{stroke:var(--line2)}.chart .budget{stroke:var(--crit);stroke-dasharray:4 4;opacity:.8}.chart .axis{fill:var(--muted);font-size:11px}.chart polyline{fill:none;stroke-width:2}.chart .l1{stroke:var(--high)}.chart .l2{stroke:var(--acc)}.chart .l3{stroke:var(--ok);stroke-dasharray:3 3}.chart circle{fill:var(--high)}.chart circle.sp{fill:var(--crit)}.chart .spikebg{fill:var(--spike)}.tree{background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:6px 0;max-height:70vh;overflow:auto;font-size:13px}.tn{display:flex;align-items:center;gap:8px;padding:4px 12px 4px 0;cursor:pointer;white-space:nowrap;border-radius:6px}.tn:hover{background:var(--card3)}.tn .cr{width:14px;flex:none;color:var(--muted);text-align:center;transition:transform .15s ease;font-size:10px}.tn.open>.cr{transform:rotate(90deg)}.tn.leaf .cr{opacity:0}.tn .tv{min-width:86px;text-align:right;flex:none;font-variant-numeric:tabular-nums;color:var(--hd)}.tn .tb{width:60px;height:5px;flex:none;background:var(--card3);border-radius:999px;overflow:hidden}.tn .tb i{display:block;height:100%;background:var(--acc);border-radius:999px}.tn .tl{overflow:hidden;text-overflow:ellipsis;font-family:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;font-size:12px}.tn .src{color:var(--ok);margin-left:6px}.tn .ts{color:var(--muted);font-size:11px;margin-left:8px}.tn.hit{background:var(--accl)}.tn.hit .tl{color:var(--hd)}.tmore{padding:3px 0 3px 0;color:var(--muted);font-size:11px}.totree{color:var(--acc)}.filterbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px}.filterbar[hidden],.needs-filter[hidden]{display:none!important}.chip{border-radius:999px;padding:5px 12px;font-size:12px;background:var(--card);border:1px solid var(--line);color:var(--fg)}.chip:hover{border-color:var(--muted);color:var(--hd)}.chip:disabled{opacity:.45;cursor:not-allowed}.chip:disabled:hover{border-color:var(--line);color:var(--fg)}.chip.on{background:var(--card3);color:var(--hd)}.fbanner{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--accl);border:1px solid var(--acc);color:var(--hd);border-radius:12px;padding:10px 14px;margin:0 0 14px;font-size:13px}.fbanner svg{color:var(--acc);flex:none}.fbanner .chip{margin-left:auto}.chart .brush{fill:var(--accl);stroke:var(--acc);stroke-dasharray:4 3}.chart.brushing .hov{cursor:ew-resize}.chartwrap{position:relative}.chart .hov{fill:transparent;cursor:crosshair}.chart .hov:hover{fill:rgba(127,127,127,.08)}.chart .guide{stroke:var(--muted);stroke-dasharray:3 3}.chart circle.on{r:5;stroke:var(--card);stroke-width:2}.ctip{position:absolute;z-index:4;pointer-events:none;min-width:200px;max-width:300px;background:var(--card);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.35);padding:10px 12px;font-size:12px;color:var(--fg)}.ctip b{color:var(--hd)}.ctip .r{display:flex;justify-content:space-between;gap:16px;margin-top:3px}.ctip .r span:last-child{font-variant-numeric:tabular-nums;color:var(--hd)}.ctip .sp{margin-top:7px;padding-top:6px;border-top:1px solid var(--line2);color:var(--crit)}.ctip .cs{color:var(--muted);margin-top:2px}
+.chart{width:100%;height:auto;background:var(--card2);border:1px solid var(--line);border-radius:6px}.chart .grid{stroke:var(--line2)}.chart .budget{stroke:var(--crit);stroke-dasharray:4 4;opacity:.8}.chart .axis{fill:var(--muted);font-size:11px}.chart .unit{font-weight:600;letter-spacing:.04em}.chart polyline{fill:none;stroke-width:2}.chart .l1{stroke:var(--high)}.chart .l2{stroke:var(--acc)}.chart .l3{stroke:var(--ok);stroke-dasharray:3 3}.chart circle{fill:var(--high)}.chart circle.sp{fill:var(--crit)}.chart .spikebg{fill:var(--spike)}.tree{background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:6px 0;max-height:70vh;overflow:auto;font-size:13px}.tn{display:flex;align-items:center;gap:8px;padding:4px 12px 4px 0;cursor:pointer;white-space:nowrap;border-radius:6px}.tn:hover{background:var(--card3)}.tn .cr{width:14px;flex:none;color:var(--muted);text-align:center;transition:transform .15s ease;font-size:10px}.tn.open>.cr{transform:rotate(90deg)}.tn.leaf .cr{opacity:0}.tn .tv{min-width:86px;text-align:right;flex:none;font-variant-numeric:tabular-nums;color:var(--hd)}.tn .tb{width:60px;height:5px;flex:none;background:var(--card3);border-radius:999px;overflow:hidden}.tn .tb i{display:block;height:100%;background:var(--acc);border-radius:999px}.tn .tl{overflow:hidden;text-overflow:ellipsis;font-family:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;font-size:12px}.tn .src{color:var(--ok);margin-left:6px}.tn .ts{color:var(--muted);font-size:11px;margin-left:8px}.tn.hit{background:var(--accl)}.tn.hit .tl{color:var(--hd)}.tmore{padding:3px 0 3px 0;color:var(--muted);font-size:11px}.totree{color:var(--acc)}.filterbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px}.filterbar[hidden],.needs-filter[hidden]{display:none!important}.chip{border-radius:999px;padding:5px 12px;font-size:12px;background:var(--card);border:1px solid var(--line);color:var(--fg)}.chip:hover{border-color:var(--muted);color:var(--hd)}.chip:disabled{opacity:.45;cursor:not-allowed}.chip:disabled:hover{border-color:var(--line);color:var(--fg)}.chip.on{background:var(--card3);color:var(--hd)}.fbanner{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--accl);border:1px solid var(--acc);color:var(--hd);border-radius:12px;padding:10px 14px;margin:0 0 14px;font-size:13px}.fbanner svg{color:var(--acc);flex:none}.fbanner .chip{margin-left:auto}.chart .brush{fill:var(--accl);stroke:var(--acc);stroke-dasharray:4 3}.chart.brushing .hov{cursor:ew-resize}.chartwrap{position:relative}.chart .hov{fill:transparent;cursor:crosshair}.chart .hov:hover{fill:rgba(127,127,127,.08)}.chart .guide{stroke:var(--muted);stroke-dasharray:3 3}.chart circle.on{r:5;stroke:var(--card);stroke-width:2}.ctip{position:absolute;z-index:4;pointer-events:none;min-width:200px;max-width:300px;background:var(--card);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.35);padding:10px 12px;font-size:12px;color:var(--fg)}.ctip b{color:var(--hd)}.ctip .r{display:flex;justify-content:space-between;gap:16px;margin-top:3px}.ctip .r span:last-child{font-variant-numeric:tabular-nums;color:var(--hd)}.ctip .sp{margin-top:7px;padding-top:6px;border-top:1px solid var(--line2);color:var(--crit)}.ctip .cs{color:var(--muted);margin-top:2px}
 .legend{color:var(--muted);font-size:12px;margin:8px 0 12px;display:flex;gap:6px 14px;flex-wrap:wrap;align-items:center}.legend span{display:inline-block;width:14px;height:3px;vertical-align:middle;margin-right:4px;border-radius:2px}.k1{background:var(--high)}.k2{background:var(--acc)}.k3{background:var(--ok)}.kb{background:var(--crit)}.ks{background:var(--spike);height:10px!important}
 .spike{background:var(--card2);border:1px solid var(--line);border-left:3px solid var(--crit);border-radius:6px;padding:10px 14px;margin:10px 0}.spike h4 small{color:var(--muted);font-weight:400}.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}.grid3 td{padding:4px 6px}
 .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
