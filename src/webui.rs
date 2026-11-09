@@ -495,7 +495,7 @@ fn messages_js() -> String {
 pub fn local_index(recent: &[Recent]) -> String {
     let t = crate::i18n::t;
     let (side, panel) = recent_html(recent);
-    let main = index_main(
+    let main = news_banner() + &index_main(
         t(
             "Incolla il link del profilo spark oppure carica un file .sparkprofile, .sparkheap o .sparkhealth. L'analisi avviene sul tuo computer.",
             "Paste the spark profile link or upload a .sparkprofile, .sparkheap or .sparkhealth file. The analysis runs on your computer.",

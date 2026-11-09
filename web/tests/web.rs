@@ -242,3 +242,10 @@ fn home_shows_english_news_banner_linking_to_github() {
         assert!(html.contains(">Details →</a>"));
     }
 }
+
+#[test]
+fn local_app_home_also_shows_news_banner() {
+    let local = sparkscope::webui::local_index(&[]);
+    assert!(local.contains("id=\"news\""));
+    assert!(local.contains(sparkscope::webui::SITE_NEWS));
+}
