@@ -350,12 +350,13 @@ pub fn render(c: &HeapComparison) -> String {
 
     let (page_title, local_title) = time_title(title, c.after.generated_ms);
     format!(
-        "<!doctype html><html lang=\"{}\" data-theme=\"dark\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">{}<title>{}</title><style>{}{}</style></head><body>{}<script>{}{}</script>{}</body></html>",
+        "<!doctype html><html lang=\"{}\" data-theme=\"dark\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">{}<title>{}</title><style>{}{}{}</style></head><body>{}<script>{}{}</script>{}</body></html>",
         crate::i18n::lang().code(),
         FAVICON,
         esc(&page_title),
         CSS,
         PAGE_CSS,
+        super::theme::BRAND_CSS,
         b,
         ANIM_JS,
         JS,
