@@ -1,0 +1,70 @@
+name: vps
+
+# Aggiorna Spark Resource Analyzer sulla VPS: scarica l'ultimo eseguibile Linux della
+# release «latest» e riavvia il servizio. Si lancia a mano (Actions → vps → Run workflow)
+# oppure da solo dopo ogni build riuscita su main, se i secret sono configurati.
+#
+# Secret da impostare in Settings → Secrets and variables → Actions:
+#   VPS_HOST      indirizzo della VPS (es. 1.2.3.4 o vps.example.com)
+#   VPS_USER      utente SSH (es. root)
+#   VPS_SSH_KEY   chiave privata SSH (contenuto completo)
+# Facoltativi:
+#   VPS_PORT      porta SSH (predefinita 22)
+#   VPS_PATH      percorso dell'eseguibile (predefinito /opt/spark-analyzer/spark-analyzer)
+#   VPS_RESTART   comando di riavvio (predefinito: systemctl restart spark-analyzer)
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: [build]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vps
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Controlla la configurazione
+        id: cfg
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          if [ -z "$HOST" ]; then
+            echo "::warning::Secret VPS_HOST non impostato: deploy sulla VPS saltato"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Aggiorna e riavvia
+        if: steps.cfg.outputs.ok == 'true'
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+          USER: ${{ secrets.VPS_USER }}
+          KEY: ${{ secrets.VPS_SSH_KEY }}
+          PORT: ${{ secrets.VPS_PORT }}
+          DEST: ${{ secrets.VPS_PATH }}
+          RESTART: ${{ secrets.VPS_RESTART }}
+          URL: https://github.com/${{ github.repository }}/releases/download/latest/spark-analyzer-linux-x64
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id
+          chmod 600 ~/.ssh/id
+          PORT="${PORT:-22}"
+          DEST="${DEST:-/opt/spark-analyzer/spark-analyzer}"
+          RESTART="${RESTART:-systemctl restart spark-analyzer}"
+          ssh -i ~/.ssh/id -p "$PORT" -o StrictHostKeyChecking=accept-new "$USER@$HOST" \
+            "set -e; d=\$(dirname '$DEST'); mkdir -p \"\$d\"; \
+             curl -fsSL -o '$DEST.new' '$URL'; chmod +x '$DEST.new'; \
+             '$DEST.new' --version >/dev/null 2>&1 || '$DEST.new' --help >/dev/null; \
+             [ -f '$DEST' ] && cp '$DEST' '$DEST.old' || true; \
+             mv '$DEST.new' '$DEST'; $RESTART; sleep 2; \
+             echo aggiornato: \$(ls -la '$DEST')"

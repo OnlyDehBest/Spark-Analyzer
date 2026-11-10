@@ -1,0 +1,25 @@
+# Servizio systemd per Spark Resource Analyzer sulla VPS.
+# Installazione:
+#   sudo mkdir -p /opt/spark-analyzer
+#   sudo curl -fsSL -o /opt/spark-analyzer/spark-analyzer \
+#     https://github.com/OnlyDehBest/Spark-Analyzer/releases/download/latest/spark-analyzer-linux-x64
+#   sudo chmod +x /opt/spark-analyzer/spark-analyzer
+#   sudo cp spark-analyzer.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now spark-analyzer
+[Unit]
+Description=Spark Resource Analyzer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/opt/spark-analyzer/spark-analyzer serve --host 0.0.0.0 --port 8085 --no-open
+Restart=always
+RestartSec=3
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
