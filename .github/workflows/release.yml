@@ -78,7 +78,7 @@ jobs:
             gh release create "$tag" dist/* --repo "$REPO" --title "Spark Resource Analyzer ${tag}" --notes-file notes.md || gh release upload "$tag" dist/* --repo "$REPO" --clobber
           else
             gh release delete latest --repo "$REPO" --yes --cleanup-tag || true
-            gh release create latest dist/* --repo "$REPO" --target "$GITHUB_SHA" --prerelease \
+            gh release create latest dist/* --repo "$REPO" --target "$GITHUB_SHA" --latest \
               --title "Ultima versione (${GITHUB_SHA::7})" \
               --notes "Compilata automaticamente dall'ultimo commit su main: ${GITHUB_SHA::7}. Scarica il file per il tuo sistema e avvialo: si apre Spark-Analyzer nel browser."
           fi
