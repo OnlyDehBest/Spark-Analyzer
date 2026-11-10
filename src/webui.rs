@@ -359,7 +359,7 @@ fn compare_slot(index: usize) -> String {
         )
     };
     format!(
-        r#"<div class="slot" data-slot="{index}"><h3>{title} <span class="tag">{n}</span></h3><p class="h">{hint}</p><div class="schip" hidden><span class="sok">{check}</span><div class="stxt"><b class="sname"></b><span class="sdet"></span></div><button type="button" class="ghost sclear" title="{remove}">{x}</button></div><div class="sinput"><form class="lrow slinkform"><input class="slink" autocomplete="off" placeholder="{ph}"><button class="btn sec" type="submit">{link}{load}</button></form><label class="drop sdrop"><input class="sfile" type="file" accept=".sparkheap,.hprof,.gz" hidden><span class="dicon">{upload}</span><b>{drop}</b><span>{click}</span></label></div></div>"#,
+        r#"<div class="slot" data-slot="{index}"><h3>{title} <span class="tag">{n}</span></h3><p class="h">{hint}</p><div class="schip" hidden><span class="sok">{check}</span><div class="stxt"><b class="sname"></b><span class="sdet"></span></div><button type="button" class="ghost sclear" title="{remove}">{x}</button></div><div class="sinput"><form class="lrow slinkform"><input class="slink" autocomplete="off" placeholder="{ph}"><button class="btn sec" type="submit">{link}{load}</button></form><label class="drop sdrop"><input class="sfile" type="file" hidden><span class="dicon">{upload}</span><b>{drop}</b><span>{click}</span></label></div></div>"#,
         n = index + 1,
         check = icon("check"),
         remove = t("Rimuovi", "Remove"),
@@ -424,7 +424,7 @@ pub fn index_main(recent_panel: &str) -> String {
 <section id="drop" class="hero"><span class="dicon">{upload}</span><h2>{hero_t}</h2>
 <form id="lform" class="lrow"><input id="link" autocomplete="off" placeholder="{ph}"><button class="btn" type="submit">{bolt}{go}</button></form>
 <div class="or">{or}</div>
-<label class="btn sec pick"><input id="file" type="file" accept=".sparkprofile,.sparkheap,.sparkhealth,.hprof,.gz" hidden>{upload}<span>{pick}</span><span class="fmt">.sparkprofile · .sparkheap · .hprof <i title="{beta_t}">BETA</i></span></label>
+<label class="btn sec pick"><input id="file" type="file" hidden>{upload}<span>{pick}</span><span class="fmt">.sparkprofile · .sparkheap · .hprof <i title="{beta_t}">BETA</i></span></label>
 <p class="hint">{note1} <code>/spark profiler stop</code> · {saved} <code>--save-to-file</code> {in_dir} <code>plugins/spark/</code></p></section>
 </div>
 <div id="mode-cmp" hidden>{compare}</div>
