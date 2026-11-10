@@ -424,7 +424,7 @@ pub fn index_main(recent_panel: &str) -> String {
 <section id="drop" class="hero"><span class="dicon">{upload}</span><h2>{hero_t}</h2>
 <form id="lform" class="lrow"><input id="link" autocomplete="off" placeholder="{ph}"><button class="btn" type="submit">{bolt}{go}</button></form>
 <div class="or">{or}</div>
-<label class="btn sec pick"><input id="file" type="file" accept=".sparkprofile,.sparkheap,.sparkhealth,.hprof,.gz" hidden>{upload}<span>{pick}</span><span class="beta" title="{beta_t}">BETA</span></label>
+<label class="btn sec pick"><input id="file" type="file" accept=".sparkprofile,.sparkheap,.sparkhealth,.hprof,.gz" hidden>{upload}<span>{pick}</span><span class="fmt">.sparkprofile · .sparkheap · .hprof <i title="{beta_t}">BETA</i></span></label>
 <p class="hint">{note1} <code>/spark profiler stop</code> · {saved} <code>--save-to-file</code> {in_dir} <code>plugins/spark/</code></p></section>
 </div>
 <div id="mode-cmp" hidden>{compare}</div>
@@ -450,10 +450,7 @@ pub fn index_main(recent_panel: &str) -> String {
             "Paste a spark profile link or upload the file",
         ),
         or = t("oppure", "or"),
-        pick = t(
-            "Scegli un file .sparkprofile / .sparkheap / .hprof",
-            "Choose a .sparkprofile / .sparkheap / .hprof file",
-        ),
+        pick = t("Scegli un file", "Choose a file",),
         ph = t(
             "https://spark.lucko.me/AbCd1234 oppure solo il codice",
             "https://spark.lucko.me/AbCd1234 or just the code"
@@ -643,6 +640,8 @@ fn static_index_page() -> String {
 }
 
 pub const EXTRA_CSS: &str = r#"
+.pick .fmt{display:flex;align-items:center;gap:8px;color:var(--muted);font:500 12px "JetBrains Mono",ui-monospace,monospace;border-left:1px solid var(--line);padding-left:12px;margin-left:4px;white-space:nowrap}.pick .fmt i{font:700 9.5px Inter,system-ui,sans-serif;font-style:normal;letter-spacing:.06em;color:var(--med);border:1px solid rgba(234,179,8,.5);border-radius:4px;padding:2px 5px}
+@media(max-width:700px){.pick{flex-wrap:wrap;justify-content:center;row-gap:6px}.pick .fmt{flex-basis:100%;justify-content:center;border-left:0;padding-left:0;margin-left:0;font-size:11px}}
 .pring{position:relative;width:44px;height:44px;flex:none}.pring[hidden],.pmeta[hidden],.busy .spin[hidden]{display:none}.pring svg{width:44px;height:44px;transform:rotate(-90deg)}.pring circle{fill:none;stroke-width:3.2}.pring .bg{stroke:var(--line)}.pring .fg{stroke:var(--acc);stroke-linecap:round;stroke-dasharray:88;stroke-dashoffset:88;transition:stroke-dashoffset .15s linear}.pring.ind .fg{stroke-dashoffset:66;transition:none}.pring.ind svg{animation:sa-ring .9s linear infinite}@keyframes sa-ring{from{transform:rotate(-90deg)}to{transform:rotate(270deg)}}.pring b{position:absolute;inset:0;display:grid;place-items:center;font-size:11px;font-weight:700;line-height:1;color:var(--hd)}.pmeta{margin-left:auto;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .hcard{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:16px;padding:32px 30px 28px;margin:4px 0 22px;background:radial-gradient(120% 140% at 0% 0%,rgba(163,230,53,.10),transparent 55%),radial-gradient(90% 120% at 100% 100%,rgba(56,189,248,.10),transparent 60%),var(--card);animation:sa-fade .4s ease both}
 .hcard .wave{position:absolute;right:-10px;top:18px;width:46%;height:90px;opacity:.5;pointer-events:none}.hcard .wave polyline{fill:none;stroke:var(--ok);stroke-width:3;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke}
