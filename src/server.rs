@@ -46,8 +46,28 @@ struct State {
     loopback_only: bool,
     reports: Mutex<Vec<Stored>>,
     staged: Mutex<Vec<Staged>>,
+    uploads: Mutex<HashMap<String, Upload>>,
     counter: AtomicU64,
 }
+
+/// A file sent in pieces (so it passes reverse proxies with a request size limit).
+/// Heap dumps are parsed while the pieces arrive and never kept whole in memory.
+struct Upload {
+    owner: String,
+    name: String,
+    data: UploadData,
+    received: u64,
+    touched: std::time::Instant,
+}
+
+enum UploadData {
+    Bytes(Vec<u8>),
+    Dump(Box<crate::hprof::HprofStream>),
+}
+
+const MAX_CHUNK: usize = 64 * 1024 * 1024;
+const MAX_UPLOADS_PER_VISITOR: usize = 4;
+const UPLOAD_IDLE: std::time::Duration = std::time::Duration::from_secs(15 * 60);
 
 pub struct ServeOptions {
     pub host: String,
@@ -91,6 +111,7 @@ pub fn serve(o: ServeOptions) -> Result<()> {
         loopback_only,
         reports: Mutex::new(Vec::new()),
         staged: Mutex::new(Vec::new()),
+        uploads: Mutex::new(HashMap::new()),
         // id unici anche dopo un riavvio: le pagine /r/ restano in cache del browser
         counter: AtomicU64::new(
             std::time::SystemTime::now()
@@ -332,6 +353,29 @@ fn handle(mut req: Request, st: &State) {
             let result =
                 read_upload(&mut req, &name).and_then(|bytes| stage(st, owner, bytes, name, None));
             staged_result(result)
+        }
+        (Method::Post, "/api/upload/start") => {
+            let name = query_param(&url, "name").unwrap_or_else(|| "profile".into());
+            match upload_start(st, owner, name) {
+                Ok(id) => json_resp(200, serde_json::json!({ "upload": id })),
+                Err(e) => json_resp(400, serde_json::json!({ "error": format!("{e:#}") })),
+            }
+        }
+        (Method::Post, "/api/upload/chunk") => {
+            let id = query_param(&url, "id").unwrap_or_default();
+            match upload_chunk(st, owner, &id, &mut req) {
+                Ok(n) => json_resp(200, serde_json::json!({ "received": n })),
+                Err(e) => json_resp(400, serde_json::json!({ "error": format!("{e:#}") })),
+            }
+        }
+        (Method::Post, "/api/upload/finish") => {
+            let id = query_param(&url, "id").unwrap_or_default();
+            let heap = query_param(&url, "to").as_deref() == Some("heap");
+            match upload_finish(st, owner, &id) {
+                Ok((bytes, name)) if heap => staged_result(stage(st, owner, bytes, name, None)),
+                Ok((bytes, name)) => api_result(store(st, owner, bytes, name, None)),
+                Err(e) => json_resp(400, serde_json::json!({ "error": format!("{e:#}") })),
+            }
         }
         (Method::Post, "/api/heap/compare") => {
             let a = query_param(&url, "a").unwrap_or_default();
@@ -709,6 +753,117 @@ fn report_html(st: &State, id: &str, lang: Lang, windows: &str) -> Option<Result
         r.cache.insert(ck, Arc::clone(&page));
     }
     Some(Ok(page))
+}
+
+fn upload_start(st: &State, owner: &str, name: String) -> Result<String> {
+    let mut ups = st.uploads.lock().unwrap_or_else(|e| e.into_inner());
+    ups.retain(|_, u| u.touched.elapsed() < UPLOAD_IDLE);
+    if ups.values().filter(|u| u.owner == owner).count() >= MAX_UPLOADS_PER_VISITOR {
+        anyhow::bail!(
+            "{}",
+            i18n::t(
+                "troppi caricamenti in corso: attendi che finiscano",
+                "too many uploads in progress: wait for them to finish"
+            )
+        );
+    }
+    let id = random_hex(12);
+    ups.insert(
+        id.clone(),
+        Upload {
+            owner: owner.to_string(),
+            name,
+            data: UploadData::Bytes(Vec::new()),
+            received: 0,
+            touched: std::time::Instant::now(),
+        },
+    );
+    Ok(id)
+}
+
+fn upload_gone() -> anyhow::Error {
+    anyhow!(
+        "{}",
+        i18n::t(
+            "caricamento scaduto o sconosciuto: riprova",
+            "upload expired or unknown: try again"
+        )
+    )
+}
+
+fn upload_chunk(st: &State, owner: &str, id: &str, req: &mut Request) -> Result<u64> {
+    let mut chunk = Vec::new();
+    req.as_reader()
+        .take(MAX_CHUNK as u64 + 1)
+        .read_to_end(&mut chunk)
+        .map_err(|e| {
+            anyhow!(
+                "{}",
+                tf!("upload interrotto: {e}", "upload interrupted: {e}")
+            )
+        })?;
+    if chunk.len() > MAX_CHUNK {
+        anyhow::bail!("chunk too large");
+    }
+    let mut ups = st.uploads.lock().unwrap_or_else(|e| e.into_inner());
+    let up = ups
+        .get_mut(id)
+        .filter(|u| u.owner == owner)
+        .ok_or_else(upload_gone)?;
+    up.touched = std::time::Instant::now();
+    up.received += chunk.len() as u64;
+    let received = up.received;
+    let result: Result<()> = match &mut up.data {
+        UploadData::Dump(stream) => stream.feed(&chunk),
+        UploadData::Bytes(buf) => {
+            buf.extend_from_slice(&chunk);
+            let gz = buf.len() > 2 && buf[0] == 0x1f && buf[1] == 0x8b;
+            if buf.len() >= 12
+                && (crate::hprof::is_hprof(buf) || (gz && crate::hprof::is_hprof_name(&up.name)))
+            {
+                let mut stream = crate::hprof::HprofStream::new();
+                let fed = stream.feed(buf);
+                up.data = UploadData::Dump(Box::new(stream));
+                fed
+            } else if buf.len() > MAX_UPLOAD {
+                Err(anyhow!(
+                    "{}",
+                    i18n::t(
+                        "file troppo grande (massimo 512 MB)",
+                        "file too large (max 512 MB)"
+                    )
+                ))
+            } else {
+                Ok(())
+            }
+        }
+    };
+    if let Err(e) = result {
+        ups.remove(id);
+        return Err(e);
+    }
+    Ok(received)
+}
+
+fn upload_finish(st: &State, owner: &str, id: &str) -> Result<(Vec<u8>, String)> {
+    let up = {
+        let mut ups = st.uploads.lock().unwrap_or_else(|e| e.into_inner());
+        match ups.get(id) {
+            Some(u) if u.owner == owner => ups.remove(id),
+            _ => None,
+        }
+    }
+    .ok_or_else(upload_gone)?;
+    let bytes = match up.data {
+        UploadData::Bytes(b) => {
+            if b.is_empty() {
+                anyhow::bail!("{}", i18n::t("il file è vuoto", "the file is empty"));
+            }
+            b
+        }
+        UploadData::Dump(stream) => prost::Message::encode_to_vec(&stream.finish()?),
+    };
+    Ok((bytes, up.name))
 }
 
 fn api_result(r: Result<String>) -> Response<std::io::Cursor<Vec<u8>>> {

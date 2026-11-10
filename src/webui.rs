@@ -484,6 +484,8 @@ fn messages_js() -> String {
         "readingDump": t("Leggo l'heap dump {f} (beta)…", "Reading heap dump {f} (beta)…"),
         "dumpPacked": t("Questo heap dump è compresso in un formato che il browser non può leggere a pezzi (xz, lzma, zip…). Rifallo con /spark heapdump senza --compress (oppure con --compress gzip), o decomprimilo prima di caricarlo.", "This heap dump is compressed in a format the browser cannot read in pieces (xz, lzma, zip…). Take it again with /spark heapdump without --compress (or with --compress gzip), or decompress it before uploading."),
         "tooBig": t("File troppo grande ({s} GB) per essere letto nel browser e non è un heap dump .hprof.", "File too large ({s} GB) to be read in the browser and it is not an .hprof heap dump."),
+        "proxyLimit": t("Il file è stato rifiutato dal server web davanti a Spark Resource Analyzer (HTTP {s}, limite di dimensione di nginx o Cloudflare). Aumenta client_max_body_size in nginx oppure usa il sito, che legge il file nel browser.", "The file was rejected by the web server in front of Spark Resource Analyzer (HTTP {s}, nginx or Cloudflare size limit). Raise client_max_body_size in nginx or use the website, which reads the file in the browser."),
+        "badReply": t("Risposta non valida dal server (HTTP {s}): probabilmente un proxy (nginx, Cloudflare) davanti a Spark Resource Analyzer ha interrotto la richiesta.", "Invalid reply from the server (HTTP {s}): probably a proxy (nginx, Cloudflare) in front of Spark Resource Analyzer cut the request."),
         "lost": t("Connessione a Spark Resource Analyzer persa: ", "Lost connection to Spark Resource Analyzer: "),
         "wasm": t("Impossibile caricare il modulo di analisi: ", "Could not load the analysis module: "),
         "notFound": t("Profilo non trovato: il link potrebbe essere scaduto (spark conserva i profili per un periodo limitato).", "Profile not found: the link may have expired (spark keeps profiles for a limited time)."),
@@ -708,9 +710,16 @@ var lb=document.getElementById('langbtn');if(lb)lb.addEventListener('click',func
 var busy=document.getElementById('busy'),bt=document.getElementById('busytext'),err=document.getElementById('err');
 function start(t){err.hidden=true;bt.textContent=t;busy.hidden=false;document.documentElement.classList.add('sa-busy')}
 function fail(m){busy.hidden=true;err.textContent=m;err.hidden=false;document.documentElement.classList.remove('sa-busy')}
-function done(r){return r.json().then(function(j){if(j.id){location.href='/r/'+j.id+(LQ?'?'+LQ:'')}else{fail(j.error||M.unknown)}})}
+function body(r){return r.text().then(function(t){try{return JSON.parse(t)}catch(e){throw new Error(r.status===413?M.proxyLimit.replace('{s}',r.status):M.badReply.replace('{s}',r.status))}})}
+function done(r){return body(r).then(function(j){if(j.id){location.href='/r/'+j.id+(LQ?'?'+LQ:'')}else{fail(j.error||M.unknown)}})}
+var PR={ring:document.getElementById('pring'),fg:document.getElementById('pfg'),pct:document.getElementById('ppct'),meta:document.getElementById('pmeta'),spin:busy.querySelector('.spin')};
+function mb(n){var s=(n/1048576).toFixed(1);return M.lang==='it'?s.replace('.',','):s}
+function prog(got,total){if(!PR.ring)return;PR.spin.hidden=true;PR.ring.hidden=false;PR.meta.hidden=false;var p=Math.min(100,Math.floor(got/Math.max(1,total)*100));PR.fg.style.strokeDashoffset=String(88-88*p/100);PR.pct.textContent=p+'%';PR.meta.textContent=mb(got)+' / '+mb(total)+' MB'}
+function progOff(){if(!PR.ring)return;PR.ring.hidden=true;PR.meta.hidden=true;PR.spin.hidden=false}
+function json(u,b){return fetch(u,{method:'POST',body:b}).then(function(r){if(r.status===413)return {tooBig:true};return body(r)})}
+function upload(f,to){if(f.size<=786432)return fetch((to==='heap'?'/api/heap/file':'/api/file')+'?name='+encodeURIComponent(f.name)+'&'+LQ,{method:'POST',body:f});var CH=8388608,off=0,id;function next(){if(off>=f.size){progOff();bt.textContent=M.analyzing;return fetch('/api/upload/finish?id='+id+'&to='+(to||'file')+'&'+LQ,{method:'POST'})}return json('/api/upload/chunk?id='+id+'&'+LQ,f.slice(off,off+CH)).then(function(j){if(j.tooBig){if(CH<=262144)throw new Error(M.proxyLimit.replace('{s}',413));CH=Math.floor(CH/4);return next()}if(j.error)throw new Error(j.error);off+=CH;prog(Math.min(off,f.size),f.size);return next()})}return json('/api/upload/start?name='+encodeURIComponent(f.name)+'&'+LQ,'').then(function(j){if(j.error||!j.upload)throw new Error(j.error||M.unknown);id=j.upload;prog(0,f.size);return next()})}
 document.getElementById('lform').addEventListener('submit',function(e){e.preventDefault();var v=document.getElementById('link').value.trim();if(!v){fail(M.pasteFirst);return}start(M.downloading);fetch('/api/link?'+LQ,{method:'POST',body:v}).then(done).catch(function(x){fail(M.lost+x)})});
-function send(f){if(!f)return;start(M.analyzingFile.replace('{f}',f.name).replace('{s}',(f.size/1048576).toFixed(1)));fetch('/api/file?name='+encodeURIComponent(f.name)+'&'+LQ,{method:'POST',body:f}).then(done).catch(function(x){fail(M.lost+x)})}
+function send(f){if(!f)return;start(M.analyzingFile.replace('{f}',f.name).replace('{s}',(f.size/1048576).toFixed(1)));upload(f,'file').then(done).catch(function(x){progOff();fail(x&&x.message&&!/fetch|network|load failed/i.test(x.message)?x.message:M.lost+x)})}
 var drop=document.getElementById('drop'),file=document.getElementById('file');
 file.addEventListener('change',function(){send(file.files[0])});
 ['dragenter','dragover'].forEach(function(t){drop.addEventListener(t,function(e){e.preventDefault();drop.classList.add('over')})});
@@ -718,9 +727,9 @@ file.addEventListener('change',function(){send(file.files[0])});
 drop.addEventListener('drop',function(e){send(e.dataTransfer.files[0])});
 document.addEventListener('dragover',function(e){e.preventDefault()});document.addEventListener('drop',function(e){e.preventDefault();if(window.__saMode==='cmp')return;if(e.target.closest&&!e.target.closest('#drop'))send(e.dataTransfer.files[0])});
 document.getElementById('link').addEventListener('paste',function(){var i=this;setTimeout(function(){if(/spark\.lucko\.me\/|^[A-Za-z0-9]{6,}$/.test(i.value.trim()))document.getElementById('lform').requestSubmit()},50)});
-function staged(r){return r.json().then(function(j){if(j.error)throw new Error(j.error);return j})}
+function staged(r){return body(r).then(function(j){if(j.error)throw new Error(j.error);return j})}
 window.saSetupCompare({
-fromFile:function(f){return fetch('/api/heap/file?name='+encodeURIComponent(f.name)+'&'+LQ,{method:'POST',body:f}).then(staged)},
+fromFile:function(f){return upload(f,'heap').then(staged)},
 fromLink:function(v){return fetch('/api/heap/link?'+LQ,{method:'POST',body:v}).then(staged)},
 run:function(a,b){start(M.cmpRunning);return fetch('/api/heap/compare?a='+encodeURIComponent(a.stage)+'&b='+encodeURIComponent(b.stage)+'&'+LQ,{method:'POST'}).then(done)}
 });
