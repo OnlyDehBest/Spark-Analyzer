@@ -46,17 +46,26 @@ struct State {
     loopback_only: bool,
     reports: Mutex<Vec<Stored>>,
     staged: Mutex<Vec<Staged>>,
-    uploads: Mutex<HashMap<String, Upload>>,
+    uploads: Mutex<HashMap<String, Arc<UploadSlot>>>,
     counter: AtomicU64,
 }
 
 /// A file sent in pieces (so it passes reverse proxies with a request size limit).
 /// Heap dumps are parsed while the pieces arrive and never kept whole in memory.
-struct Upload {
+/// Pieces may travel in parallel: each one names its byte range in the original file
+/// and the ones that arrive early wait in `early` until the gap before them is filled.
+struct UploadSlot {
     owner: String,
+    up: Mutex<Upload>,
+}
+
+struct Upload {
     name: String,
     data: UploadData,
-    received: u64,
+    /// End of the contiguous prefix of the original file received so far.
+    next: u64,
+    early: std::collections::BTreeMap<u64, (u64, Vec<u8>)>,
+    early_bytes: usize,
     touched: std::time::Instant,
 }
 
@@ -66,6 +75,8 @@ enum UploadData {
 }
 
 const MAX_CHUNK: usize = 64 * 1024 * 1024;
+/// Pieces held while waiting for an earlier one (a few in flight per upload).
+const MAX_EARLY: usize = 256 * 1024 * 1024;
 const MAX_UPLOADS_PER_VISITOR: usize = 4;
 const UPLOAD_IDLE: std::time::Duration = std::time::Duration::from_secs(15 * 60);
 
@@ -356,14 +367,17 @@ fn handle(mut req: Request, st: &State) {
         }
         (Method::Post, "/api/upload/start") => {
             let name = query_param(&url, "name").unwrap_or_else(|| "profile".into());
-            match upload_start(st, owner, name) {
+            let dump = query_param(&url, "dump").as_deref() == Some("1");
+            match upload_start(st, owner, name, dump) {
                 Ok(id) => json_resp(200, serde_json::json!({ "upload": id })),
                 Err(e) => json_resp(400, serde_json::json!({ "error": format!("{e:#}") })),
             }
         }
         (Method::Post, "/api/upload/chunk") => {
             let id = query_param(&url, "id").unwrap_or_default();
-            match upload_chunk(st, owner, &id, &mut req) {
+            let num = |k| query_param(&url, k).and_then(|v| v.parse::<u64>().ok());
+            let range = num("off").zip(num("end"));
+            match upload_chunk(st, owner, &id, range, &mut req) {
                 Ok(n) => json_resp(200, serde_json::json!({ "received": n })),
                 Err(e) => json_resp(400, serde_json::json!({ "error": format!("{e:#}") })),
             }
@@ -755,9 +769,12 @@ fn report_html(st: &State, id: &str, lang: Lang, windows: &str) -> Option<Result
     Some(Ok(page))
 }
 
-fn upload_start(st: &State, owner: &str, name: String) -> Result<String> {
+fn upload_start(st: &State, owner: &str, name: String, dump: bool) -> Result<String> {
     let mut ups = st.uploads.lock().unwrap_or_else(|e| e.into_inner());
-    ups.retain(|_, u| u.touched.elapsed() < UPLOAD_IDLE);
+    ups.retain(|_, u| {
+        u.up.try_lock()
+            .map_or(true, |u| u.touched.elapsed() < UPLOAD_IDLE)
+    });
     if ups.values().filter(|u| u.owner == owner).count() >= MAX_UPLOADS_PER_VISITOR {
         anyhow::bail!(
             "{}",
@@ -768,15 +785,24 @@ fn upload_start(st: &State, owner: &str, name: String) -> Result<String> {
         );
     }
     let id = random_hex(12);
+    let data = if dump {
+        UploadData::Dump(Box::new(crate::hprof::HprofStream::new()))
+    } else {
+        UploadData::Bytes(Vec::new())
+    };
     ups.insert(
         id.clone(),
-        Upload {
+        Arc::new(UploadSlot {
             owner: owner.to_string(),
-            name,
-            data: UploadData::Bytes(Vec::new()),
-            received: 0,
-            touched: std::time::Instant::now(),
-        },
+            up: Mutex::new(Upload {
+                name,
+                data,
+                next: 0,
+                early: std::collections::BTreeMap::new(),
+                early_bytes: 0,
+                touched: std::time::Instant::now(),
+            }),
+        }),
     );
     Ok(id)
 }
@@ -791,7 +817,23 @@ fn upload_gone() -> anyhow::Error {
     )
 }
 
-fn upload_chunk(st: &State, owner: &str, id: &str, req: &mut Request) -> Result<u64> {
+fn upload_slot(st: &State, owner: &str, id: &str) -> Result<Arc<UploadSlot>> {
+    let ups = st.uploads.lock().unwrap_or_else(|e| e.into_inner());
+    ups.get(id)
+        .filter(|u| u.owner == owner)
+        .cloned()
+        .ok_or_else(upload_gone)
+}
+
+/// Adds one piece. `range` is its position in the original file (absent for clients
+/// that send the pieces one after the other).
+fn upload_chunk(
+    st: &State,
+    owner: &str,
+    id: &str,
+    range: Option<(u64, u64)>,
+    req: &mut Request,
+) -> Result<u64> {
     let mut chunk = Vec::new();
     req.as_reader()
         .take(MAX_CHUNK as u64 + 1)
@@ -805,18 +847,57 @@ fn upload_chunk(st: &State, owner: &str, id: &str, req: &mut Request) -> Result<
     if chunk.len() > MAX_CHUNK {
         anyhow::bail!("chunk too large");
     }
-    let mut ups = st.uploads.lock().unwrap_or_else(|e| e.into_inner());
-    let up = ups
-        .get_mut(id)
-        .filter(|u| u.owner == owner)
-        .ok_or_else(upload_gone)?;
+    let slot = upload_slot(st, owner, id)?;
+    let mut up = slot.up.lock().unwrap_or_else(|e| e.into_inner());
     up.touched = std::time::Instant::now();
-    up.received += chunk.len() as u64;
-    let received = up.received;
-    let result: Result<()> = match &mut up.data {
-        UploadData::Dump(stream) => stream.feed(&chunk),
+    let (off, end) = range.unwrap_or((up.next, up.next + chunk.len() as u64));
+    if end < off {
+        anyhow::bail!("bad range");
+    }
+    let result = if end <= up.next {
+        // piece sent again after a lost reply: already counted
+        Ok(())
+    } else if off > up.next {
+        up.early_bytes += chunk.len();
+        if up.early_bytes > MAX_EARLY {
+            Err(anyhow!("too many pieces out of order"))
+        } else {
+            up.early.insert(off, (end, chunk));
+            Ok(())
+        }
+    } else if off < up.next {
+        Err(anyhow!("overlapping piece"))
+    } else {
+        let mut r = append(&mut up, &chunk);
+        up.next = end;
+        while r.is_ok() {
+            let next = up.next;
+            let Some((end, piece)) = up.early.remove(&next) else {
+                break;
+            };
+            up.early_bytes -= piece.len();
+            r = append(&mut up, &piece);
+            up.next = end;
+        }
+        r
+    };
+    let received = up.next;
+    drop(up);
+    if let Err(e) = result {
+        st.uploads
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(id);
+        return Err(e);
+    }
+    Ok(received)
+}
+
+fn append(up: &mut Upload, chunk: &[u8]) -> Result<()> {
+    match &mut up.data {
+        UploadData::Dump(stream) => stream.feed(chunk),
         UploadData::Bytes(buf) => {
-            buf.extend_from_slice(&chunk);
+            buf.extend_from_slice(chunk);
             let gz = buf.len() > 2 && buf[0] == 0x1f && buf[1] == 0x8b;
             if buf.len() >= 12
                 && (crate::hprof::is_hprof(buf) || (gz && crate::hprof::is_hprof_name(&up.name)))
@@ -837,16 +918,11 @@ fn upload_chunk(st: &State, owner: &str, id: &str, req: &mut Request) -> Result<
                 Ok(())
             }
         }
-    };
-    if let Err(e) = result {
-        ups.remove(id);
-        return Err(e);
     }
-    Ok(received)
 }
 
 fn upload_finish(st: &State, owner: &str, id: &str) -> Result<(Vec<u8>, String)> {
-    let up = {
+    let slot = {
         let mut ups = st.uploads.lock().unwrap_or_else(|e| e.into_inner());
         match ups.get(id) {
             Some(u) if u.owner == owner => ups.remove(id),
@@ -854,6 +930,26 @@ fn upload_finish(st: &State, owner: &str, id: &str) -> Result<(Vec<u8>, String)>
         }
     }
     .ok_or_else(upload_gone)?;
+    let up = std::mem::replace(
+        &mut *slot.up.lock().unwrap_or_else(|e| e.into_inner()),
+        Upload {
+            name: String::new(),
+            data: UploadData::Bytes(Vec::new()),
+            next: 0,
+            early: std::collections::BTreeMap::new(),
+            early_bytes: 0,
+            touched: std::time::Instant::now(),
+        },
+    );
+    if !up.early.is_empty() {
+        anyhow::bail!(
+            "{}",
+            i18n::t(
+                "caricamento incompleto: mancano dei pezzi, riprova",
+                "incomplete upload: some pieces are missing, try again"
+            )
+        );
+    }
     let bytes = match up.data {
         UploadData::Bytes(b) => {
             if b.is_empty() {
