@@ -33,8 +33,8 @@ pub(crate) fn hprof_beta_banner() -> String {
     format!(
         r#"<div class="betabar"><span class="beta">BETA</span><span>{}</span></div>"#,
         esc(crate::i18n::t(
-            "Analisi degli heap dump (.hprof) in beta: la memoria per classe è una stima (compressed oops) e i plugin vengono riconosciuti dal package, perché l'heap dump non contiene l'elenco dei plugin. Per risultati più precisi usa /spark heapsummary.",
-            "Heap dump (.hprof) analysis is in beta: memory per class is an estimate (compressed oops) and plugins are recognised by package, because a heap dump does not include the plugin list. For more precise results use /spark heapsummary.",
+            "Analisi degli heap dump (.hprof) in beta: la memoria per classe è una stima (compressed oops), i plugin vengono riconosciuti dal loro class loader e il nome è ricavato dal package principale (la versione non è presente nell'heap dump).",
+            "Heap dump (.hprof) analysis is in beta: memory per class is an estimate (compressed oops), plugins are recognised from their class loader and named after their main package (the version is not stored in a heap dump).",
         ))
     )
 }

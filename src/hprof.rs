@@ -34,6 +34,7 @@ enum State {
 #[derive(Default, Clone, Copy)]
 struct ClassInfo {
     super_id: u64,
+    loader: u64,
     own_refs: u32,
 }
 
@@ -51,6 +52,8 @@ pub struct HprofParser {
     class_names: HashMap<u64, u64>,
     classes: HashMap<u64, ClassInfo>,
     instances: HashMap<u64, (u64, u64)>,
+    loaders: HashMap<u64, u64>,
+    unresolved_loaders: usize,
     obj_arrays: HashMap<u64, (u64, u64)>,
     prim_arrays: [(u64, u64); 12],
     consumed: u64,
@@ -81,6 +84,8 @@ impl HprofParser {
             class_names: HashMap::default(),
             classes: HashMap::default(),
             instances: HashMap::default(),
+            loaders: HashMap::default(),
+            unresolved_loaders: 0,
             obj_arrays: HashMap::default(),
             prim_arrays: [(0, 0); 12],
             consumed: 0,
@@ -289,6 +294,15 @@ impl HprofParser {
                 }
                 let class_id = self.id_at(b, 1 + ids + 4);
                 let n = be32(b, h - 4);
+                if self.unresolved_loaders > 0 {
+                    let obj = self.id_at(b, 1);
+                    if let Some(c) = self.loaders.get_mut(&obj)
+                        && *c == 0
+                    {
+                        *c = class_id;
+                        self.unresolved_loaders -= 1;
+                    }
+                }
                 let e = self.instances.entry(class_id).or_insert((0, 0));
                 e.0 += 1;
                 e.1 += n;
@@ -322,6 +336,10 @@ impl HprofParser {
             }
             0x20 => match self.class_dump(b)? {
                 Some((h, info, class_id)) => {
+                    if info.loader != 0 && !self.loaders.contains_key(&info.loader) {
+                        self.loaders.insert(info.loader, 0);
+                        self.unresolved_loaders += 1;
+                    }
                     self.classes.insert(class_id, info);
                     (h, 0)
                 }
@@ -346,6 +364,7 @@ impl HprofParser {
         }
         let class_id = self.id_at(b, 1);
         let super_id = self.id_at(b, 1 + ids + 4);
+        let loader = self.id_at(b, 1 + 2 * ids + 4);
         let u2 = |b: &[u8], at: usize| u16::from_be_bytes([b[at], b[at + 1]]) as usize;
         let consts = u2(b, at);
         at += 2;
@@ -384,7 +403,15 @@ impl HprofParser {
         if b.len() < at {
             return Ok(None);
         }
-        Ok(Some((at, ClassInfo { super_id, own_refs }, class_id)))
+        Ok(Some((
+            at,
+            ClassInfo {
+                super_id,
+                loader,
+                own_refs,
+            },
+            class_id,
+        )))
     }
 
     fn name(&self, class_id: u64) -> Option<String> {
@@ -480,14 +507,192 @@ impl HprofParser {
                 r#type: name,
             })
             .collect();
+        let (sources, packages) = self.plugins();
+        let mut server_configurations = std::collections::BTreeMap::new();
+        if !packages.is_empty() {
+            server_configurations.insert(PACKAGES_KEY.to_string(), packages);
+        }
         Ok(HeapData {
             metadata: Some(HeapMetadata {
                 generated_time: self.timestamp,
+                sources,
+                server_configurations,
                 ..Default::default()
             }),
             entries,
         })
     }
+
+    fn is_java_plugin(&self, mut class_id: u64) -> bool {
+        for _ in 0..16 {
+            let Some(c) = self.classes.get(&class_id) else {
+                return false;
+            };
+            if c.super_id == 0 {
+                return false;
+            }
+            if self.name(c.super_id).as_deref() == Some("org.bukkit.plugin.java.JavaPlugin") {
+                return true;
+            }
+            class_id = c.super_id;
+        }
+        false
+    }
+
+    /// Plugins found from their class loaders: every Bukkit/Paper plugin has its own
+    /// loader, so its classes (shaded libraries included) are grouped exactly. The name
+    /// comes from the known-plugin table or from the plugin's main package.
+    fn plugins(
+        &self,
+    ) -> (
+        std::collections::BTreeMap<String, crate::proto::PluginOrModMetadata>,
+        String,
+    ) {
+        let mut by_loader: HashMap<u64, Vec<(String, bool)>> = HashMap::default();
+        for (cid, info) in &self.classes {
+            if info.loader == 0 {
+                continue;
+            }
+            let Some(name) = self.name(*cid) else {
+                continue;
+            };
+            by_loader
+                .entry(info.loader)
+                .or_default()
+                .push((name, self.is_java_plugin(*cid)));
+        }
+        let mut sources = std::collections::BTreeMap::new();
+        let mut lines = String::new();
+        let mut pkg_owner: HashMap<String, Option<String>> = HashMap::default();
+        for (loader, classes) in &by_loader {
+            let loader_class = self
+                .loaders
+                .get(loader)
+                .and_then(|c| self.name(*c))
+                .unwrap_or_default();
+            let main = classes.iter().find(|(_, p)| *p).map(|(n, _)| n.as_str());
+            if main.is_none() && !loader_class.contains("PluginClassLoader") {
+                continue;
+            }
+            let Some(name) = plugin_name(main, classes) else {
+                continue;
+            };
+            sources
+                .entry(name.clone())
+                .or_insert_with(|| crate::proto::PluginOrModMetadata {
+                    name: name.clone(),
+                    ..Default::default()
+                });
+            for (c, _) in classes {
+                let bare = c.trim_end_matches("[]");
+                let Some((pkg, _)) = bare.rsplit_once('.') else {
+                    continue;
+                };
+                match pkg_owner.get(pkg) {
+                    Some(Some(o)) if *o != name => {
+                        pkg_owner.insert(pkg.to_string(), None);
+                    }
+                    Some(_) => {}
+                    None => {
+                        pkg_owner.insert(pkg.to_string(), Some(name.clone()));
+                    }
+                }
+            }
+        }
+        let mut pkgs: Vec<(&String, &String)> = pkg_owner
+            .iter()
+            .filter_map(|(p, o)| o.as_ref().map(|o| (p, o)))
+            .collect();
+        pkgs.sort();
+        for (p, o) in pkgs {
+            lines.push_str(p);
+            lines.push('\t');
+            lines.push_str(o);
+            lines.push('\n');
+        }
+        (sources, lines)
+    }
+}
+
+/// Key of the (non-JSON) server configuration entry that carries the exact
+/// package → plugin map found in a heap dump.
+pub const PACKAGES_KEY: &str = "sparkscope:hprof-packages";
+
+const PLATFORM_WORDS: &[&str] = &[
+    "bukkit",
+    "spigot",
+    "paper",
+    "folia",
+    "velocity",
+    "bungee",
+    "bungeecord",
+    "plugin",
+    "plugins",
+    "core",
+    "common",
+    "api",
+    "impl",
+    "main",
+    "loader",
+    "boot",
+    "bootstrap",
+    "lib",
+    "libs",
+    "internal",
+    "platform",
+    "spigotmc",
+    "papermc",
+];
+
+fn plugin_name(main: Option<&str>, classes: &[(String, bool)]) -> Option<String> {
+    let base = match main {
+        Some(m) => m.to_string(),
+        None => {
+            let mut count: HashMap<String, usize> = HashMap::default();
+            for (c, _) in classes {
+                let parts: Vec<&str> = c.split('.').collect();
+                if parts.len() > 3 {
+                    *count.entry(parts[..3].join(".")).or_default() += 1;
+                }
+            }
+            count
+                .into_iter()
+                .max_by(|a, b| a.1.cmp(&b.1).then(b.0.cmp(&a.0)))?
+                .0
+                + ".X"
+        }
+    };
+    let lower = base.to_ascii_lowercase();
+    for (prefix, name) in crate::heap::known_plugins() {
+        if lower.starts_with(prefix) {
+            return Some(name.to_string());
+        }
+    }
+    let parts: Vec<&str> = base.split('.').collect();
+    let pkg = &parts[..parts.len().saturating_sub(1)];
+    let seg = pkg
+        .iter()
+        .enumerate()
+        .rev()
+        .map(|(_, s)| *s)
+        .find(|s| {
+            let l = s.to_ascii_lowercase();
+            l.len() >= 3 && !PLATFORM_WORDS.contains(&l.as_str())
+        })
+        .or_else(|| parts.last().copied())?;
+    if main.is_some() {
+        let simple = parts.last().copied().unwrap_or("");
+        let mut core = simple;
+        for suffix in ["Plugin", "Main", "Bukkit", "Paper", "Spigot", "Loader"] {
+            core = core.strip_suffix(suffix).unwrap_or(core);
+        }
+        if !core.is_empty() && core.eq_ignore_ascii_case(seg) {
+            return Some(core.to_string());
+        }
+    }
+    let mut ch = seg.chars();
+    let first = ch.next()?;
+    Some(first.to_uppercase().chain(ch).collect())
 }
 
 impl Write for HprofParser {

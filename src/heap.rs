@@ -205,6 +205,10 @@ fn main_packages(
     out
 }
 
+pub fn known_plugins() -> &'static [(&'static str, &'static str)] {
+    KNOWN
+}
+
 pub fn is_builtin_class(t: &str) -> bool {
     !t.contains('.')
         || t.starts_with("java.")
@@ -231,6 +235,7 @@ pub struct ClassOwners {
     known: Vec<Option<usize>>,
     by_package: std::cell::RefCell<HashMap<String, Option<usize>>>,
     groups: std::cell::RefCell<HashMap<String, String>>,
+    exact: HashMap<String, usize>,
 }
 
 impl ClassOwners {
@@ -247,6 +252,23 @@ impl ClassOwners {
         }
         plugins.sort();
         let mains = main_packages(heaps, &plugins);
+        let mut exact: HashMap<String, usize> = HashMap::new();
+        for h in heaps {
+            let Some(lines) = h
+                .metadata
+                .as_ref()
+                .and_then(|m| m.server_configurations.get(crate::hprof::PACKAGES_KEY))
+            else {
+                continue;
+            };
+            for line in lines.lines() {
+                if let Some((pkg, name)) = line.split_once('\t')
+                    && let Some(i) = plugins.iter().position(|p| p.0 == name)
+                {
+                    exact.entry(pkg.to_string()).or_insert(i);
+                }
+            }
+        }
         let known = KNOWN
             .iter()
             .map(|(_, name)| {
@@ -262,10 +284,19 @@ impl ClassOwners {
             known,
             by_package: std::cell::RefCell::new(HashMap::new()),
             groups: std::cell::RefCell::new(HashMap::new()),
+            exact,
         }
     }
 
     pub fn owner(&self, t: &str) -> Owner {
+        if !self.exact.is_empty() {
+            let bare = t.trim_end_matches("[]");
+            if let Some((pkg, _)) = bare.rsplit_once('.')
+                && let Some(i) = self.exact.get(pkg)
+            {
+                return Owner::Plugin(*i);
+            }
+        }
         if is_builtin_class(t) {
             return Owner::Builtin;
         }

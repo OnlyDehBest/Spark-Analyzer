@@ -80,3 +80,36 @@ fn heap_dump_goes_through_the_heap_report_and_comparison() {
         sparkscope::heapdiff::compare_bytes(&before, "prima.hprof", &after, "dopo.hprof").unwrap();
     assert!(c.after.objects > c.before.objects);
 }
+
+#[test]
+fn plugins_are_found_from_their_class_loaders() {
+    let mut g = hprof_gen::Gen::new();
+    let object = g.class("java/lang/Object", 0, 0, 0);
+    let java_plugin = g.class("org/bukkit/plugin/java/JavaPlugin", object, 0, 0);
+    let pcl = g.class("org/bukkit/plugin/java/PluginClassLoader", object, 0, 0);
+    let loader = g.new_id();
+    let main = g.class_in("me/example/shopplus/ShopPlus", java_plugin, loader, 1, 0);
+    let price = g.class_in("me/example/shopplus/data/PriceEntry", object, loader, 1, 2);
+    let shaded = g.class_in("com/zaxxer/hikari/PoolEntry", object, loader, 1, 1);
+    g.instance_with_id(loader, pcl, 8);
+    g.instances(main, 1, 8);
+    g.instances(price, 1000, 16);
+    g.instances(shaded, 500, 12);
+    let h = hprof::parse_bytes(&g.finish()).unwrap();
+    let meta = h.metadata.clone().unwrap();
+    assert!(
+        meta.sources.contains_key("ShopPlus"),
+        "{:?}",
+        meta.sources.keys()
+    );
+    let r = sparkscope::heap::analyze(&h);
+    let shop = r
+        .by_plugin
+        .iter()
+        .find(|p| p.name == "ShopPlus")
+        .expect("plugin");
+    assert_eq!(
+        shop.instances, 1501,
+        "shaded classes belong to the plugin too"
+    );
+}

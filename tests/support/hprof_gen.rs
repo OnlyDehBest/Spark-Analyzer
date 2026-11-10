@@ -37,6 +37,18 @@ impl Gen {
     /// Declares a class (name in JVM form) with `refs` reference fields and
     /// `prims` int fields; returns its class object id.
     pub fn class(&mut self, name: &str, super_id: u64, refs: u16, prims: u16) -> u64 {
+        self.class_in(name, super_id, 0, refs, prims)
+    }
+
+    /// Like [`Gen::class`], with the class loader object that defined the class.
+    pub fn class_in(
+        &mut self,
+        name: &str,
+        super_id: u64,
+        loader: u64,
+        refs: u16,
+        prims: u16,
+    ) -> u64 {
         let sid = self.id();
         let mut b = sid.to_be_bytes().to_vec();
         b.extend_from_slice(name.as_bytes());
@@ -52,7 +64,8 @@ impl Gen {
         d.extend_from_slice(&cid.to_be_bytes());
         d.extend_from_slice(&0u32.to_be_bytes());
         d.extend_from_slice(&super_id.to_be_bytes());
-        for _ in 0..5 {
+        d.extend_from_slice(&loader.to_be_bytes());
+        for _ in 0..4 {
             d.extend_from_slice(&0u64.to_be_bytes());
         }
         d.extend_from_slice(&((refs as u32) * 8 + (prims as u32) * 4).to_be_bytes());
@@ -76,6 +89,16 @@ impl Gen {
     pub fn instances(&mut self, class_id: u64, count: usize, bytes: u32) {
         for _ in 0..count {
             let oid = self.id();
+            self.instance_with_id(oid, class_id, bytes);
+        }
+    }
+
+    pub fn new_id(&mut self) -> u64 {
+        self.id()
+    }
+
+    pub fn instance_with_id(&mut self, oid: u64, class_id: u64, bytes: u32) {
+        {
             self.seg.push(0x21);
             self.seg.extend_from_slice(&oid.to_be_bytes());
             self.seg.extend_from_slice(&0u32.to_be_bytes());
