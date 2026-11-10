@@ -23,4 +23,6 @@ pub mod report;
 pub mod rules;
 #[cfg(feature = "cli")]
 pub mod server;
+#[cfg(feature = "cli")]
+pub mod wasm_bundle;
 pub mod webui;

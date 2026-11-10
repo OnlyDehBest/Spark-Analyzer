@@ -23,6 +23,10 @@
   dump in gzip mentre lo invia, manda più pezzi alla volta e ricorda il limite del proxy
   (es. 1 GB da 79 a 19 s, 94 MB dietro un proxy da 1 MB da 43 a 7 s). Durante il
   caricamento viene mostrata anche la velocità.
+- Sul server gli heap dump `.hprof` vengono letti direttamente nel browser con lo stesso
+  modulo WebAssembly del sito: al server arriva solo il riepilogo (es. 94 MB → 18 KB),
+  quindi anche un dump di vari GB è pronto in pochi secondi. Se il browser non lo
+  supporta resta il caricamento compresso.
 - Caricamento più robusto con connessioni lente: i pezzi rifiutati dal proxy per timeout
   (HTTP 408) o persi per strada vengono reinviati, e la dimensione dei pezzi si adatta
   alla velocità della connessione.

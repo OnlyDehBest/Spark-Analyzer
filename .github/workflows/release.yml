@@ -43,7 +43,43 @@ jobs:
       - uses: actions/checkout@v7
       - shell: bash
         run: rustup update stable --no-self-update && rustup default stable && rustup target add ${{ matrix.target }}
+      - name: Modulo WebAssembly per leggere gli heap dump nel browser
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          RUSTFLAGS: -C target-cpu=mvp -C target-feature=+sign-ext,+nontrapping-fptoint,+bulk-memory,+mutable-globals
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo build -p sparkscope-web --lib --release --target wasm32-unknown-unknown
+      - name: wasm-bindgen e wasm-opt
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          version=$(cargo metadata --format-version 1 | jq -r '.packages[] | select(.name == "wasm-bindgen") | .version')
+          name="wasm-bindgen-$version-x86_64-unknown-linux-musl"
+          if curl -fsSL "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/$version/$name.tar.gz" | tar xz -C "$RUNNER_TEMP"; then
+            export PATH="$RUNNER_TEMP/$name:$PATH"
+          else
+            cargo install wasm-bindgen-cli --version "$version" --locked
+          fi
+          wasm-bindgen --version
+          wasm-bindgen target/wasm32-unknown-unknown/release/sparkscope_web.wasm --target web --out-dir web/pkg --no-typescript
+          f=web/pkg/sparkscope_web_bg.wasm
+          if sudo apt-get install -y -qq binaryen >/dev/null && wasm-opt -O3 --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals "$f" -o "$f.opt"; then
+            mv "$f.opt" "$f"
+          else
+            echo "::warning::wasm-opt non riuscito, uso il modulo non ottimizzato"
+          fi
+          ls -la web/pkg
       - run: cargo build --release -p sparkscope --target ${{ matrix.target }}
+      - name: Controlla che il modulo sia incluso
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          bin=target/${{ matrix.target }}/release/${{ matrix.bin }}
+          "$bin" serve --host 127.0.0.1 --port 8123 --no-open &
+          pid=$!
+          sleep 2
+          curl -fsS -o /dev/null -w "worker %{http_code}\n" http://127.0.0.1:8123/sa-worker.js
+          curl -fsS -o /dev/null -w "wasm %{http_code} %{size_download} byte\n" http://127.0.0.1:8123/pkg/sparkscope_web_bg.wasm
+          kill "$pid"
       - shell: bash
         run: |
           mkdir dist

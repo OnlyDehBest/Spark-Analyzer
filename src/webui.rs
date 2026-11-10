@@ -504,7 +504,15 @@ fn messages_js() -> String {
 }
 
 pub fn local_index(recent: &[Recent]) -> String {
+    local_index_with(recent, "")
+}
+
+pub fn local_index_with(recent: &[Recent], wasm_query: &str) -> String {
     let t = crate::i18n::t;
+    let script = format!(
+        "var SA_WV={};{LOCAL_JS}",
+        serde_json::Value::from(wasm_query)
+    );
     let (side, panel) = recent_html(recent);
     let main = news_banner() + &index_main(&panel);
     let switch = format!("/?lang={}", crate::report::html::lang_to());
@@ -514,7 +522,7 @@ pub fn local_index(recent: &[Recent]) -> String {
         title: t("Spark Resource Analyzer", "Spark Resource Analyzer"),
         side_extra: &format!("{side}{}", spark_commands_html()),
         main: &main,
-        script: LOCAL_JS,
+        script: &script,
         module_script: "",
         home: if crate::i18n::is_en() {
             "/"
@@ -717,7 +725,14 @@ function mb(n){var s=(n/1048576).toFixed(1);return M.lang==='it'?s.replace('.','
 function prog(got,total,rate){if(!PR.ring)return;PR.spin.hidden=true;PR.ring.hidden=false;PR.meta.hidden=false;var p=Math.min(100,Math.floor(got/Math.max(1,total)*100));PR.fg.style.strokeDashoffset=String(88-88*p/100);PR.pct.textContent=p+'%';PR.meta.textContent=mb(got)+' / '+mb(total)+' MB'+(rate?' · '+mb(rate)+' MB/s':'')}
 function progOff(){if(!PR.ring)return;PR.ring.hidden=true;PR.meta.hidden=true;PR.spin.hidden=false}
 function json(u,b){return fetch(u,{method:'POST',body:b}).then(function(r){if(r.status===413)return {tooBig:true};return body(r)})}
-function upload(f,to){if(f.size<=786432)return fetch((to==='heap'?'/api/heap/file':'/api/file')+'?name='+encodeURIComponent(f.name)+'&'+LQ,{method:'POST',body:f});return chunked(f,to)}
+function direct(f,to){return fetch((to==='heap'?'/api/heap/file':'/api/file')+'?name='+encodeURIComponent(f.name)+'&'+LQ,{method:'POST',body:f})}
+function upload(f,to){if(f.size<=786432)return direct(f,to);return dumpHead(f).then(function(d){if(!d||!dumpWorker())return chunked(f,to);return readDumpHere(f).then(function(b){var s=new File([b],f.name);return s.size<=786432?direct(s,to):chunked(s,to)},function(){return chunked(f,to)})})}
+function dumpHead(f){return f.slice(0,12).arrayBuffer().then(function(b){var u=new Uint8Array(b);return String.fromCharCode.apply(null,u)==='JAVA PROFILE'||(u[0]===0x1f&&u[1]===0x8b&&/hprof/i.test(f.name))})}
+var DW=null,DN=0,DQ={};
+function dumpWorker(){if(DW===null){DW=false;if(SA_WV&&typeof Worker==='function'){try{DW=new Worker('/sa-worker.js'+SA_WV,{type:'module'});DW.onmessage=onDump;DW.onerror=dumpLost}catch(e){DW=false}}}return DW}
+function onDump(e){var d=e.data,q=DQ[d.id];if(!q)return;if(d.progress!=null){q.p(d.progress);return}delete DQ[d.id];if(d.err!=null){if(d.fatal){try{DW.terminate()}catch(x){}DW=null}q.ko(new Error(d.err))}else q.ok(d.ok)}
+function dumpLost(){var q=DQ;DQ={};try{DW.terminate()}catch(x){}DW=false;for(var k in q)q[k].ko(new Error('worker'))}
+function readDumpHere(f){var t0=Date.now(),was=bt.textContent;bt.textContent=M.readingDump.replace('{f}',f.name);prog(0,f.size);return new Promise(function(ok,ko){var id=++DN;DQ[id]={ok:ok,ko:ko,p:function(n){prog(n,f.size,n/Math.max(.001,(Date.now()-t0)/1000))}};DW.postMessage({id:id,fn:'hprof',args:[f]})}).then(function(b){progOff();bt.textContent=M.analyzing;return b},function(e){progOff();bt.textContent=was;throw e})}
 var MINCH=262144;function chGet(){try{var v=+localStorage.getItem('sa-chunk');if(v>=MINCH&&v<=8388608)return v}catch(e){}return 8388608}function chSet(v){try{localStorage.setItem('sa-chunk',String(v))}catch(e){}}
 async function chunked(f,to){var h=new Uint8Array(await f.slice(0,12).arrayBuffer()),dump=String.fromCharCode.apply(null,h)==='JAVA PROFILE',gz=dump&&typeof CompressionStream==='function',CAP=chGet(),CH=Math.min(CAP,4194304),sent=0,t0=Date.now();
 var j=await json('/api/upload/start?name='+encodeURIComponent(f.name)+(dump?'&dump=1':'')+'&'+LQ,'');if(j.error||!j.upload)throw new Error(j.error||M.unknown);var id=j.upload;prog(0,f.size);
@@ -784,7 +799,7 @@ pub fn static_worker_versioned(version: &str) -> String {
     WORKER_JS.replace("__SA_V__", &version_suffix(version))
 }
 
-fn version_suffix(version: &str) -> String {
+pub(crate) fn version_suffix(version: &str) -> String {
     let query: String = version
         .chars()
         .filter(char::is_ascii_alphanumeric)
@@ -863,3 +878,14 @@ var sp=new URLSearchParams(location.search),q=sp.get('p'),qa=sp.get('a'),qb=sp.g
 if(qa&&qb){var ka=extractKey(qa),kb=extractKey(qb);if(ka&&kb){start(M.cmpRunning);Promise.all([fetchKey(ka).then(function(x){return heapSlot(x,ka,ka)}),fetchKey(kb).then(function(x){return heapSlot(x,kb,kb)})]).then(function(s){return renderCmp(s[0],s[1])}).catch(function(e){fail(e.message||String(e))})}}
 else if(q){var k=extractKey(q);if(k){document.getElementById('link').value='https://spark.lucko.me/'+k;runKey(k)}}
 "#;
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn local_home_declares_the_browser_module_only_when_present() {
+        let with = super::local_index_with(&[], "?v=abc");
+        assert!(with.contains(r#"var SA_WV="?v=abc";"#));
+        let without = super::local_index(&[]);
+        assert!(without.contains(r#"var SA_WV="";"#));
+    }
+}

@@ -1,3 +1,4 @@
+use crate::wasm_bundle::WasmBundle;
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -230,6 +231,28 @@ fn page_resp(cached: &[u8], gz: bool) -> Resp {
     text_resp(if gz { cached.to_vec() } else { plain }, gz)
 }
 
+fn wasm_asset_resp(path: &str, gz: bool) -> Option<Response<std::io::Cursor<&'static [u8]>>> {
+    let bundle = WasmBundle::embedded();
+    let compressed = if gz { bundle.asset_gzip(path) } else { None };
+    let encoded = compressed.is_some();
+    let asset = compressed.or_else(|| bundle.asset(path))?;
+    let mut headers = vec![
+        header("Content-Type", asset.content_type),
+        header("Cache-Control", "public, max-age=31536000, immutable"),
+        header("Vary", "Accept-Encoding"),
+    ];
+    if encoded {
+        headers.push(header("Content-Encoding", "gzip"));
+    }
+    Some(Response::new(
+        tiny_http::StatusCode(200),
+        headers,
+        std::io::Cursor::new(asset.body),
+        Some(asset.body.len()),
+        None,
+    ))
+}
+
 fn final_page(html: &str) -> Arc<Vec<u8>> {
     Arc::new(gzip(with_actions(html).as_bytes()))
 }
@@ -307,6 +330,12 @@ fn handle(mut req: Request, st: &State) {
                     "request blocked: it comes from another site"
                 ) }),
         ));
+        return;
+    }
+    if method == Method::Get
+        && let Some(asset) = wasm_asset_resp(&path, gz)
+    {
+        let _ = req.respond(asset);
         return;
     }
     let known_visitor = visitor_id(&req);
@@ -1029,7 +1058,7 @@ fn index_page(st: &State, owner: &str) -> String {
             bad: r.bad,
         })
         .collect();
-    webui::local_index(&recent)
+    webui::local_index_with(&recent, WasmBundle::embedded().query())
 }
 
 fn not_found() -> String {

@@ -113,3 +113,18 @@ fn plugins_are_found_from_their_class_loaders() {
         "shaded classes belong to the plugin too"
     );
 }
+
+#[test]
+fn summary_read_in_the_browser_gives_the_same_report_as_the_dump() {
+    let dump = hprof_gen::sample(10);
+    let summary = prost::Message::encode_to_vec(&hprof::parse_bytes(&dump).unwrap());
+    assert!(summary.len() < dump.len());
+    let render = |bytes: &[u8]| {
+        let loaded = sparkscope::loader::load_bytes(bytes, "server.hprof").unwrap();
+        let (r, _, heap) = sparkscope::pipeline::build(loaded, None).unwrap();
+        sparkscope::webui::render_report(&r, heap.as_ref()).html
+    };
+    let from_dump = render(&dump);
+    assert_eq!(render(&summary), from_dump);
+    assert!(from_dump.contains("heap dump (.hprof)"));
+}

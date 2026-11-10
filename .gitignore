@@ -7,3 +7,4 @@ report*.md
 report*.json
 flame*.svg
 site/
+web/pkg/
