@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
 use anyhow::{Result, bail};
@@ -241,26 +241,35 @@ fn all_class_deltas(before: &HeapData, after: &HeapData) -> Vec<ClassDelta> {
     let old = class_map(before);
     let new = class_map(after);
     let mut out: Vec<ClassDelta> = Vec::with_capacity(new.len().max(old.len()));
-    for (kind, (i2, s2)) in &new {
+    let mut seen: HashSet<&str> = HashSet::with_capacity(new.len());
+    for e in &after.entries {
+        let kind = e.r#type.as_str();
+        if !seen.insert(kind) {
+            continue;
+        }
+        let (i2, s2) = new[kind];
         let (i1, s1) = old.get(kind).copied().unwrap_or((0, 0));
         out.push(ClassDelta {
-            kind: (*kind).to_string(),
+            kind: kind.to_string(),
             before_instances: i1,
-            after_instances: *i2,
+            after_instances: i2,
             before_size: s1,
-            after_size: *s2,
+            after_size: s2,
         });
     }
-    for (kind, (i1, s1)) in &old {
-        if !new.contains_key(kind) {
-            out.push(ClassDelta {
-                kind: (*kind).to_string(),
-                before_instances: *i1,
-                after_instances: 0,
-                before_size: *s1,
-                after_size: 0,
-            });
+    for e in &before.entries {
+        let kind = e.r#type.as_str();
+        if new.contains_key(kind) || !seen.insert(kind) {
+            continue;
         }
+        let (i1, s1) = old[kind];
+        out.push(ClassDelta {
+            kind: kind.to_string(),
+            before_instances: i1,
+            after_instances: 0,
+            before_size: s1,
+            after_size: 0,
+        });
     }
     out
 }
@@ -400,12 +409,16 @@ fn compare_named(a: &HeapData, name_a: &str, b: &HeapData, name_b: &str) -> Heap
     let mut by_plugin: Vec<Vec<ClassDelta>> = vec![Vec::new(); owners.plugins.len()];
     let mut by_package: Vec<(String, Vec<ClassDelta>)> = Vec::new();
     let mut builtin: Vec<ClassDelta> = Vec::new();
+    let mut package_idx: HashMap<String, usize> = HashMap::new();
     for d in deltas {
         match owners.owner(&d.kind) {
             Owner::Plugin(i) => by_plugin[i].push(d),
-            Owner::Package(g) => match by_package.iter_mut().find(|(k, _)| *k == g) {
-                Some((_, v)) => v.push(d),
-                None => by_package.push((g, vec![d])),
+            Owner::Package(g) => match package_idx.get(&g) {
+                Some(k) => by_package[*k].1.push(d),
+                None => {
+                    package_idx.insert(g.clone(), by_package.len());
+                    by_package.push((g, vec![d]));
+                }
             },
             Owner::Builtin => builtin.push(d),
         }
@@ -436,6 +449,7 @@ fn compare_named(a: &HeapData, name_a: &str, b: &HeapData, name_b: &str) -> Heap
             y.size_delta()
                 .cmp(&x.size_delta())
                 .then(y.instance_delta().cmp(&x.instance_delta()))
+                .then(x.kind.cmp(&y.kind))
         });
         let mut before_size = 0i64;
         let mut after_size = 0i64;
@@ -472,6 +486,7 @@ fn compare_named(a: &HeapData, name_a: &str, b: &HeapData, name_b: &str) -> Heap
             .cmp(&y.verdict)
             .then(y.delta().cmp(&x.delta()))
             .then(y.after.cmp(&x.after))
+            .then(x.name.cmp(&y.name))
     });
 
     let java = java_deltas(builtin, &plugins, &before_info, &after_info);
@@ -524,7 +539,11 @@ fn java_deltas(
     after: &SnapshotInfo,
 ) -> Vec<JavaDelta> {
     builtin.retain(|c| c.size_delta() > 0 && c.instance_delta() > 0);
-    builtin.sort_by(|x, y| y.size_delta().cmp(&x.size_delta()));
+    builtin.sort_by(|x, y| {
+        y.size_delta()
+            .cmp(&x.size_delta())
+            .then(x.kind.cmp(&y.kind))
+    });
     builtin.truncate(MAX_JAVA_ROWS);
     let mut out = Vec::with_capacity(builtin.len());
     for c in builtin {

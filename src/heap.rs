@@ -146,10 +146,22 @@ const GENERIC: &[&str] = &[
 ];
 
 fn norm(s: &str) -> String {
-    s.chars()
-        .filter(|c| c.is_ascii_alphanumeric())
-        .flat_map(|c| c.to_lowercase())
-        .collect()
+    let mut out = String::with_capacity(s.len());
+    norm_into(s, &mut out);
+    out
+}
+
+fn norm_into(s: &str, out: &mut String) {
+    out.clear();
+    for c in s.chars() {
+        if c.is_ascii_alphanumeric() {
+            out.push(c.to_ascii_lowercase());
+        }
+    }
+}
+
+fn starts_with_ignore_case(t: &str, prefix: &str) -> bool {
+    t.len() >= prefix.len() && t.as_bytes()[..prefix.len()].eq_ignore_ascii_case(prefix.as_bytes())
 }
 
 fn main_packages(
@@ -157,6 +169,7 @@ fn main_packages(
     plugins: &[(String, String, String)],
 ) -> Vec<(String, usize)> {
     let mut out: Vec<(String, usize)> = Vec::new();
+    let mut c = String::new();
     for h in heaps {
         for e in &h.entries {
             let t = e.r#type.trim_end_matches("[]");
@@ -169,7 +182,10 @@ fn main_packages(
             {
                 continue;
             }
-            let c = norm(cls);
+            norm_into(cls, &mut c);
+            if c.len() < 4 {
+                continue;
+            }
             for (i, p) in plugins.iter().enumerate() {
                 let n = &p.2;
                 if n.len() >= 4
@@ -212,6 +228,9 @@ pub enum Owner {
 pub struct ClassOwners {
     pub plugins: Vec<(String, String, String)>,
     mains: Vec<(String, usize)>,
+    known: Vec<Option<usize>>,
+    by_package: std::cell::RefCell<HashMap<String, Option<usize>>>,
+    groups: std::cell::RefCell<HashMap<String, String>>,
 }
 
 impl ClassOwners {
@@ -228,45 +247,79 @@ impl ClassOwners {
         }
         plugins.sort();
         let mains = main_packages(heaps, &plugins);
-        ClassOwners { plugins, mains }
+        let known = KNOWN
+            .iter()
+            .map(|(_, name)| {
+                let n = norm(name);
+                plugins
+                    .iter()
+                    .position(|p| p.2 == n || p.2.starts_with(&n) || n.starts_with(&p.2))
+            })
+            .collect();
+        ClassOwners {
+            plugins,
+            mains,
+            known,
+            by_package: std::cell::RefCell::new(HashMap::new()),
+            groups: std::cell::RefCell::new(HashMap::new()),
+        }
     }
 
     pub fn owner(&self, t: &str) -> Owner {
         if is_builtin_class(t) {
             return Owner::Builtin;
         }
-        match owner_of(t, &self.plugins, &self.mains) {
+        match self.owner_index(t) {
             Some(i) => Owner::Plugin(i),
-            None => Owner::Package(package_group(t)),
+            None => Owner::Package(self.group(t)),
         }
     }
-}
 
-fn owner_of(
-    t: &str,
-    plugins: &[(String, String, String)],
-    mains: &[(String, usize)],
-) -> Option<usize> {
-    let t = t.trim_end_matches("[]");
-    if let Some((_, i)) = mains.iter().find(|(k, _)| t.starts_with(k.as_str())) {
-        return Some(*i);
+    fn group(&self, t: &str) -> String {
+        let bare = t.trim_end_matches("[]");
+        let Some((pkg, _)) = bare.rsplit_once('.') else {
+            return package_group(t);
+        };
+        if bare.starts_with("net.minecraft.") {
+            return package_group(t);
+        }
+        if let Some(g) = self.groups.borrow().get(pkg) {
+            return g.clone();
+        }
+        let g = package_group(t);
+        self.groups.borrow_mut().insert(pkg.to_string(), g.clone());
+        g
     }
-    let lower = t.to_ascii_lowercase();
-    for (prefix, name) in KNOWN {
-        if lower.starts_with(prefix) {
-            let n = norm(name);
-            if let Some(i) = plugins
-                .iter()
-                .position(|p| p.2 == n || p.2.starts_with(&n) || n.starts_with(&p.2))
+
+    fn owner_index(&self, t: &str) -> Option<usize> {
+        let t = t.trim_end_matches("[]");
+        if let Some((_, i)) = self.mains.iter().find(|(k, _)| t.starts_with(k.as_str())) {
+            return Some(*i);
+        }
+        for (k, (prefix, _)) in KNOWN.iter().enumerate() {
+            if starts_with_ignore_case(t, prefix)
+                && let Some(i) = self.known[k]
             {
                 return Some(i);
             }
         }
+        let pkg = t.rsplit_once('.').map_or("", |(p, _)| p);
+        if let Some(hit) = self.by_package.borrow().get(pkg) {
+            return *hit;
+        }
+        let hit = segment_owner(pkg, &self.plugins);
+        self.by_package.borrow_mut().insert(pkg.to_string(), hit);
+        hit
     }
-    let mut segs: Vec<&str> = t.split('.').collect();
-    segs.pop();
-    for (k, seg) in segs.iter().enumerate() {
-        let s = norm(seg);
+}
+
+fn segment_owner(pkg: &str, plugins: &[(String, String, String)]) -> Option<usize> {
+    if pkg.is_empty() {
+        return None;
+    }
+    let mut s = String::new();
+    for (k, seg) in pkg.split('.').enumerate() {
+        norm_into(seg, &mut s);
         if s.len() < 3 || (k == 0 && TLD.contains(&s.as_str())) || GENERIC.contains(&s.as_str()) {
             continue;
         }
@@ -278,7 +331,7 @@ fn owner_of(
             if s == *n
                 || (s.len() >= 5
                     && n.len() >= 5
-                    && (n.starts_with(&s) || s.starts_with(n.as_str())))
+                    && (n.starts_with(s.as_str()) || s.starts_with(n.as_str())))
             {
                 return Some(i);
             }
@@ -327,13 +380,17 @@ fn plugin_memory(h: &HeapData, total_size: i64, players: i64) -> Vec<PluginMem> 
     let mut plugins = owners.plugins.clone();
     let mut acc: Vec<Vec<&crate::proto::HeapEntry>> = vec![Vec::new(); plugins.len()];
     let mut unknown: Vec<(String, Vec<&crate::proto::HeapEntry>)> = Vec::new();
+    let mut unknown_idx: HashMap<String, usize> = HashMap::new();
     for e in &h.entries {
         match owners.owner(&e.r#type) {
             Owner::Builtin => {}
             Owner::Plugin(i) => acc[i].push(e),
-            Owner::Package(g) => match unknown.iter_mut().find(|(k, _)| *k == g) {
-                Some((_, v)) => v.push(e),
-                None => unknown.push((g, vec![e])),
+            Owner::Package(g) => match unknown_idx.get(&g) {
+                Some(k) => unknown[*k].1.push(e),
+                None => {
+                    unknown_idx.insert(g.clone(), unknown.len());
+                    unknown.push((g, vec![e]));
+                }
             },
         }
     }
@@ -356,8 +413,8 @@ fn plugin_memory(h: &HeapData, total_size: i64, players: i64) -> Vec<PluginMem> 
         }
         let size: i64 = list.iter().map(|e| e.size).sum();
         let instances: i64 = list.iter().map(|e| e.instances as i64).sum();
-        let mut top: Vec<HeapRow> = list
-            .iter()
+        let mut top: Vec<HeapRow> = top_entries(&list, 6, true)
+            .into_iter()
             .map(|e| HeapRow {
                 kind: e.r#type.clone(),
                 instances: e.instances as i64,
@@ -365,7 +422,6 @@ fn plugin_memory(h: &HeapData, total_size: i64, players: i64) -> Vec<PluginMem> 
                 pct: pct(e.size),
             })
             .collect();
-        top.sort_by(|a, b| b.size.cmp(&a.size).then(b.instances.cmp(&a.instances)));
         let mut level = 0u8;
         let mut reasons = Vec::new();
         let p = pct(size);
@@ -460,6 +516,32 @@ fn plugin_memory(h: &HeapData, total_size: i64, players: i64) -> Vec<PluginMem> 
     out
 }
 
+/// The `k` largest entries by size (then instances when `by_instances`), ties kept in
+/// file order: the same result as a stable sort followed by truncate.
+fn top_entries<'a>(
+    list: &[&'a crate::proto::HeapEntry],
+    k: usize,
+    by_instances: bool,
+) -> Vec<&'a crate::proto::HeapEntry> {
+    let mut idx: Vec<usize> = (0..list.len()).collect();
+    let cmp = |a: &usize, b: &usize| {
+        let (x, y) = (list[*a], list[*b]);
+        let c = y.size.cmp(&x.size);
+        let c = if by_instances {
+            c.then(y.instances.cmp(&x.instances))
+        } else {
+            c
+        };
+        c.then(a.cmp(b))
+    };
+    if idx.len() > k && k > 0 {
+        idx.select_nth_unstable_by(k - 1, cmp);
+        idx.truncate(k);
+    }
+    idx.sort_unstable_by(cmp);
+    idx.into_iter().map(|i| list[i]).collect()
+}
+
 fn package_group(t: &str) -> String {
     let t = t.trim_end_matches("[]");
     if !t.contains('.') {
@@ -490,9 +572,9 @@ pub fn analyze(h: &HeapData) -> HeapReport {
             0.0
         }
     };
-    let mut top: Vec<HeapRow> = h
-        .entries
-        .iter()
+    let all: Vec<&crate::proto::HeapEntry> = h.entries.iter().collect();
+    let mut top: Vec<HeapRow> = top_entries(&all, 50, false)
+        .into_iter()
         .map(|e| HeapRow {
             kind: e.r#type.clone(),
             instances: e.instances as i64,
@@ -500,10 +582,23 @@ pub fn analyze(h: &HeapData) -> HeapReport {
             pct: pct(e.size),
         })
         .collect();
-    top.sort_by(|a, b| b.size.cmp(&a.size));
     let mut groups: HashMap<String, (i64, i64)> = HashMap::new();
+    let mut group_of: HashMap<&str, String> = HashMap::new();
     for e in &h.entries {
-        let g = groups.entry(package_group(&e.r#type)).or_insert((0, 0));
+        let t = e.r#type.as_str();
+        let bare = t.trim_end_matches("[]");
+        let key = match bare.rsplit_once('.') {
+            Some((pkg, _)) if !bare.starts_with("net.minecraft.") => Some(pkg),
+            _ => None,
+        };
+        let name = match key {
+            Some(pkg) => group_of
+                .entry(pkg)
+                .or_insert_with(|| package_group(t))
+                .clone(),
+            None => package_group(t),
+        };
+        let g = groups.entry(name).or_insert((0, 0));
         g.0 += e.instances as i64;
         g.1 += e.size;
     }
