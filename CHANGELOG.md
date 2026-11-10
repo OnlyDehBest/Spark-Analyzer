@@ -27,6 +27,10 @@
   modulo WebAssembly del sito: al server arriva solo il riepilogo (es. 94 MB → 18 KB),
   quindi anche un dump di vari GB è pronto in pochi secondi. Se il browser non lo
   supporta resta il caricamento compresso.
+- Trasferimento verificato: il riepilogo viene compresso e controllato dal server prima
+  dell'analisi, ogni pezzo porta la sua lunghezza (i pezzi arrivati a metà vengono
+  reinviati) e a fine caricamento si controlla la dimensione totale. Se il riepilogo
+  arriva danneggiato si ripiega da soli sul caricamento del dump.
 - Caricamento più robusto con connessioni lente: i pezzi rifiutati dal proxy per timeout
   (HTTP 408) o persi per strada vengono reinviati, e la dimensione dei pezzi si adatta
   alla velocità della connessione.

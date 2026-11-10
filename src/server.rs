@@ -73,6 +73,7 @@ struct Upload {
 enum UploadData {
     Bytes(Vec<u8>),
     Dump(Box<crate::hprof::HprofStream>),
+    Summary(Vec<u8>),
 }
 
 const MAX_CHUNK: usize = 64 * 1024 * 1024;
@@ -377,8 +378,12 @@ fn handle(mut req: Request, st: &State) {
         }
         (Method::Post, "/api/file") => {
             let name = query_param(&url, "name").unwrap_or_else(|| "profile".into());
-            let result =
-                read_upload(&mut req, &name).and_then(|bytes| store(st, owner, bytes, name, None));
+            let body = if UploadKind::from_query(&url) == UploadKind::Summary {
+                read_summary(&mut req)
+            } else {
+                read_upload(&mut req, &name)
+            };
+            let result = body.and_then(|bytes| store(st, owner, bytes, name, None));
             api_result(result)
         }
         (Method::Post, "/api/heap/link") => {
@@ -390,14 +395,17 @@ fn handle(mut req: Request, st: &State) {
         }
         (Method::Post, "/api/heap/file") => {
             let name = query_param(&url, "name").unwrap_or_else(|| "heap.sparkheap".into());
-            let result =
-                read_upload(&mut req, &name).and_then(|bytes| stage(st, owner, bytes, name, None));
+            let body = if UploadKind::from_query(&url) == UploadKind::Summary {
+                read_summary(&mut req)
+            } else {
+                read_upload(&mut req, &name)
+            };
+            let result = body.and_then(|bytes| stage(st, owner, bytes, name, None));
             staged_result(result)
         }
         (Method::Post, "/api/upload/start") => {
             let name = query_param(&url, "name").unwrap_or_else(|| "profile".into());
-            let dump = query_param(&url, "dump").as_deref() == Some("1");
-            match upload_start(st, owner, name, dump) {
+            match upload_start(st, owner, name, UploadKind::from_query(&url)) {
                 Ok(id) => json_resp(200, serde_json::json!({ "upload": id })),
                 Err(e) => json_resp(400, serde_json::json!({ "error": format!("{e:#}") })),
             }
@@ -406,15 +414,20 @@ fn handle(mut req: Request, st: &State) {
             let id = query_param(&url, "id").unwrap_or_default();
             let num = |k| query_param(&url, k).and_then(|v| v.parse::<u64>().ok());
             let range = num("off").zip(num("end"));
-            match upload_chunk(st, owner, &id, range, &mut req) {
+            let sent = num("len").and_then(|n| usize::try_from(n).ok());
+            match upload_chunk(st, owner, &id, range, sent, &mut req) {
                 Ok(n) => json_resp(200, serde_json::json!({ "received": n })),
+                Err(e) if e.downcast_ref::<PieceIncomplete>().is_some() => {
+                    json_resp(503, serde_json::json!({ "error": format!("{e:#}") }))
+                }
                 Err(e) => json_resp(400, serde_json::json!({ "error": format!("{e:#}") })),
             }
         }
         (Method::Post, "/api/upload/finish") => {
             let id = query_param(&url, "id").unwrap_or_default();
             let heap = query_param(&url, "to").as_deref() == Some("heap");
-            match upload_finish(st, owner, &id) {
+            let size = query_param(&url, "size").and_then(|v| v.parse::<u64>().ok());
+            match upload_finish(st, owner, &id, size) {
                 Ok((bytes, name)) if heap => staged_result(stage(st, owner, bytes, name, None)),
                 Ok((bytes, name)) => api_result(store(st, owner, bytes, name, None)),
                 Err(e) => json_resp(400, serde_json::json!({ "error": format!("{e:#}") })),
@@ -798,7 +811,90 @@ fn report_html(st: &State, id: &str, lang: Lang, windows: &str) -> Option<Result
     Some(Ok(page))
 }
 
-fn upload_start(st: &State, owner: &str, name: String, dump: bool) -> Result<String> {
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum UploadKind {
+    File,
+    Dump,
+    Summary,
+}
+
+impl UploadKind {
+    fn from_query(url: &str) -> UploadKind {
+        if query_param(url, "summary").as_deref() == Some("1") {
+            UploadKind::Summary
+        } else if query_param(url, "dump").as_deref() == Some("1") {
+            UploadKind::Dump
+        } else {
+            UploadKind::File
+        }
+    }
+}
+
+#[derive(Debug)]
+struct PieceIncomplete;
+
+impl std::fmt::Display for PieceIncomplete {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(i18n::t(
+            "pezzo arrivato incompleto",
+            "piece arrived incomplete",
+        ))
+    }
+}
+
+impl std::error::Error for PieceIncomplete {}
+
+fn decode_summary(bytes: Vec<u8>) -> Result<Vec<u8>> {
+    let received = bytes.len();
+    let plain = if bytes.starts_with(&[0x1f, 0x8b]) {
+        let mut out = Vec::with_capacity(received.saturating_mul(4));
+        flate2::read::MultiGzDecoder::new(bytes.as_slice())
+            .take(MAX_UPLOAD as u64 + 1)
+            .read_to_end(&mut out)
+            .map_err(|e| summary_broken(received, &e))?;
+        out
+    } else {
+        bytes
+    };
+    if plain.is_empty() || plain.len() > MAX_UPLOAD {
+        return Err(summary_broken(received, &"empty or too large"));
+    }
+    <crate::proto::HeapData as prost::Message>::decode(plain.as_slice())
+        .map_err(|e| summary_broken(received, &e))?;
+    Ok(plain)
+}
+
+fn summary_broken(received: usize, cause: &dyn std::fmt::Display) -> anyhow::Error {
+    anyhow!(
+        "{}",
+        tf!(
+            "riepilogo dell'heap dump incompleto o danneggiato ({received} byte ricevuti): {cause}",
+            "heap dump summary incomplete or damaged ({received} bytes received): {cause}"
+        )
+    )
+}
+
+fn read_summary(req: &mut Request) -> Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    req.as_reader()
+        .take(MAX_UPLOAD as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| {
+            anyhow!(
+                "{}",
+                tf!("upload interrotto: {e}", "upload interrupted: {e}")
+            )
+        })?;
+    if let Some(expected) =
+        header_value(req, "Content-Length").and_then(|v| v.parse::<usize>().ok())
+        && expected != bytes.len()
+    {
+        return Err(summary_broken(bytes.len(), &PieceIncomplete));
+    }
+    decode_summary(bytes)
+}
+
+fn upload_start(st: &State, owner: &str, name: String, kind: UploadKind) -> Result<String> {
     let mut ups = st.uploads.lock().unwrap_or_else(|e| e.into_inner());
     ups.retain(|_, u| {
         u.up.try_lock()
@@ -814,10 +910,10 @@ fn upload_start(st: &State, owner: &str, name: String, dump: bool) -> Result<Str
         );
     }
     let id = random_hex(12);
-    let data = if dump {
-        UploadData::Dump(Box::default())
-    } else {
-        UploadData::Bytes(Vec::new())
+    let data = match kind {
+        UploadKind::Dump => UploadData::Dump(Box::default()),
+        UploadKind::Summary => UploadData::Summary(Vec::new()),
+        UploadKind::File => UploadData::Bytes(Vec::new()),
     };
     ups.insert(
         id.clone(),
@@ -861,6 +957,7 @@ fn upload_chunk(
     owner: &str,
     id: &str,
     range: Option<(u64, u64)>,
+    sent: Option<usize>,
     req: &mut Request,
 ) -> Result<u64> {
     let mut chunk = Vec::new();
@@ -876,6 +973,9 @@ fn upload_chunk(
     if chunk.len() > MAX_CHUNK {
         anyhow::bail!("chunk too large");
     }
+    if sent.is_some_and(|n| n != chunk.len()) {
+        return Err(PieceIncomplete.into());
+    }
     let slot = upload_slot(st, owner, id)?;
     let mut up = slot.up.lock().unwrap_or_else(|e| e.into_inner());
     up.touched = std::time::Instant::now();
@@ -883,7 +983,21 @@ fn upload_chunk(
     if end < off {
         anyhow::bail!("bad range");
     }
-    let result = if end <= up.next {
+    let result = accept_piece(&mut up, off, end, chunk);
+    let received = up.next;
+    drop(up);
+    if let Err(e) = result {
+        st.uploads
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(id);
+        return Err(e);
+    }
+    Ok(received)
+}
+
+fn accept_piece(up: &mut Upload, off: u64, end: u64, chunk: Vec<u8>) -> Result<()> {
+    if end <= up.next {
         // piece sent again after a lost reply: already counted
         Ok(())
     } else if off > up.next {
@@ -900,7 +1014,7 @@ fn upload_chunk(
     } else if off < up.next {
         Err(anyhow!("overlapping piece"))
     } else {
-        let mut r = append(&mut up, &chunk);
+        let mut r = append(up, &chunk);
         up.next = end;
         while r.is_ok() {
             // copies of pieces that were also sent again and already added
@@ -917,26 +1031,24 @@ fn upload_chunk(
                 break;
             };
             up.early_bytes -= piece.len();
-            r = append(&mut up, &piece);
+            r = append(up, &piece);
             up.next = end;
         }
         r
-    };
-    let received = up.next;
-    drop(up);
-    if let Err(e) = result {
-        st.uploads
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .remove(id);
-        return Err(e);
     }
-    Ok(received)
 }
 
 fn append(up: &mut Upload, chunk: &[u8]) -> Result<()> {
     match &mut up.data {
         UploadData::Dump(stream) => stream.feed(chunk),
+        UploadData::Summary(buf) => {
+            buf.extend_from_slice(chunk);
+            if buf.len() > MAX_UPLOAD {
+                Err(summary_broken(buf.len(), &"too large"))
+            } else {
+                Ok(())
+            }
+        }
         UploadData::Bytes(buf) => {
             buf.extend_from_slice(chunk);
             let gz = buf.len() > 2 && buf[0] == 0x1f && buf[1] == 0x8b;
@@ -962,7 +1074,12 @@ fn append(up: &mut Upload, chunk: &[u8]) -> Result<()> {
     }
 }
 
-fn upload_finish(st: &State, owner: &str, id: &str) -> Result<(Vec<u8>, String)> {
+fn upload_finish(
+    st: &State,
+    owner: &str,
+    id: &str,
+    size: Option<u64>,
+) -> Result<(Vec<u8>, String)> {
     let slot = {
         let mut ups = st.uploads.lock().unwrap_or_else(|e| e.into_inner());
         match ups.get(id) {
@@ -982,7 +1099,7 @@ fn upload_finish(st: &State, owner: &str, id: &str) -> Result<(Vec<u8>, String)>
             touched: std::time::Instant::now(),
         },
     );
-    if !up.early.is_empty() {
+    if !up.early.is_empty() || size.is_some_and(|n| n != up.next) {
         anyhow::bail!(
             "{}",
             i18n::t(
@@ -999,6 +1116,7 @@ fn upload_finish(st: &State, owner: &str, id: &str) -> Result<(Vec<u8>, String)>
             b
         }
         UploadData::Dump(stream) => prost::Message::encode_to_vec(&stream.finish()?),
+        UploadData::Summary(b) => decode_summary(b)?,
     };
     Ok((bytes, up.name))
 }
@@ -1080,6 +1198,80 @@ fn with_actions(html: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    fn sample_summary() -> Vec<u8> {
+        let heap = crate::proto::HeapData {
+            entries: vec![crate::proto::HeapEntry {
+                r#type: "java.lang.String".into(),
+                instances: 3,
+                size: 72,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        prost::Message::encode_to_vec(&heap)
+    }
+
+    #[test]
+    fn summary_from_the_browser_is_accepted_plain_or_gzipped() {
+        let plain = sample_summary();
+        assert_eq!(super::decode_summary(plain.clone()).unwrap(), plain);
+        assert_eq!(super::decode_summary(super::gzip(&plain)).unwrap(), plain);
+    }
+
+    #[test]
+    fn truncated_summary_is_rejected_with_a_clear_error() {
+        let plain = sample_summary();
+        let err = super::decode_summary(plain[..plain.len() - 3].to_vec()).unwrap_err();
+        assert!(
+            format!("{err:#}").contains("incomplete") || format!("{err:#}").contains("incompleto")
+        );
+        let gz = super::gzip(&plain);
+        assert!(super::decode_summary(gz[..gz.len() - 8].to_vec()).is_err());
+        assert!(super::decode_summary(Vec::new()).is_err());
+    }
+
+    fn summary_upload() -> super::Upload {
+        super::Upload {
+            name: "dump.hprof".into(),
+            data: super::UploadData::Summary(Vec::new()),
+            next: 0,
+            early: std::collections::BTreeMap::new(),
+            early_bytes: 0,
+            touched: std::time::Instant::now(),
+        }
+    }
+
+    #[test]
+    fn pieces_in_any_order_and_repeated_rebuild_the_original() {
+        let original: Vec<u8> = (0..10_000u32).map(|i| (i * 7 % 251) as u8).collect();
+        let ranges: Vec<(usize, usize)> = (0..original.len())
+            .step_by(700)
+            .map(|a| (a, (a + 700).min(original.len())))
+            .collect();
+        let order = [
+            3usize, 1, 0, 1, 5, 2, 14, 4, 3, 6, 9, 8, 7, 13, 12, 11, 10, 14, 0,
+        ];
+        let mut up = summary_upload();
+        for &i in &order {
+            let (a, b) = ranges[i];
+            super::accept_piece(&mut up, a as u64, b as u64, original[a..b].to_vec()).unwrap();
+        }
+        assert_eq!(up.next, original.len() as u64);
+        assert!(up.early.is_empty());
+        assert_eq!(up.early_bytes, 0);
+        let super::UploadData::Summary(got) = up.data else {
+            panic!("summary expected");
+        };
+        assert_eq!(got, original);
+    }
+
+    #[test]
+    fn overlapping_piece_is_refused() {
+        let mut up = summary_upload();
+        super::accept_piece(&mut up, 0, 10, vec![1; 10]).unwrap();
+        assert!(super::accept_piece(&mut up, 5, 15, vec![2; 10]).is_err());
+    }
+
     #[test]
     fn loopback_hosts() {
         for h in [
