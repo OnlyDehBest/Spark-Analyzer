@@ -591,7 +591,7 @@ impl HprofStream {
                     HprofParser::new(),
                 )))
             } else {
-                Inner::Plain(Box::new(HprofParser::new()))
+                Inner::Plain(Box::default())
             });
             let first = std::mem::take(&mut self.pending);
             return self.feed(&first);
