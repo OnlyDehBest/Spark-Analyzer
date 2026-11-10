@@ -424,7 +424,7 @@ pub fn index_main(recent_panel: &str) -> String {
 <section id="drop" class="hero"><span class="dicon">{upload}</span><h2>{hero_t}</h2>
 <form id="lform" class="lrow"><input id="link" autocomplete="off" placeholder="{ph}"><button class="btn" type="submit">{bolt}{go}</button></form>
 <div class="or">{or}</div>
-<label class="btn sec pick"><input id="file" type="file" accept=".sparkprofile,.sparkheap,.sparkhealth,.hprof,.gz" hidden>{upload}<span>{pick}</span></label>
+<label class="btn sec pick"><input id="file" type="file" accept=".sparkprofile,.sparkheap,.sparkhealth,.hprof,.gz" hidden>{upload}<span>{pick}</span><span class="beta" title="{beta_t}">BETA</span></label>
 <p class="hint">{note1} <code>/spark profiler stop</code> · {saved} <code>--save-to-file</code> {in_dir} <code>plugins/spark/</code></p></section>
 </div>
 <div id="mode-cmp" hidden>{compare}</div>
@@ -441,6 +441,10 @@ pub fn index_main(recent_panel: &str) -> String {
         chip2 = t("Lag spike", "Lag spikes"),
         chip3 = t("Memory leak", "Memory leaks"),
         chip4 = t("Ottimizzazione configurazioni", "Configuration tuning"),
+        beta_t = t(
+            "Gli heap dump .hprof sono in beta",
+            "Heap dumps (.hprof) are in beta"
+        ),
         hero_t = t(
             "Incolla il link del profilo spark o carica il file",
             "Paste a spark profile link or upload the file",
@@ -480,7 +484,7 @@ fn messages_js() -> String {
         "downloadingKey": t("Scarico il profilo {k} da spark…", "Downloading profile {k} from spark…"),
         "analyzing": t("Analizzo il profilo…", "Analyzing the profile…"),
         "analyzingFile": t("Analizzo {f} ({s} MB)…", "Analyzing {f} ({s} MB)…"),
-        "readingDump": t("Leggo l'heap dump {f}…", "Reading heap dump {f}…"),
+        "readingDump": t("Leggo l'heap dump {f} (beta)…", "Reading heap dump {f} (beta)…"),
         "dumpPacked": t("Questo heap dump è compresso in un formato che il browser non può leggere a pezzi (xz, lzma, zip…). Rifallo con /spark heapdump senza --compress (oppure con --compress gzip), o decomprimilo prima di caricarlo.", "This heap dump is compressed in a format the browser cannot read in pieces (xz, lzma, zip…). Take it again with /spark heapdump without --compress (or with --compress gzip), or decompress it before uploading."),
         "tooBig": t("File troppo grande ({s} GB) per essere letto nel browser e non è un heap dump .hprof.", "File too large ({s} GB) to be read in the browser and it is not an .hprof heap dump."),
         "lost": t("Connessione a Spark Resource Analyzer persa: ", "Lost connection to Spark Resource Analyzer: "),
@@ -585,7 +589,8 @@ fn social_meta() -> String {
 }
 
 /// One-line "what's new" notice shown above the home title (always in English).
-pub const SITE_NEWS: &str = "Open full heap dumps (.hprof), even several GB, right in your browser";
+pub const SITE_NEWS: &str =
+    "Beta: open full heap dumps (.hprof), even several GB, right in your browser";
 pub const SITE_NEWS_URL: &str =
     "https://github.com/OnlyDehBest/Spark-Analyzer/blob/main/CHANGELOG.md";
 

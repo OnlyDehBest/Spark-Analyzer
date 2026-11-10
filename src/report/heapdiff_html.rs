@@ -138,7 +138,12 @@ pub fn render(c: &HeapComparison) -> String {
         r#"<div class="top"><div><h1>{}</h1><p class="sub">{}</p></div><div class="actions">{}</div></div>"#,
         esc(title),
         esc(&format!(
-            "heap summary · {} · {} {} → {} {}{uptime}",
+            "{} · {} · {} {} → {} {}{uptime}",
+            if crate::hprof::is_hprof_name(&c.after.name) {
+                "heap dump (.hprof)"
+            } else {
+                "heap summary"
+            },
             if c.after.platform.is_empty() {
                 "Server"
             } else {
@@ -151,6 +156,9 @@ pub fn render(c: &HeapComparison) -> String {
         )),
         copy_link_button()
     );
+    if crate::hprof::is_hprof_name(&c.before.name) || crate::hprof::is_hprof_name(&c.after.name) {
+        b.push_str(&crate::report::html::hprof_beta_banner());
+    }
 
     for w in &c.warnings {
         let _ = write!(b, r#"<div class="warnbox">{}</div>"#, esc(w));

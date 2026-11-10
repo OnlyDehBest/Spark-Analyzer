@@ -28,6 +28,17 @@ fn sev_class(s: Severity) -> &'static str {
     }
 }
 
+/// Highlighted notice shown on reports made from a full heap dump (.hprof).
+pub(crate) fn hprof_beta_banner() -> String {
+    format!(
+        r#"<div class="betabar"><span class="beta">BETA</span><span>{}</span></div>"#,
+        esc(crate::i18n::t(
+            "Analisi degli heap dump (.hprof) in beta: la memoria per classe è una stima (compressed oops) e i plugin vengono riconosciuti dal package, perché l'heap dump non contiene l'elenco dei plugin. Per risultati più precisi usa /spark heapsummary.",
+            "Heap dump (.hprof) analysis is in beta: memory per class is an estimate (compressed oops) and plugins are recognised by package, because a heap dump does not include the plugin list. For more precise results use /spark heapsummary.",
+        ))
+    )
+}
+
 pub(crate) fn script_json(json: &str) -> String {
     let mut out = String::with_capacity(json.len() + 16);
     for c in json.chars() {
@@ -949,16 +960,25 @@ pub fn render(r: &Report) -> String {
         b,
         r#"<div class="top"><div>{}<p class="sub">{}</p></div><div class="actions">{}</div></div>"#,
         page_heading(m),
-        esc(&format!(
-            "{} · {} · {} · spark {} · inizio {} · {} plugin/mod{}",
-            m.kind,
-            m.mode,
-            m.engine,
-            m.spark_version,
-            fmt_utc(m.start_time),
-            m.plugin_count,
-            if m.comment.is_empty() { String::new() } else { format!(" · «{}»", m.comment) }
-        )),
+        esc(&if m.kind.contains("heap dump") {
+            format!(
+                "{} · {} {}",
+                m.kind,
+                crate::i18n::t("creato", "taken"),
+                fmt_utc(m.start_time)
+            )
+        } else {
+            format!(
+                "{} · {} · {} · spark {} · inizio {} · {} plugin/mod{}",
+                m.kind,
+                m.mode,
+                m.engine,
+                m.spark_version,
+                fmt_utc(m.start_time),
+                m.plugin_count,
+                if m.comment.is_empty() { String::new() } else { format!(" · «{}»", m.comment) }
+            )
+        }),
         format!(
             "{}{}",
             copy_link_button(),
@@ -968,6 +988,9 @@ pub fn render(r: &Report) -> String {
                 .unwrap_or_default()
         )
     );
+    if m.kind.contains("heap dump") {
+        b.push_str(&hprof_beta_banner());
+    }
     if a.unit == "ms" && a.main.busy > 0.0 {
         let (factor, unit) = match a.main.busy_per_tick {
             Some(bt) => (bt / 100.0, "ms/tick"),
@@ -1766,6 +1789,7 @@ code{border-radius:6px;background:var(--card3);border-color:transparent}
 input#fsearch,input#tsearch,.tfilter{border-radius:12px;padding:11px 14px;background:var(--card);font-size:14px}
 .callout{border-radius:12px}
 .ctip{border-radius:12px;background:var(--card2)}
+.pick .beta{margin-left:2px}.betabar{display:flex;align-items:flex-start;gap:10px;margin:0 0 16px;padding:11px 14px;border:1px solid rgba(234,179,8,.35);border-left:3px solid var(--med);border-radius:10px;background:rgba(234,179,8,.08);color:var(--fg);font-size:13px;line-height:1.5}.beta{flex:none;display:inline-block;font-weight:700;font-size:10.5px;letter-spacing:.06em;line-height:1;padding:4px 7px;border-radius:999px;color:#1a1a1a;background:var(--med);vertical-align:middle;font-family:Inter,system-ui,sans-serif}
 .chart{background:var(--card);border:1px solid var(--line);border-radius:12px}.chart .grid{stroke:var(--line2);stroke-dasharray:none}.chart .grid.budget{stroke:var(--crit);stroke-dasharray:5 5;opacity:.55}.chart .axis{font-size:10.5px;fill:var(--muted)}.chart .spikebg{fill:var(--crit);opacity:.07}.chart .area{fill:url(#gA);stroke:none}.chart .ln{fill:none;stroke-linejoin:round;stroke-linecap:round}.chart .ln.l1{stroke:var(--high);stroke-width:2.2}.chart .ln.l2{stroke:var(--acc);stroke-width:1.8}.chart .ln.l3{stroke:var(--ok);stroke-width:1.4;stroke-dasharray:4 4;opacity:.75}.chart circle.dot{fill:var(--high);stroke:var(--card);stroke-width:2;opacity:0;transition:opacity .12s}.chart circle.dot.sp{fill:var(--crit);opacity:1}.chart circle.dot.on{opacity:1}.chart circle.dot:not(.sp):not(.on){opacity:0!important}.chart .guide{stroke:var(--muted);stroke-dasharray:none;opacity:.5}
 .chartwrap + .legend{font-family:Inter,system-ui,sans-serif;font-size:12px}.cstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:0 0 10px}.cstats .cs{background:var(--card);padding:10px 14px;display:flex;flex-direction:column;gap:3px}.cstats .cs span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}.cstats .cs b{font:600 18px/1.2 "JetBrains Mono",ui-monospace,monospace;color:var(--hd);font-variant-numeric:tabular-nums}.cstats .cs.bad b{color:var(--crit)}
 .plist span{border-radius:8px;background:var(--card2)}
