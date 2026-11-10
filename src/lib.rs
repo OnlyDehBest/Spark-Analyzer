@@ -13,6 +13,7 @@ pub mod diff;
 pub mod flame;
 pub mod heap;
 pub mod heapdiff;
+pub mod hprof;
 pub mod loader;
 pub mod model;
 pub mod patterns;

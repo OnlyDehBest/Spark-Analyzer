@@ -120,6 +120,49 @@ pub fn compare_heaps(
     compare_heaps_json(a, name_a, b, name_b, &home, &lang).map_err(|e| JsValue::from_str(&e))
 }
 
+/// Streaming heap dump (.hprof) reader: feed the file in chunks, then `finish`
+/// returns the class histogram encoded as a spark heap summary.
+#[wasm_bindgen]
+pub struct HprofReader {
+    inner: Option<sparkscope::hprof::HprofStream>,
+}
+
+impl Default for HprofReader {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[wasm_bindgen]
+impl HprofReader {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> HprofReader {
+        HprofReader {
+            inner: Some(sparkscope::hprof::HprofStream::new()),
+        }
+    }
+
+    pub fn feed(&mut self, chunk: &[u8]) -> Result<(), JsValue> {
+        match self.inner.as_mut() {
+            Some(s) => s
+                .feed(chunk)
+                .map_err(|e| JsValue::from_str(&format!("{e:#}"))),
+            None => Err(JsValue::from_str("finished")),
+        }
+    }
+
+    pub fn finish(&mut self) -> Result<Vec<u8>, JsValue> {
+        let s = self
+            .inner
+            .take()
+            .ok_or_else(|| JsValue::from_str("finished"))?;
+        let h = s
+            .finish()
+            .map_err(|e| JsValue::from_str(&format!("{e:#}")))?;
+        Ok(prost::Message::encode_to_vec(&h))
+    }
+}
+
 #[wasm_bindgen]
 pub fn version() -> String {
     env!("CARGO_PKG_VERSION").to_string()

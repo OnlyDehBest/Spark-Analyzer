@@ -43,6 +43,16 @@ pub struct Loaded {
 #[cfg(feature = "cli")]
 pub fn load(input: &str, bytebin: &str) -> Result<Loaded> {
     let path = Path::new(input);
+    if path.exists() && crate::hprof::is_hprof_name(input) {
+        let mut f = std::fs::File::open(path)
+            .with_context(|| tf!("impossibile leggere {input}", "cannot read {input}"))?;
+        let heap = crate::hprof::parse_reader(&mut f, |_| {})?;
+        return Ok(Loaded {
+            payload: Payload::Heap(Box::new(heap)),
+            origin: input.to_string(),
+            viewer_url: None,
+        });
+    }
     if path.exists() {
         let bytes = std::fs::read(path)
             .with_context(|| tf!("impossibile leggere {input}", "cannot read {input}"))?;
@@ -81,6 +91,18 @@ pub fn load_bytes(bytes: &[u8], name: &str) -> Result<Loaded> {
         Hint::Health
     } else {
         Hint::Unknown
+    };
+    if crate::hprof::is_hprof(bytes) || (is_gzip(bytes) && crate::hprof::is_hprof_name(name)) {
+        return Ok(Loaded {
+            payload: Payload::Heap(Box::new(crate::hprof::parse_bytes(bytes)?)),
+            origin: name.to_string(),
+            viewer_url: None,
+        });
+    }
+    let hint = if crate::hprof::is_hprof_name(name) {
+        Hint::Heap
+    } else {
+        hint
     };
     let payload = decode(bytes, hint)?;
     Ok(Loaded {

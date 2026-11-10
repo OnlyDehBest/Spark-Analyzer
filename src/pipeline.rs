@@ -17,7 +17,11 @@ pub fn build_with(
     thread: Option<&str>,
     windows: Option<&[usize]>,
 ) -> Result<Built> {
-    let kind = loaded.payload.kind();
+    let kind = if crate::hprof::is_hprof_name(&loaded.origin) {
+        "heap dump (.hprof)"
+    } else {
+        loaded.payload.kind()
+    };
     match loaded.payload {
         Payload::Sampler(s) => {
             let mut p = Profile::from_proto(*s);

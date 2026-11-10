@@ -317,7 +317,7 @@ fn handle(mut req: Request, st: &State) {
         (Method::Post, "/api/file") => {
             let name = query_param(&url, "name").unwrap_or_else(|| "profile".into());
             let result =
-                read_upload(&mut req).and_then(|bytes| store(st, owner, bytes, name, None));
+                read_upload(&mut req, &name).and_then(|bytes| store(st, owner, bytes, name, None));
             api_result(result)
         }
         (Method::Post, "/api/heap/link") => {
@@ -330,7 +330,7 @@ fn handle(mut req: Request, st: &State) {
         (Method::Post, "/api/heap/file") => {
             let name = query_param(&url, "name").unwrap_or_else(|| "heap.sparkheap".into());
             let result =
-                read_upload(&mut req).and_then(|bytes| stage(st, owner, bytes, name, None));
+                read_upload(&mut req, &name).and_then(|bytes| stage(st, owner, bytes, name, None));
             staged_result(result)
         }
         (Method::Post, "/api/heap/compare") => {
@@ -375,11 +375,35 @@ fn handle(mut req: Request, st: &State) {
     let _ = req.respond(resp);
 }
 
-fn read_upload(req: &mut Request) -> Result<Vec<u8>> {
-    let mut bytes = Vec::new();
+fn read_upload(req: &mut Request, name: &str) -> Result<Vec<u8>> {
+    let mut head = vec![0u8; 64 * 1024];
+    let mut got = 0;
+    {
+        let r = req.as_reader();
+        while got < head.len() {
+            match r.read(&mut head[got..]) {
+                Ok(0) => break,
+                Ok(n) => got += n,
+                Err(e) => {
+                    return Err(anyhow!(
+                        "{}",
+                        tf!("upload interrotto: {e}", "upload interrupted: {e}")
+                    ));
+                }
+            }
+        }
+    }
+    head.truncate(got);
+    let gz = head.len() > 2 && head[0] == 0x1f && head[1] == 0x8b;
+    if crate::hprof::is_hprof(&head) || (gz && crate::hprof::is_hprof_name(name)) {
+        let mut all = std::io::Cursor::new(head).chain(req.as_reader());
+        let h = crate::hprof::parse_reader(&mut all, |_| {})?;
+        return Ok(prost::Message::encode_to_vec(&h));
+    }
+    let mut bytes = head;
     let read = req
         .as_reader()
-        .take(MAX_UPLOAD as u64 + 1)
+        .take(MAX_UPLOAD as u64 + 1 - bytes.len() as u64)
         .read_to_end(&mut bytes);
     match read {
         Err(e) => Err(anyhow!(

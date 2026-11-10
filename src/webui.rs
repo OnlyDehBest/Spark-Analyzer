@@ -359,7 +359,7 @@ fn compare_slot(index: usize) -> String {
         )
     };
     format!(
-        r#"<div class="slot" data-slot="{index}"><h3>{title} <span class="tag">{n}</span></h3><p class="h">{hint}</p><div class="schip" hidden><span class="sok">{check}</span><div class="stxt"><b class="sname"></b><span class="sdet"></span></div><button type="button" class="ghost sclear" title="{remove}">{x}</button></div><div class="sinput"><form class="lrow slinkform"><input class="slink" autocomplete="off" placeholder="{ph}"><button class="btn sec" type="submit">{link}{load}</button></form><label class="drop sdrop"><input class="sfile" type="file" accept=".sparkheap" hidden><span class="dicon">{upload}</span><b>{drop}</b><span>{click}</span></label></div></div>"#,
+        r#"<div class="slot" data-slot="{index}"><h3>{title} <span class="tag">{n}</span></h3><p class="h">{hint}</p><div class="schip" hidden><span class="sok">{check}</span><div class="stxt"><b class="sname"></b><span class="sdet"></span></div><button type="button" class="ghost sclear" title="{remove}">{x}</button></div><div class="sinput"><form class="lrow slinkform"><input class="slink" autocomplete="off" placeholder="{ph}"><button class="btn sec" type="submit">{link}{load}</button></form><label class="drop sdrop"><input class="sfile" type="file" accept=".sparkheap,.hprof,.gz" hidden><span class="dicon">{upload}</span><b>{drop}</b><span>{click}</span></label></div></div>"#,
         n = index + 1,
         check = icon("check"),
         remove = t("Rimuovi", "Remove"),
@@ -424,7 +424,7 @@ pub fn index_main(recent_panel: &str) -> String {
 <section id="drop" class="hero"><span class="dicon">{upload}</span><h2>{hero_t}</h2>
 <form id="lform" class="lrow"><input id="link" autocomplete="off" placeholder="{ph}"><button class="btn" type="submit">{bolt}{go}</button></form>
 <div class="or">{or}</div>
-<label class="btn sec pick"><input id="file" type="file" accept=".sparkprofile,.sparkheap,.sparkhealth" hidden>{upload}<span>{pick}</span></label>
+<label class="btn sec pick"><input id="file" type="file" accept=".sparkprofile,.sparkheap,.sparkhealth,.hprof,.gz" hidden>{upload}<span>{pick}</span></label>
 <p class="hint">{note1} <code>/spark profiler stop</code> · {saved} <code>--save-to-file</code> {in_dir} <code>plugins/spark/</code></p></section>
 </div>
 <div id="mode-cmp" hidden>{compare}</div>
@@ -447,8 +447,8 @@ pub fn index_main(recent_panel: &str) -> String {
         ),
         or = t("oppure", "or"),
         pick = t(
-            "Scegli un file .sparkprofile / .sparkheap",
-            "Choose a .sparkprofile / .sparkheap file",
+            "Scegli un file .sparkprofile / .sparkheap / .hprof",
+            "Choose a .sparkprofile / .sparkheap / .hprof file",
         ),
         ph = t(
             "https://spark.lucko.me/AbCd1234 oppure solo il codice",
@@ -480,6 +480,7 @@ fn messages_js() -> String {
         "downloadingKey": t("Scarico il profilo {k} da spark…", "Downloading profile {k} from spark…"),
         "analyzing": t("Analizzo il profilo…", "Analyzing the profile…"),
         "analyzingFile": t("Analizzo {f} ({s} MB)…", "Analyzing {f} ({s} MB)…"),
+        "readingDump": t("Leggo l'heap dump {f}…", "Reading heap dump {f}…"),
         "lost": t("Connessione a Spark Resource Analyzer persa: ", "Lost connection to Spark Resource Analyzer: "),
         "wasm": t("Impossibile caricare il modulo di analisi: ", "Could not load the analysis module: "),
         "notFound": t("Profilo non trovato: il link potrebbe essere scaduto (spark conserva i profili per un periodo limitato).", "Profile not found: the link may have expired (spark keeps profiles for a limited time)."),
@@ -582,7 +583,7 @@ fn social_meta() -> String {
 }
 
 /// One-line "what's new" notice shown above the home title (always in English).
-pub const SITE_NEWS: &str = "Faster analysis, a page that stays responsive while it works, and private history on self-hosted servers";
+pub const SITE_NEWS: &str = "Open full heap dumps (.hprof), even several GB, right in your browser";
 pub const SITE_NEWS_URL: &str =
     "https://github.com/OnlyDehBest/Spark-Analyzer/blob/main/CHANGELOG.md";
 
@@ -720,14 +721,27 @@ run:function(a,b){start(M.cmpRunning);return fetch('/api/heap/compare?a='+encode
 })();
 "#;
 
-const WORKER_JS: &str = r#"import init, { analyze, describe_heap, compare_heaps } from './pkg/sparkscope_web.js__SA_V__';
-const FN = { analyze, describe_heap, compare_heaps };
+const WORKER_JS: &str = r#"import init, { analyze, describe_heap, compare_heaps, HprofReader } from './pkg/sparkscope_web.js__SA_V__';
 const ready = init({ module_or_path: './pkg/sparkscope_web_bg.wasm__SA_V__' });
+async function hprof(id, file) {
+  const r = new HprofReader();
+  const CH = 16 << 20;
+  let next = file.slice(0, CH).arrayBuffer();
+  for (let off = 0; off < file.size; off += CH) {
+    const buf = await next;
+    if (off + CH < file.size) next = file.slice(off + CH, off + 2 * CH).arrayBuffer();
+    r.feed(new Uint8Array(buf));
+    self.postMessage({ id, progress: Math.min(off + CH, file.size) });
+  }
+  return r.finish();
+}
+const FN = { analyze, describe_heap, compare_heaps };
 self.onmessage = async (e) => {
   const { id, fn, args } = e.data;
   try {
     await ready;
-    self.postMessage({ id, ok: FN[fn](...args) });
+    const ok = fn === 'hprof' ? await hprof(id, args[0]) : FN[fn](...args);
+    self.postMessage({ id, ok });
   } catch (x) {
     self.postMessage({ id, err: String((x && x.message) || x) });
   }
@@ -753,7 +767,7 @@ fn version_suffix(version: &str) -> String {
 }
 
 const STATIC_JS: &str = r#"
-import init, { analyze, describe_heap, compare_heaps } from './pkg/sparkscope_web.js__SA_V__';
+import init, { analyze, describe_heap, compare_heaps, HprofReader } from './pkg/sparkscope_web.js__SA_V__';
 var OTHER=document.getElementById('langbtn').dataset.href;
 var REDIR=false;try{var pref=localStorage.getItem('sa-lang');if(pref&&pref!==M.lang){REDIR=true;location.replace(OTHER+location.search+location.hash)}}catch(e){}
 if(REDIR)await new Promise(function(){});
@@ -762,10 +776,13 @@ var busy=document.getElementById('busy'),bt=document.getElementById('busytext'),
 function start(t){err.hidden=true;bt.textContent=t;busy.hidden=false;document.documentElement.classList.add('sa-busy');try{busy.scrollIntoView({block:'nearest',behavior:'smooth'})}catch(e){}}
 function fail(m){busy.hidden=true;err.textContent=m;err.hidden=false;document.documentElement.classList.remove('sa-busy');try{err.scrollIntoView({block:'nearest',behavior:'smooth'})}catch(e){}}
 var readyP=null;function ready(){return readyP||(readyP=init({module_or_path:'./pkg/sparkscope_web_bg.wasm__SA_V__'}).catch(function(e){readyP=null;fail(M.wasm+e);throw e}))}
+function hprofLocal(file,prog){var r=new HprofReader(),CH=16<<20,off=0;function step(){if(off>=file.size)return r.finish();return file.slice(off,off+CH).arrayBuffer().then(function(b){r.feed(new Uint8Array(b));off+=CH;if(prog)prog(Math.min(off,file.size));return step()})}return step()}
 var FN={analyze:analyze,describe_heap:describe_heap,compare_heaps:compare_heaps};
-function local(fn,args){return ready().then(function(){return FN[fn].apply(null,args)})}
-var W=null,WN=0,WQ={};try{W=new Worker('./sa-worker.js__SA_V__',{type:'module'});W.onmessage=function(e){var q=WQ[e.data.id];if(!q)return;delete WQ[e.data.id];if('ok' in e.data)q.ok(e.data.ok);else q.ko(new Error(e.data.err))};W.onerror=function(){W=null;Object.keys(WQ).forEach(function(k){var q=WQ[k];delete WQ[k];local(q.fn,q.args).then(q.ok,q.ko)})}}catch(e){W=null}
-function call(fn,args){if(!W)return local(fn,args);return new Promise(function(ok,ko){var id=++WN;WQ[id]={ok:ok,ko:ko,fn:fn,args:args};W.postMessage({id:id,fn:fn,args:args})})}
+function local(fn,args,prog){return ready().then(function(){return fn==='hprof'?hprofLocal(args[0],prog):FN[fn].apply(null,args)})}
+var W=null,WN=0,WQ={};try{W=new Worker('./sa-worker.js__SA_V__',{type:'module'});W.onmessage=function(e){var q=WQ[e.data.id];if(!q)return;if('progress' in e.data){if(q.prog)q.prog(e.data.progress);return}delete WQ[e.data.id];if('ok' in e.data)q.ok(e.data.ok);else q.ko(new Error(e.data.err))};W.onerror=function(){W=null;Object.keys(WQ).forEach(function(k){var q=WQ[k];delete WQ[k];local(q.fn,q.args,q.prog).then(q.ok,q.ko)})}}catch(e){W=null}
+function call(fn,args,prog){if(!W)return local(fn,args,prog);return new Promise(function(ok,ko){var id=++WN;WQ[id]={ok:ok,ko:ko,fn:fn,args:args,prog:prog};W.postMessage({id:id,fn:fn,args:args})})}
+function isDump(f){if(/\.hprof(\.gz)?$/i.test(f.name))return Promise.resolve(true);return f.slice(0,12).arrayBuffer().then(function(b){return String.fromCharCode.apply(null,new Uint8Array(b))==='JAVA PROFILE'})}
+function readDump(f){progShow();progSet(0,f.size);return call('hprof',[f],function(n){progSet(n,f.size)}).then(function(b){progHide();return b},function(e){progHide();throw e})}
 function extractKey(v){v=v.trim();var m=v.match(/^(?:https?:\/\/)?[^\/\s]+\/([A-Za-z0-9]+)/);if(m)return m[1];return /^[A-Za-z0-9]{4,64}$/.test(v)?v:null}
 var RKEY='sparkscope-recent';
 function loadRecent(){try{return JSON.parse(localStorage.getItem(RKEY)||'[]')}catch(e){return []}}
@@ -790,7 +807,7 @@ function progHide(){PR.ring.hidden=true;PR.meta.hidden=true;PR.spin.hidden=false
 function download(key){return new Promise(function(ok,ko){var x=new XMLHttpRequest();x.open('GET','https://spark-usercontent.lucko.me/'+encodeURIComponent(key));x.responseType='arraybuffer';progShow();x.onprogress=function(e){progSet(e.loaded,e.lengthComputable?e.total:0)};x.onload=function(){if(x.status===404)return ko(new Error(M.notFound));if(x.status<200||x.status>=300)return ko(new Error(M.httpFail.replace('{s}',x.status)));ok(new Uint8Array(x.response))};x.onerror=function(){ko(new Error(M.httpFail.replace('{s}','0')))};x.send()}).then(function(b){progHide();return b},function(e){progHide();throw e})}
 function runKey(key){start(M.downloadingKey.replace('{k}',key));download(key).then(function(b){bt.textContent=M.analyzing;return render(b,key,key,null,new URLSearchParams(location.search).get('w'))}).catch(function(e){fail(e.message||String(e))})}
 document.getElementById('lform').addEventListener('submit',function(e){e.preventDefault();var k=extractKey(document.getElementById('link').value);if(!k){fail(M.badLink);return}location.search='?p='+encodeURIComponent(k)});
-function send(f){if(!f)return;start(M.analyzingFile.replace('{f}',f.name).replace('{s}',(f.size/1048576).toFixed(1)));f.arrayBuffer().then(function(b){return render(new Uint8Array(b),f.name,null)}).catch(function(e){fail(e.message||String(e))})}
+function send(f){if(!f)return;start(M.analyzingFile.replace('{f}',f.name).replace('{s}',(f.size/1048576).toFixed(1)));isDump(f).then(function(d){if(!d)return f.arrayBuffer().then(function(b){return new Uint8Array(b)});bt.textContent=M.readingDump.replace('{f}',f.name);return readDump(f).then(function(b){bt.textContent=M.analyzing;return b})}).then(function(b){return render(b,f.name,null)}).catch(function(e){fail(e.message||String(e))})}
 var drop=document.getElementById('drop'),file=document.getElementById('file');
 file.addEventListener('change',function(){send(file.files[0])});
 ['dragenter','dragover'].forEach(function(t){drop.addEventListener(t,function(e){e.preventDefault();drop.classList.add('over')})});
@@ -802,7 +819,7 @@ function fetchKey(key){return fetch('https://spark-usercontent.lucko.me/'+encode
 function heapSlot(bytes,name,key){return call('describe_heap',[bytes,name,CUR]).then(function(s){var j=JSON.parse(s);j.bytes=bytes;j.key=key||null;return j})}
 function renderCmp(a,b,lang){lang=lang||CUR;CUR=lang;return call('compare_heaps',[a.bytes,a.name,b.bytes,b.name,HOME,lang]).then(function(s){var res=JSON.parse(s);if(a.key&&b.key){try{var u=new URL(location.href);u.search='?a='+encodeURIComponent(a.key)+'&b='+encodeURIComponent(b.key);u.hash='';history.replaceState(null,'',u.toString())}catch(e){}}last=null;window.__saRender=function(l){renderCmp(a,b,l).catch(function(e){alert(e.message||String(e))})};window.__saShare=function(){var q=function(){return '?a='+encodeURIComponent(a.key)+'&b='+encodeURIComponent(b.key)};if(a.key&&b.key)return {url:siteUrl(q()),upload:null};return {url:null,upload:function(){var up=function(s){return s.key?Promise.resolve(s.key):uploadBytes(s.bytes,'application/x-spark-heap').then(function(k){s.key=k;return k})};return up(a).then(function(){return up(b)}).then(function(){setQuery(q());return siteUrl(q())})}}};setTimeout(function(){document.open();document.write(res.html);document.close();window.scrollTo(0,0)},0)})}
 window.saSetupCompare({
-fromFile:function(f){return f.arrayBuffer().then(function(b){return heapSlot(new Uint8Array(b),f.name,null)})},
+fromFile:function(f){return isDump(f).then(function(d){return d?call('hprof',[f]):f.arrayBuffer().then(function(b){return new Uint8Array(b)})}).then(function(b){return heapSlot(b,f.name,null)})},
 fromLink:function(v){var k=extractKey(v);if(!k)return Promise.reject(new Error(M.badLink));return fetchKey(k).then(function(b){return heapSlot(b,k,k)})},
 run:function(a,b){start(M.cmpRunning);return renderCmp(a,b).catch(function(e){fail(e.message||String(e))})}
 });

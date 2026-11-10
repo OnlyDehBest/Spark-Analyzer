@@ -2,6 +2,14 @@
 
 ## Non ancora rilasciato
 
+### Heap dump
+- Si possono aprire gli heap dump completi (`.hprof` di `/spark heapdump`, anche compressi `.hprof.gz`)
+  da molti GB: il file viene letto a pezzi senza caricarlo tutto in memoria (circa 1,5 GB/s sul
+  computer), con la percentuale di lettura; poi si ottengono lo stesso report e lo stesso confronto
+  degli heap summary.
+- Nell'app sul server l'upload dell'heap dump viene letto mentre arriva, senza limite di 512 MB.
+- Heap summary analizzati più in fretta e confronto tra heap con risultato sempre uguale.
+
 ### Velocità
 - Analisi dei profili fino a ~1,7× più veloce: hash veloce, cache per metodo e sorgente,
   meno allocazioni e selezione dei primi N invece di ordinare tutto.
