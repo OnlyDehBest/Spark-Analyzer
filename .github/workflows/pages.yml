@@ -27,6 +27,10 @@ jobs:
       - name: Test
         run: cargo test --workspace
       - name: Compila il modulo WebAssembly
+        # Senza reference types: Safari (e alcuni browser più vecchi) rifiuta la tabella externref
+        # creata da wasm-bindgen con «Argument value did not match the reference type».
+        env:
+          RUSTFLAGS: -C target-cpu=mvp -C target-feature=+sign-ext,+nontrapping-fptoint,+bulk-memory,+mutable-globals
         run: cargo build -p sparkscope-web --lib --release --target wasm32-unknown-unknown
       - name: Installa wasm-bindgen
         run: |
@@ -42,7 +46,7 @@ jobs:
           sudo apt-get install -y -qq binaryen >/dev/null
           wasm-opt --version
           f=site/pkg/sparkscope_web_bg.wasm
-          if wasm-opt -O3 --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals --enable-reference-types --enable-multivalue "$f" -o "$f.opt"; then
+          if wasm-opt -O3 --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals "$f" -o "$f.opt"; then
             mv "$f.opt" "$f"
           else
             echo "::warning::wasm-opt non riuscito, uso il modulo non ottimizzato"
