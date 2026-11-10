@@ -698,3 +698,42 @@ fn flamegraph_has_main_thread_root_and_plugin_labels() {
     assert!(json.contains(" ["), "plugin frames carry their source");
     assert!(!r.analysis.flame.folded_lines().is_empty());
 }
+
+#[test]
+fn spike_chronology_lists_spikes_in_order_with_calm_stretches_between() {
+    let r = build();
+    let html = report::html::render(&r);
+    let start = html.find(r#"class="chrono""#).expect("cronologia presente");
+    let chrono = &html[start..html[start..].find("</ol>").map(|e| start + e).unwrap()];
+    assert_eq!(
+        chrono.matches(r#"class="ev sp""#).count(),
+        r.analysis.spikes.len()
+    );
+    assert!(!html.contains(r#"<div class="spike">"#));
+    let first_spike = chrono.find(r#"class="ev sp""#).unwrap();
+    let opening = chrono.find(r#"class="ev start""#).unwrap();
+    assert!(opening < first_spike);
+    assert!(chrono[opening..first_spike].contains("min regolari"));
+    assert!(
+        chrono[first_spike..].contains(r#"class="ev calm""#),
+        "i minuti tranquilli tra uno spike e l'altro sono riassunti"
+    );
+    let windows = sparkscope::report::html::chrono_events(&r.analysis);
+    let calm: usize = windows
+        .iter()
+        .filter_map(|e| match e {
+            sparkscope::report::html::ChronoEvent::Calm { windows, .. } => Some(*windows),
+            _ => None,
+        })
+        .sum();
+    assert_eq!(calm + r.analysis.spikes.len(), r.analysis.windows.len());
+}
+
+#[test]
+fn spike_chronology_names_the_recurring_culprit() {
+    let r = build();
+    let html = report::html::render(&r);
+    let top = &r.analysis.spikes[0].owner_deltas[0].name;
+    let end = html.find(r#"class="ev end""#).expect("riepilogo finale");
+    assert!(html[end..].contains(top.as_str()));
+}

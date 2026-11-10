@@ -1,3 +1,4 @@
+pub mod chrono;
 #[cfg(feature = "cli")]
 pub mod cli;
 pub mod config_txt;
