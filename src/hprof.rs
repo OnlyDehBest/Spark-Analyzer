@@ -97,7 +97,7 @@ impl HprofParser {
             self.buf.clear();
             self.pos = 0;
             if self.skip > 0 {
-                let k = (self.skip as usize).min(chunk.len());
+                let k = self.skip.min(chunk.len() as u64) as usize;
                 self.skip -= k as u64;
                 self.consumed += k as u64;
                 chunk = &chunk[k..];
@@ -114,7 +114,7 @@ impl HprofParser {
         loop {
             if self.skip > 0 {
                 let avail = self.buf.len() - self.pos;
-                let k = (self.skip as usize).min(avail);
+                let k = self.skip.min(avail as u64) as usize;
                 self.pos += k;
                 self.consumed += k as u64;
                 self.skip -= k as u64;

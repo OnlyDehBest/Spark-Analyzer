@@ -481,6 +481,8 @@ fn messages_js() -> String {
         "analyzing": t("Analizzo il profilo…", "Analyzing the profile…"),
         "analyzingFile": t("Analizzo {f} ({s} MB)…", "Analyzing {f} ({s} MB)…"),
         "readingDump": t("Leggo l'heap dump {f}…", "Reading heap dump {f}…"),
+        "dumpPacked": t("Questo heap dump è compresso in un formato che il browser non può leggere a pezzi (xz, lzma, zip…). Rifallo con /spark heapdump senza --compress (oppure con --compress gzip), o decomprimilo prima di caricarlo.", "This heap dump is compressed in a format the browser cannot read in pieces (xz, lzma, zip…). Take it again with /spark heapdump without --compress (or with --compress gzip), or decompress it before uploading."),
+        "tooBig": t("File troppo grande ({s} GB) per essere letto nel browser e non è un heap dump .hprof.", "File too large ({s} GB) to be read in the browser and it is not an .hprof heap dump."),
         "lost": t("Connessione a Spark Resource Analyzer persa: ", "Lost connection to Spark Resource Analyzer: "),
         "wasm": t("Impossibile caricare il modulo di analisi: ", "Could not load the analysis module: "),
         "notFound": t("Profilo non trovato: il link potrebbe essere scaduto (spark conserva i profili per un periodo limitato).", "Profile not found: the link may have expired (spark keeps profiles for a limited time)."),
@@ -721,7 +723,7 @@ run:function(a,b){start(M.cmpRunning);return fetch('/api/heap/compare?a='+encode
 })();
 "#;
 
-const WORKER_JS: &str = r#"import init, { analyze, describe_heap, compare_heaps, HprofReader } from './pkg/sparkscope_web.js__SA_V__';
+const WORKER_JS: &str = r#"import init, { analyze, describe_heap, compare_heaps, HprofReader, last_panic } from './pkg/sparkscope_web.js__SA_V__';
 const ready = init({ module_or_path: './pkg/sparkscope_web_bg.wasm__SA_V__' });
 async function hprof(id, file) {
   const r = new HprofReader();
@@ -743,7 +745,10 @@ self.onmessage = async (e) => {
     const ok = fn === 'hprof' ? await hprof(id, args[0]) : FN[fn](...args);
     self.postMessage({ id, ok });
   } catch (x) {
-    self.postMessage({ id, err: String((x && x.message) || x) });
+    let msg = String((x && x.message) || x);
+    let fatal = x instanceof WebAssembly.RuntimeError || /unreachable|memory/i.test(msg);
+    try { const p = last_panic(); if (p) msg += ' (' + p + ')'; } catch (_) {}
+    self.postMessage({ id, err: msg, fatal });
   }
 };
 "#;
@@ -779,9 +784,13 @@ var readyP=null;function ready(){return readyP||(readyP=init({module_or_path:'./
 function hprofLocal(file,prog){var r=new HprofReader(),CH=16<<20,off=0;function step(){if(off>=file.size)return r.finish();return file.slice(off,off+CH).arrayBuffer().then(function(b){r.feed(new Uint8Array(b));off+=CH;if(prog)prog(Math.min(off,file.size));return step()})}return step()}
 var FN={analyze:analyze,describe_heap:describe_heap,compare_heaps:compare_heaps};
 function local(fn,args,prog){return ready().then(function(){return fn==='hprof'?hprofLocal(args[0],prog):FN[fn].apply(null,args)})}
-var W=null,WN=0,WQ={};try{W=new Worker('./sa-worker.js__SA_V__',{type:'module'});W.onmessage=function(e){var q=WQ[e.data.id];if(!q)return;if('progress' in e.data){if(q.prog)q.prog(e.data.progress);return}delete WQ[e.data.id];if('ok' in e.data)q.ok(e.data.ok);else q.ko(new Error(e.data.err))};W.onerror=function(){W=null;Object.keys(WQ).forEach(function(k){var q=WQ[k];delete WQ[k];local(q.fn,q.args,q.prog).then(q.ok,q.ko)})}}catch(e){W=null}
+function restartWorker(){try{W.terminate();W=new Worker('./sa-worker.js__SA_V__',{type:'module'});W.onmessage=onW;W.onerror=onWE}catch(e){W=null}}
+function onW(e){var q=WQ[e.data.id];if(!q)return;if('progress' in e.data){if(q.prog)q.prog(e.data.progress);return}delete WQ[e.data.id];if('ok' in e.data)q.ok(e.data.ok);else{if(e.data.fatal)restartWorker();q.ko(new Error(e.data.err))}}
+function onWE(){W=null;Object.keys(WQ).forEach(function(k){var q=WQ[k];delete WQ[k];local(q.fn,q.args,q.prog).then(q.ok,q.ko)})}
+var W=null,WN=0,WQ={};try{W=new Worker('./sa-worker.js__SA_V__',{type:'module'});W.onmessage=onW;W.onerror=onWE}catch(e){W=null}
 function call(fn,args,prog){if(!W)return local(fn,args,prog);return new Promise(function(ok,ko){var id=++WN;WQ[id]={ok:ok,ko:ko,fn:fn,args:args,prog:prog};W.postMessage({id:id,fn:fn,args:args})})}
-function isDump(f){if(/\.hprof(\.gz)?$/i.test(f.name))return Promise.resolve(true);return f.slice(0,12).arrayBuffer().then(function(b){return String.fromCharCode.apply(null,new Uint8Array(b))==='JAVA PROFILE'})}
+function isDump(f){return f.slice(0,12).arrayBuffer().then(function(b){var u=new Uint8Array(b),h=String.fromCharCode.apply(null,u);if(h==='JAVA PROFILE')return true;var gz=u[0]===0x1f&&u[1]===0x8b;if(gz&&/hprof/i.test(f.name))return true;if((u[0]===0xfd&&h.slice(1,5)==='7zXZ')||/\.(xz|lzma|zst|zip|7z|bz2)$/i.test(f.name))throw new Error(M.dumpPacked);if(/\.hprof$/i.test(f.name))return true;if(f.size>MAXMEM)throw new Error(M.tooBig.replace('{s}',(f.size/1073741824).toFixed(1)));return false})}
+var MAXMEM=1536*1048576;
 function readDump(f){progShow();progSet(0,f.size);return call('hprof',[f],function(n){progSet(n,f.size)}).then(function(b){progHide();return b},function(e){progHide();throw e})}
 function extractKey(v){v=v.trim();var m=v.match(/^(?:https?:\/\/)?[^\/\s]+\/([A-Za-z0-9]+)/);if(m)return m[1];return /^[A-Za-z0-9]{4,64}$/.test(v)?v:null}
 var RKEY='sparkscope-recent';

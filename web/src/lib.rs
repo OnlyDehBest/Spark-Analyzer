@@ -1,4 +1,25 @@
+use std::cell::RefCell;
+
 use wasm_bindgen::prelude::*;
+
+thread_local! {
+    static LAST_PANIC: RefCell<String> = const { RefCell::new(String::new()) };
+}
+
+/// Keeps the message of a Rust panic so the page can show it instead of a bare
+/// "unreachable" WebAssembly error.
+#[wasm_bindgen(start)]
+pub fn start() {
+    std::panic::set_hook(Box::new(|info| {
+        let msg = info.to_string();
+        LAST_PANIC.with(|p| *p.borrow_mut() = msg);
+    }));
+}
+
+#[wasm_bindgen]
+pub fn last_panic() -> String {
+    LAST_PANIC.with(|p| p.borrow().clone())
+}
 
 use sparkscope::i18n::{self, Lang};
 use sparkscope::{loader, pipeline, webui};
