@@ -20,9 +20,12 @@
 - Ordine dei risultati stabile: a parità di tempo, stesso ordine a ogni analisi.
 - Sul sito l'analisi gira in un Web Worker: la pagina resta reattiva anche con profili grandi.
 - Caricamento degli heap dump sul server da 4 a 6 volte più veloce: il browser comprime il
-  dump in gzip mentre lo invia, manda 4 pezzi alla volta e ricorda il limite del proxy
+  dump in gzip mentre lo invia, manda più pezzi alla volta e ricorda il limite del proxy
   (es. 1 GB da 79 a 19 s, 94 MB dietro un proxy da 1 MB da 43 a 7 s). Durante il
   caricamento viene mostrata anche la velocità.
+- Caricamento più robusto con connessioni lente: i pezzi rifiutati dal proxy per timeout
+  (HTTP 408) o persi per strada vengono reinviati, e la dimensione dei pezzi si adatta
+  alla velocità della connessione.
 
 ### Privacy e sicurezza
 - App sul server (`serve` raggiungibile da altri): ogni visitatore vede solo le proprie analisi,

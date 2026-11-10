@@ -786,7 +786,7 @@ fn upload_start(st: &State, owner: &str, name: String, dump: bool) -> Result<Str
     }
     let id = random_hex(12);
     let data = if dump {
-        UploadData::Dump(Box::new(crate::hprof::HprofStream::new()))
+        UploadData::Dump(Box::default())
     } else {
         UploadData::Bytes(Vec::new())
     };
@@ -862,7 +862,10 @@ fn upload_chunk(
         if up.early_bytes > MAX_EARLY {
             Err(anyhow!("too many pieces out of order"))
         } else {
-            up.early.insert(off, (end, chunk));
+            // a piece sent again replaces the copy already waiting
+            if let Some((_, old)) = up.early.insert(off, (end, chunk)) {
+                up.early_bytes -= old.len();
+            }
             Ok(())
         }
     } else if off < up.next {
@@ -871,6 +874,15 @@ fn upload_chunk(
         let mut r = append(&mut up, &chunk);
         up.next = end;
         while r.is_ok() {
+            // copies of pieces that were also sent again and already added
+            while let Some((&k, _)) = up.early.first_key_value() {
+                if k >= up.next {
+                    break;
+                }
+                if let Some((_, old)) = up.early.remove(&k) {
+                    up.early_bytes -= old.len();
+                }
+            }
             let next = up.next;
             let Some((end, piece)) = up.early.remove(&next) else {
                 break;

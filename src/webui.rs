@@ -719,14 +719,18 @@ function progOff(){if(!PR.ring)return;PR.ring.hidden=true;PR.meta.hidden=true;PR
 function json(u,b){return fetch(u,{method:'POST',body:b}).then(function(r){if(r.status===413)return {tooBig:true};return body(r)})}
 function upload(f,to){if(f.size<=786432)return fetch((to==='heap'?'/api/heap/file':'/api/file')+'?name='+encodeURIComponent(f.name)+'&'+LQ,{method:'POST',body:f});return chunked(f,to)}
 var MINCH=262144;function chGet(){try{var v=+localStorage.getItem('sa-chunk');if(v>=MINCH&&v<=8388608)return v}catch(e){}return 8388608}function chSet(v){try{localStorage.setItem('sa-chunk',String(v))}catch(e){}}
-async function chunked(f,to){var h=new Uint8Array(await f.slice(0,12).arrayBuffer()),dump=String.fromCharCode.apply(null,h)==='JAVA PROFILE',gz=dump&&typeof CompressionStream==='function',CH=chGet(),sent=0,t0=Date.now();
+async function chunked(f,to){var h=new Uint8Array(await f.slice(0,12).arrayBuffer()),dump=String.fromCharCode.apply(null,h)==='JAVA PROFILE',gz=dump&&typeof CompressionStream==='function',CAP=chGet(),CH=Math.min(CAP,4194304),sent=0,t0=Date.now();
 var j=await json('/api/upload/start?name='+encodeURIComponent(f.name)+(dump?'&dump=1':'')+'&'+LQ,'');if(j.error||!j.upload)throw new Error(j.error||M.unknown);var id=j.upload;prog(0,f.size);
 function piece(a,b){var s=f.slice(a,b);return gz?new Response(s.stream().pipeThrough(new CompressionStream('gzip'))).blob():Promise.resolve(s)}
-async function put(a,b){var r=await json('/api/upload/chunk?id='+id+'&off='+a+'&end='+b+'&'+LQ,await piece(a,b));if(r.tooBig){if(b-a<=MINCH)throw new Error(M.proxyLimit.replace('{s}',413));var n=Math.max(MINCH,Math.floor((b-a)/4));if(n<CH){CH=n;chSet(n)}for(var x=a;x<b;x+=n)await put(x,Math.min(b,x+n));return}if(r.error)throw new Error(r.error)}
+function wait(ms){return new Promise(function(r){setTimeout(r,ms)})}
+async function put(a,b){for(var k=0;;k++){var t=Date.now(),r=null,x;try{r=await fetch('/api/upload/chunk?id='+id+'&off='+a+'&end='+b+'&'+LQ,{method:'POST',body:await piece(a,b)})}catch(e){x=e}
+if(r&&r.status===413){if(b-a<=MINCH)throw new Error(M.proxyLimit.replace('{s}',413));var n=Math.max(MINCH,Math.floor((b-a)/4));CAP=Math.min(CAP,n);CH=Math.min(CH,n);chSet(CAP);for(var y=a;y<b;y+=n)await put(y,Math.min(b,y+n));return}
+if(r&&r.status!==408&&r.status!==429&&r.status<500){var j=await body(r);if(j.error)throw new Error(j.error);var dt=(Date.now()-t)/1000;if(dt>12)CH=Math.max(MINCH,Math.floor(CH/2));else if(dt<3&&CH*2<=CAP)CH*=2;return}
+if(k>=5)throw r?new Error(M.badReply.replace('{s}',r.status)):x;CH=Math.max(MINCH,Math.floor(CH/2));await wait(1000*Math.pow(2,k))}}
 function moved(n){sent+=n;prog(sent,f.size,sent/Math.max(.001,(Date.now()-t0)/1000))}
 var off=Math.min(CH,f.size);await put(0,off);moved(off);var stop=false;
 async function lane(){while(!stop&&off<f.size){var a=off,b=Math.min(f.size,a+CH);off=b;try{await put(a,b)}catch(e){stop=true;throw e}moved(b-a)}}
-await Promise.all([lane(),lane(),lane(),lane()]);progOff();bt.textContent=M.analyzing;return fetch('/api/upload/finish?id='+id+'&to='+(to||'file')+'&'+LQ,{method:'POST'})}
+await Promise.all([lane(),lane(),lane()]);progOff();bt.textContent=M.analyzing;return fetch('/api/upload/finish?id='+id+'&to='+(to||'file')+'&'+LQ,{method:'POST'})}
 document.getElementById('lform').addEventListener('submit',function(e){e.preventDefault();var v=document.getElementById('link').value.trim();if(!v){fail(M.pasteFirst);return}start(M.downloading);fetch('/api/link?'+LQ,{method:'POST',body:v}).then(done).catch(function(x){fail(M.lost+x)})});
 function send(f){if(!f)return;start(M.analyzingFile.replace('{f}',f.name).replace('{s}',(f.size/1048576).toFixed(1)));upload(f,'file').then(done).catch(function(x){progOff();fail(x&&x.message&&!/fetch|network|load failed/i.test(x.message)?x.message:M.lost+x)})}
 var drop=document.getElementById('drop'),file=document.getElementById('file');
