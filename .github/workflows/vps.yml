@@ -7,7 +7,8 @@ name: vps
 # Secret da impostare in Settings → Secrets and variables → Actions:
 #   VPS_HOST      indirizzo della VPS (es. 1.2.3.4 o vps.example.com)
 #   VPS_USER      utente SSH (es. root)
-#   VPS_SSH_KEY   chiave privata SSH (contenuto completo)
+#   VPS_SSH_KEY   chiave privata SSH (contenuto completo)   oppure
+#   VPS_PASSWORD  password SSH (meno sicura della chiave)
 # Facoltativi:
 #   VPS_PORT      porta SSH (predefinita 22)
 #   VPS_PATH      percorso dell'eseguibile (predefinito /opt/spark-analyzer/spark-analyzer)
@@ -49,6 +50,7 @@ jobs:
           HOST: ${{ secrets.VPS_HOST }}
           USER: ${{ secrets.VPS_USER }}
           KEY: ${{ secrets.VPS_SSH_KEY }}
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
           PORT: ${{ secrets.VPS_PORT }}
           DEST: ${{ secrets.VPS_PATH }}
           RESTART: ${{ secrets.VPS_RESTART }}
@@ -56,12 +58,21 @@ jobs:
         run: |
           set -euo pipefail
           install -m 700 -d ~/.ssh
-          printf '%s\n' "$KEY" > ~/.ssh/id
-          chmod 600 ~/.ssh/id
           PORT="${PORT:-22}"
+          if [ -n "$KEY" ]; then
+            printf '%s\n' "$KEY" > ~/.ssh/id
+            chmod 600 ~/.ssh/id
+            SSH=(ssh -i ~/.ssh/id)
+          elif [ -n "$SSHPASS" ]; then
+            sudo apt-get install -y -qq sshpass >/dev/null
+            SSH=(sshpass -e ssh -o PubkeyAuthentication=no)
+          else
+            echo "::error::Imposta il secret VPS_SSH_KEY oppure VPS_PASSWORD"
+            exit 1
+          fi
           DEST="${DEST:-/opt/spark-analyzer/spark-analyzer}"
           RESTART="${RESTART:-systemctl restart spark-analyzer}"
-          ssh -i ~/.ssh/id -p "$PORT" -o StrictHostKeyChecking=accept-new "$USER@$HOST" \
+          "${SSH[@]}" -p "$PORT" -o StrictHostKeyChecking=accept-new "$USER@$HOST" \
             "set -e; d=\$(dirname '$DEST'); mkdir -p \"\$d\"; \
              curl -fsSL -o '$DEST.new' '$URL'; chmod +x '$DEST.new'; \
              '$DEST.new' --version >/dev/null 2>&1 || '$DEST.new' --help >/dev/null; \
