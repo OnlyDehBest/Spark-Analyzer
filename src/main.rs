@@ -48,6 +48,17 @@ enum Cmd {
         no_open: bool,
         #[arg(long, default_value = DEFAULT_BYTEBIN, help = "URL del server bytebin da cui scaricare i profili")]
         bytebin: String,
+        #[arg(
+            long,
+            help = "Cartella dove salvare i report (predefinita: SPARKSCOPE_DATA, poi ~/.local/share/spark-analyzer o /var/lib/spark-analyzer)"
+        )]
+        data_dir: Option<std::path::PathBuf>,
+        #[arg(
+            long,
+            default_value_t = 30,
+            help = "Giorni dopo cui i report salvati vengono eliminati"
+        )]
+        retention_days: u64,
     },
     #[command(
         about = "Analizza un profilo (link spark.lucko.me, codice o file .sparkprofile/.sparkheap/.sparkhealth)"
@@ -142,6 +153,8 @@ fn main() -> Result<()> {
         host: "127.0.0.1".into(),
         no_open: false,
         bytebin: DEFAULT_BYTEBIN.into(),
+        data_dir: None,
+        retention_days: 30,
     });
     match cmd {
         Cmd::Serve {
@@ -149,12 +162,16 @@ fn main() -> Result<()> {
             host,
             no_open,
             bytebin,
+            data_dir,
+            retention_days,
         } => {
             sparkscope::server::serve(sparkscope::server::ServeOptions {
                 host,
                 port,
                 open: !no_open,
                 bytebin,
+                data_dir,
+                retention_days,
             })?;
         }
         Cmd::Analyze {

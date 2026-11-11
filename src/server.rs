@@ -1,3 +1,4 @@
+use crate::archive::{Archive, ArchivedReport, now_secs};
 use crate::wasm_bundle::WasmBundle;
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -17,7 +18,10 @@ use crate::report::html::icon;
 use crate::webui;
 
 const MAX_UPLOAD: usize = 512 * 1024 * 1024;
-const MAX_STORED: usize = 30;
+/// Reports kept with their data and rendered pages in memory; older ones are read
+/// from disk when opened again.
+const MAX_HOT: usize = 30;
+const SWEEP_EVERY: std::time::Duration = std::time::Duration::from_secs(3600);
 const MAX_STAGED: usize = 12;
 
 struct Staged {
@@ -29,23 +33,23 @@ struct Staged {
 }
 
 struct Stored {
-    id: String,
-    owner: String,
-    title: String,
-    detail: String,
-    bad: bool,
-    bytes: Arc<Vec<u8>>,
-    name: String,
-    key: Option<String>,
-    second: Option<(Arc<Vec<u8>>, String)>,
-    second_key: Option<String>,
+    meta: ArchivedReport,
+    payload: Option<Payload>,
     cache: HashMap<(Lang, String), Arc<Vec<u8>>>,
+}
+
+#[derive(Clone)]
+struct Payload {
+    first: Arc<Vec<u8>>,
+    second: Option<Arc<Vec<u8>>>,
 }
 
 struct State {
     bytebin: String,
     loopback_only: bool,
     reports: Mutex<Vec<Stored>>,
+    archive: Option<Archive>,
+    retention: std::time::Duration,
     staged: Mutex<Vec<Staged>>,
     uploads: Mutex<HashMap<String, Arc<UploadSlot>>>,
     counter: AtomicU64,
@@ -87,6 +91,8 @@ pub struct ServeOptions {
     pub port: u16,
     pub open: bool,
     pub bytebin: String,
+    pub data_dir: Option<std::path::PathBuf>,
+    pub retention_days: u64,
 }
 
 pub fn serve(o: ServeOptions) -> Result<()> {
@@ -119,10 +125,25 @@ pub fn serve(o: ServeOptions) -> Result<()> {
         let _ = webbrowser::open(&url);
     }
     let loopback_only = is_loopback_host(&o.host);
+    let retention = std::time::Duration::from_secs(o.retention_days.max(1) * 24 * 3600);
+    let archive = open_archive(o.data_dir, retention);
+    let reports = archive.as_ref().map_or_else(Vec::new, |a| {
+        a.prune(now_secs());
+        a.load_all(now_secs())
+            .into_iter()
+            .map(|meta| Stored {
+                meta,
+                payload: None,
+                cache: HashMap::new(),
+            })
+            .collect()
+    });
     let state = Arc::new(State {
         bytebin: o.bytebin,
         loopback_only,
-        reports: Mutex::new(Vec::new()),
+        reports: Mutex::new(reports),
+        archive,
+        retention,
         staged: Mutex::new(Vec::new()),
         uploads: Mutex::new(HashMap::new()),
         // id unici anche dopo un riavvio: le pagine /r/ restano in cache del browser
@@ -131,6 +152,13 @@ pub fn serve(o: ServeOptions) -> Result<()> {
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_or(1, |d| d.as_secs()),
         ),
+    });
+    let sweeper = Arc::clone(&state);
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(SWEEP_EVERY);
+            drop_expired(&sweeper);
+        }
     });
     for req in server.incoming_requests() {
         let st = Arc::clone(&state);
@@ -636,26 +664,23 @@ fn store_comparison(st: &State, owner: &str, a: &str, b: &str) -> Result<String>
     let (bytes_b, name_b, key_b) = staged_bytes(st, owner, b)?;
     let out = render_comparison(&bytes_a, &name_a, &bytes_b, &name_b)?;
     let id = next_id(st, bytes_a.len() + bytes_b.len());
-    let mut cache = HashMap::new();
-    cache.insert((i18n::lang(), String::new()), final_page(&out.html));
-    let mut reports = st.reports.lock().unwrap_or_else(|e| e.into_inner());
-    reports.insert(
-        0,
-        Stored {
-            id: id.clone(),
-            owner: owner.to_string(),
-            title: out.title,
-            detail: out.detail,
-            bad: out.bad,
-            bytes: bytes_a,
-            name: name_a,
-            key: key_a,
-            second: Some((bytes_b, name_b)),
-            second_key: key_b,
-            cache,
-        },
-    );
-    reports.truncate(MAX_STORED);
+    let meta = ArchivedReport {
+        id: id.clone(),
+        owner: owner.to_string(),
+        title: out.title,
+        detail: out.detail,
+        bad: out.bad,
+        name: name_a,
+        key: key_a,
+        second_name: Some(name_b),
+        second_key: key_b,
+        created: now_secs(),
+    };
+    let payload = Payload {
+        first: bytes_a,
+        second: Some(bytes_b),
+    };
+    keep(st, meta, payload, final_page(&out.html));
     Ok(id)
 }
 
@@ -718,25 +743,20 @@ fn share_link(
     upload: bool,
     site: &str,
 ) -> Result<Option<String>> {
-    let (bytes, name, key, second, second_key) = {
-        let reports = st.reports.lock().unwrap_or_else(|e| e.into_inner());
-        let r = reports.iter().find(|r| r.id == id).ok_or_else(|| {
-            anyhow!(
-                "{}",
-                i18n::t(
-                    "report non più disponibile: rifai l'analisi",
-                    "report no longer available: run the analysis again"
-                )
+    let (meta, payload) = report_data(st, id)?.ok_or_else(|| {
+        anyhow!(
+            "{}",
+            i18n::t(
+                "report non più disponibile: rifai l'analisi",
+                "report no longer available: run the analysis again"
             )
-        })?;
-        (
-            Arc::clone(&r.bytes),
-            r.name.clone(),
-            r.key.clone(),
-            r.second.clone(),
-            r.second_key.clone(),
         )
-    };
+    })?;
+    let bytes = payload.first;
+    let name = meta.name.clone();
+    let key = meta.key.clone();
+    let second = payload.second.zip(meta.second_name.clone());
+    let second_key = meta.second_key.clone();
     let complete = key.is_some() && (second.is_none() || second_key.is_some());
     if !complete && !upload {
         return Ok(None);
@@ -752,9 +772,14 @@ fn share_link(
     };
     {
         let mut reports = st.reports.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(r) = reports.iter_mut().find(|r| r.id == id) {
-            r.key = Some(key.clone());
-            r.second_key.clone_from(&second_key);
+        if let Some(r) = reports.iter_mut().find(|r| r.meta.id == id) {
+            r.meta.key = Some(key.clone());
+            r.meta.second_key.clone_from(&second_key);
+            if let Some(a) = &st.archive
+                && let Err(e) = a.update(&r.meta)
+            {
+                eprintln!("report {id}: {e}");
+            }
         }
     }
     Ok(Some(public_link(
@@ -782,22 +807,21 @@ fn render(bytes: &[u8], name: &str, key: Option<&str>, windows: &str) -> Result<
 
 fn report_html(st: &State, id: &str, lang: Lang, windows: &str) -> Option<Result<Arc<Vec<u8>>>> {
     let ck = (lang, windows.to_string());
-    let (bytes, name, key, second) = {
+    {
         let reports = st.reports.lock().unwrap_or_else(|e| e.into_inner());
-        let r = reports.iter().find(|r| r.id == id)?;
+        let r = reports.iter().find(|r| r.meta.id == id)?;
         if let Some(h) = r.cache.get(&ck) {
             return Some(Ok(Arc::clone(h)));
         }
-        (
-            Arc::clone(&r.bytes),
-            r.name.clone(),
-            r.key.clone(),
-            r.second.clone(),
-        )
+    }
+    let (meta, payload) = match report_data(st, id) {
+        Ok(Some(found)) => found,
+        Ok(None) => return None,
+        Err(e) => return Some(Err(e)),
     };
-    let rendered = match &second {
-        Some((b, nb)) => render_comparison(&bytes, &name, b, nb),
-        None => render(&bytes, &name, key.as_deref(), windows),
+    let rendered = match (&payload.second, &meta.second_name) {
+        (Some(b), Some(nb)) => render_comparison(&payload.first, &meta.name, b, nb),
+        _ => render(&payload.first, &meta.name, meta.key.as_deref(), windows),
     };
     let out = match rendered {
         Ok(o) => o,
@@ -805,7 +829,7 @@ fn report_html(st: &State, id: &str, lang: Lang, windows: &str) -> Option<Result
     };
     let page = final_page(&out.html);
     let mut reports = st.reports.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(r) = reports.iter_mut().find(|r| r.id == id) {
+    if let Some(r) = reports.iter_mut().find(|r| r.meta.id == id) {
         r.cache.insert(ck, Arc::clone(&page));
     }
     Some(Ok(page))
@@ -1137,43 +1161,160 @@ fn store(
 ) -> Result<String> {
     let out = render(&bytes, &name, key.as_deref(), "")?;
     let id = next_id(st, bytes.len());
+    let meta = ArchivedReport {
+        id: id.clone(),
+        owner: owner.to_string(),
+        title: out.title,
+        detail: out.detail,
+        bad: out.bad,
+        name,
+        key,
+        second_name: None,
+        second_key: None,
+        created: now_secs(),
+    };
+    let payload = Payload {
+        first: Arc::new(bytes),
+        second: None,
+    };
+    keep(st, meta, payload, final_page(&out.html));
+    Ok(id)
+}
+
+fn open_archive(
+    dir: Option<std::path::PathBuf>,
+    retention: std::time::Duration,
+) -> Option<Archive> {
+    let dir = dir.or_else(Archive::default_dir)?;
+    match Archive::open(dir.clone(), retention) {
+        Ok(a) => {
+            eprintln!(
+                "{}",
+                tf!(
+                    "Report salvati in {} (eliminati dopo {} giorni)",
+                    "Reports saved in {} (deleted after {} days)",
+                    dir.display(),
+                    retention.as_secs() / 86_400
+                )
+            );
+            Some(a)
+        }
+        Err(e) => {
+            eprintln!(
+                "{}",
+                tf!(
+                    "Impossibile salvare i report in {}: {e}. Restano solo in memoria.",
+                    "Cannot save reports in {}: {e}. They stay in memory only.",
+                    dir.display()
+                )
+            );
+            None
+        }
+    }
+}
+
+/// Adds a new report: it is written to disk and the oldest reports in memory give
+/// back their data and pages (they stay listed and are read again from disk).
+fn keep(st: &State, meta: ArchivedReport, payload: Payload, page: Arc<Vec<u8>>) {
+    let saved = match &st.archive {
+        Some(a) => match a.save(
+            &meta,
+            &payload.first,
+            payload.second.as_deref().map(Vec::as_slice),
+        ) {
+            Ok(()) => true,
+            Err(e) => {
+                eprintln!("report {}: {e}", meta.id);
+                false
+            }
+        },
+        None => false,
+    };
     let mut cache = HashMap::new();
-    cache.insert((i18n::lang(), String::new()), final_page(&out.html));
+    cache.insert((i18n::lang(), String::new()), page);
     let mut reports = st.reports.lock().unwrap_or_else(|e| e.into_inner());
     reports.insert(
         0,
         Stored {
-            id: id.clone(),
-            owner: owner.to_string(),
-            title: out.title,
-            detail: out.detail,
-            bad: out.bad,
-            bytes: Arc::new(bytes),
-            name,
-            key,
-            second: None,
-            second_key: None,
+            meta,
+            payload: Some(payload),
             cache,
         },
     );
-    reports.truncate(MAX_STORED);
-    Ok(id)
+    if st.archive.is_none() || !saved {
+        let mut hot = 0;
+        reports.retain(|r| {
+            let keep = r.payload.is_some() && hot < MAX_HOT;
+            if keep {
+                hot += 1;
+            }
+            keep
+        });
+    }
+    for r in reports.iter_mut().skip(MAX_HOT) {
+        r.payload = None;
+        r.cache.clear();
+    }
+}
+
+fn report_data(st: &State, id: &str) -> Result<Option<(ArchivedReport, Payload)>> {
+    let meta = {
+        let reports = st.reports.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(r) = reports.iter().find(|r| r.meta.id == id) else {
+            return Ok(None);
+        };
+        if let Some(p) = &r.payload {
+            return Ok(Some((r.meta.clone(), p.clone())));
+        }
+        r.meta.clone()
+    };
+    let Some(archive) = &st.archive else {
+        return Ok(None);
+    };
+    let (first, second) = archive.payload(id).map_err(|e| {
+        anyhow!(
+            "{}",
+            tf!(
+                "report non leggibile dal disco: {e}",
+                "report cannot be read from disk: {e}"
+            )
+        )
+    })?;
+    Ok(Some((
+        meta,
+        Payload {
+            first: Arc::new(first),
+            second: second.map(Arc::new),
+        },
+    )))
+}
+
+fn drop_expired(st: &State) {
+    let now = now_secs();
+    if let Some(a) = &st.archive {
+        a.prune(now);
+    }
+    let limit = st.retention.as_secs();
+    st.reports
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .retain(|r| now.saturating_sub(r.meta.created) <= limit);
 }
 
 fn index_page(st: &State, owner: &str) -> String {
     let reports = st.reports.lock().unwrap_or_else(|e| e.into_inner());
     let recent: Vec<webui::Recent> = reports
         .iter()
-        .filter(|r| r.owner == owner)
+        .filter(|r| r.meta.owner == owner)
         .map(|r| webui::Recent {
             href: if i18n::is_en() {
-                format!("/r/{}", r.id)
+                format!("/r/{}", r.meta.id)
             } else {
-                format!("/r/{}?lang=it", r.id)
+                format!("/r/{}?lang=it", r.meta.id)
             },
-            title: r.title.clone(),
-            detail: r.detail.clone(),
-            bad: r.bad,
+            title: r.meta.title.clone(),
+            detail: r.meta.detail.clone(),
+            bad: r.meta.bad,
         })
         .collect();
     webui::local_index_with(&recent, WasmBundle::embedded().query())

@@ -40,6 +40,10 @@
   id dei report casuali e non indovinabili.
 
 ### Sito
+- Sul server i report vengono salvati su disco (compressi) e restano disponibili anche dopo
+  un riavvio o un aggiornamento: nessun limite di numero, quelli più vecchi di 30 giorni
+  vengono eliminati da soli (controllo all'avvio e ogni ora). Cartella e giorni si
+  cambiano con `--data-dir` e `--retention-days`; in memoria restano solo gli ultimi 30.
 - Ottimizzato per iPhone Duo e altri pieghevoli: impaginazione verificata su schermo esterno
   e interno, in verticale e in orizzontale; in orizzontale con poca altezza il riquadro
   principale diventa compatto, zone di tocco da 44 px, rispetto delle aree sicure

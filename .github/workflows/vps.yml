@@ -127,6 +127,7 @@ jobs:
           sleep 3
           [ -n "$UNIT" ] && echo "$UNIT: $(systemctl is-active "$UNIT" || true)"
           ss -ltnp 2>/dev/null | grep -E 'sparkscope|spark-analyzer' || true
+          [ -n "$UNIT" ] && journalctl -u "$UNIT" -n 20 --no-pager 2>/dev/null | grep -iE "report salvati|reports saved|impossibile salvare|cannot save" | tail -1 || true
           echo "aggiornato: $(ls -la "$DEST")"
           SCRIPT
           sed -i 's/^          //' remote.sh

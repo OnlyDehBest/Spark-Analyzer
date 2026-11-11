@@ -8,6 +8,8 @@
 pub mod i18n;
 pub mod alloc;
 pub mod analysis;
+#[cfg(feature = "cli")]
+pub mod archive;
 pub mod config;
 pub mod diff;
 pub mod flame;
