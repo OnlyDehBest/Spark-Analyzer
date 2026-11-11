@@ -40,6 +40,10 @@
   id dei report casuali e non indovinabili.
 
 ### Sito
+- Ottimizzato per iPhone Duo e altri pieghevoli: impaginazione verificata su schermo esterno
+  e interno, in verticale e in orizzontale; in orizzontale con poca altezza il riquadro
+  principale diventa compatto, zone di tocco da 44 px, rispetto delle aree sicure
+  (Dynamic Island) e testo che non si ingrandisce da solo ruotando il telefono.
 - Restyling grafico: sfondo con aloni leggeri, riquadro principale con bordo sfumato verde-blu
   e titolo più grande, area di caricamento in rilievo con pulsante «Analizza» blu, selettore
   delle modalità e barra laterale rifiniti, riquadri del report più morbidi. Tolta la sezione

@@ -1594,7 +1594,7 @@ pub fn render(r: &Report) -> String {
         );
     }
     let page = format!(
-        "<!doctype html><html lang=\"it\" data-theme=\"dark\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">{}<title>{}</title><style>{}{}</style></head><body>{}<script>{}{}</script>{}</body></html>",
+        "<!doctype html><html lang=\"it\" data-theme=\"dark\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\"><meta name=\"theme-color\" content=\"#0b0b0c\">{}<title>{}</title><style>{}{}</style></head><body>{}<script>{}{}</script>{}</body></html>",
         FAVICON,
         esc(&title),
         CSS,

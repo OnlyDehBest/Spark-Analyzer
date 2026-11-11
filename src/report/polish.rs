@@ -67,4 +67,11 @@ pub const POLISH_CSS: &str = r#"
 [data-theme=light] .news .nb{color:#3f6212}
 [data-theme=light] .or,[data-theme=light] .hero .hint{color:#595959}
 [data-theme=light] .pick .fmt i{color:#854d0e}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+a,button,label,summary,.chip,.ghost{-webkit-tap-highlight-color:transparent}
+@media(min-width:701px) and (max-width:1100px){.hcard{padding-bottom:86px}.hcard .wave{width:100%;right:0;top:auto;bottom:10px;height:60px;opacity:.55}.kpis{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-height:520px) and (orientation:landscape){.hcard{padding:18px 22px 20px}.hcard .wave{display:none}.hcard h1{font-size:30px}.hcard .hlogo{width:40px;height:40px}.htag{font-size:14.5px;margin-top:8px}.chips{margin-top:10px}.news{margin-bottom:10px}.hero{padding:20px 20px 18px}.hero .dicon{display:none}.hero h2{margin-top:0}}
+@media(pointer:coarse){.ghost{width:44px;height:44px}.chip{min-height:36px}}
+@media(pointer:coarse) and (max-width:900px){.side nav a{min-width:44px;min-height:44px;justify-content:center}}
+@media(max-width:900px){.side{padding-top:max(8px,env(safe-area-inset-top));padding-left:max(12px,env(safe-area-inset-left));padding-right:max(12px,env(safe-area-inset-right))}.content{padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right));padding-bottom:env(safe-area-inset-bottom)}}
 "#;
