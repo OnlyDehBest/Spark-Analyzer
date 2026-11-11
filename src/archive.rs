@@ -37,25 +37,40 @@ impl Archive {
         Ok(Archive { dir, retention })
     }
 
-    pub fn default_dir() -> Option<PathBuf> {
+    pub fn candidate_dirs() -> Vec<PathBuf> {
         let env = |k: &str| {
             std::env::var_os(k)
                 .filter(|v| !v.is_empty())
                 .map(PathBuf::from)
         };
+        let mut dirs = Vec::new();
         if let Some(dir) = env("SPARKSCOPE_DATA") {
-            return Some(dir);
+            dirs.push(dir);
+        }
+        if let Ok(state) = std::env::var("STATE_DIRECTORY")
+            && let Some(first) = state.split(':').next().filter(|v| !v.is_empty())
+        {
+            dirs.push(PathBuf::from(first));
         }
         if cfg!(windows) {
-            return env("APPDATA").map(|d| d.join(DIR_NAME));
+            if let Some(dir) = env("APPDATA") {
+                dirs.push(dir.join(DIR_NAME));
+            }
+        } else if let Some(dir) = env("XDG_DATA_HOME") {
+            dirs.push(dir.join(DIR_NAME));
+        } else if let Some(home) = env("HOME") {
+            dirs.push(home.join(".local").join("share").join(DIR_NAME));
         }
-        if let Some(dir) = env("XDG_DATA_HOME") {
-            return Some(dir.join(DIR_NAME));
+        if !cfg!(windows) {
+            dirs.push(PathBuf::from("/var/lib").join(DIR_NAME));
         }
-        if let Some(home) = env("HOME") {
-            return Some(home.join(".local").join("share").join(DIR_NAME));
+        if let Some(exe_dir) = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(Path::to_path_buf))
+        {
+            dirs.push(exe_dir.join("data"));
         }
-        Some(PathBuf::from("/var/lib").join(DIR_NAME))
+        dirs
     }
 
     pub fn dir(&self) -> &Path {

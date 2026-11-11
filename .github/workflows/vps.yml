@@ -104,6 +104,13 @@ jobs:
           if [ -n "$RESTART" ]; then
             sh -c "$RESTART"
           elif [ -n "$UNIT" ]; then
+            # cartella dati persistente (/var/lib/spark-analyzer) creata da systemd per l'utente del servizio
+            drop="/etc/systemd/system/$UNIT.d"
+            if [ ! -f "$drop/spark-analyzer-data.conf" ]; then
+              mkdir -p "$drop"
+              printf '%s\n' "[Service]" "StateDirectory=spark-analyzer" > "$drop/spark-analyzer-data.conf"
+              systemctl daemon-reload
+            fi
             systemctl restart "$UNIT"
           else
             printf '%s\n' "[Unit]" "Description=Spark Resource Analyzer" "After=network-online.target" "" \

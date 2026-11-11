@@ -1185,32 +1185,37 @@ fn open_archive(
     dir: Option<std::path::PathBuf>,
     retention: std::time::Duration,
 ) -> Option<Archive> {
-    let dir = dir.or_else(Archive::default_dir)?;
-    match Archive::open(dir.clone(), retention) {
-        Ok(a) => {
-            eprintln!(
-                "{}",
-                tf!(
-                    "Report salvati in {} (eliminati dopo {} giorni)",
-                    "Reports saved in {} (deleted after {} days)",
-                    dir.display(),
-                    retention.as_secs() / 86_400
-                )
-            );
-            Some(a)
-        }
-        Err(e) => {
-            eprintln!(
-                "{}",
-                tf!(
-                    "Impossibile salvare i report in {}: {e}. Restano solo in memoria.",
-                    "Cannot save reports in {}: {e}. They stay in memory only.",
-                    dir.display()
-                )
-            );
-            None
+    let candidates = match dir {
+        Some(d) => vec![d],
+        None => Archive::candidate_dirs(),
+    };
+    let mut last_error = None;
+    for dir in candidates {
+        match Archive::open(dir.clone(), retention) {
+            Ok(a) => {
+                eprintln!(
+                    "{}",
+                    tf!(
+                        "Report salvati in {} (eliminati dopo {} giorni)",
+                        "Reports saved in {} (deleted after {} days)",
+                        dir.display(),
+                        retention.as_secs() / 86_400
+                    )
+                );
+                return Some(a);
+            }
+            Err(e) => last_error = Some(format!("{}: {e}", dir.display())),
         }
     }
+    eprintln!(
+        "{}",
+        tf!(
+            "Impossibile salvare i report ({}): restano solo in memoria.",
+            "Cannot save reports ({}): they stay in memory only.",
+            last_error.unwrap_or_default()
+        )
+    );
+    None
 }
 
 /// Adds a new report: it is written to disk and the oldest reports in memory give
