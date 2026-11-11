@@ -2,6 +2,10 @@
 
 ## Non ancora rilasciato
 
+### Home
+- Nell'app sul server la home mostra quante persone hanno già usato il sito e quanti profili
+  sono stati analizzati. Il conteggio è anonimo e resta dopo i riavvii.
+
 ### Heap dump
 - Si possono aprire gli heap dump completi (`.hprof` di `/spark heapdump`, anche compressi `.hprof.gz`)
   da molti GB: il file viene letto a pezzi senza caricarlo tutto in memoria (circa 1,5 GB/s sul

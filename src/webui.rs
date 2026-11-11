@@ -418,9 +418,14 @@ fn compare_panel() -> String {
 const HERO_WAVE: &str = r#"<svg class="wave" viewBox="0 0 600 120" preserveAspectRatio="none" aria-hidden="true"><polyline points="0,90 60,90 80,70 100,95 130,88 170,88 190,30 205,105 225,80 280,80 300,60 320,92 360,85 420,85 440,20 455,110 470,78 530,78 560,70 600,72"/></svg>"#;
 
 pub fn index_main(recent_panel: &str) -> String {
+    index_main_with(recent_panel, None)
+}
+
+pub fn index_main_with(recent_panel: &str, usage: Option<(u64, u64)>) -> String {
     let t = crate::i18n::t;
+    let usage = usage.map(usage_html).unwrap_or_default();
     format!(
-        r#"<section class="hcard">{wave}<div class="hrow"><span class="hlogo">{logo}</span><h1>Spark Analyzer</h1></div><p class="htag">{tagline}</p><div class="chips"><span>{chip1}</span><span>{chip2}</span><span>{chip3}</span><span>{chip4}</span></div></section>
+        r#"<section class="hcard">{wave}<div class="hrow"><span class="hlogo">{logo}</span><h1>Spark Analyzer</h1></div><p class="htag">{tagline}</p><div class="chips"><span>{chip1}</span><span>{chip2}</span><span>{chip3}</span><span>{chip4}</span></div>{usage}</section>
 <div class="modesel"><div class="seg big" id="modesel"><button type="button" class="on" data-mode="one">{mode_one}</button><button type="button" data-mode="cmp">{mode_cmp}</button></div><span id="modehint" hidden></span></div>
 <div id="mode-one">
 <section id="drop" class="hero"><span class="dicon">{upload}</span><h2>{hero_t}</h2>
@@ -473,6 +478,41 @@ pub fn index_main(recent_panel: &str) -> String {
     )
 }
 
+fn usage_html((people, analyses): (u64, u64)) -> String {
+    if people == 0 {
+        return String::new();
+    }
+    let t = crate::i18n::t;
+    let people_label = if people == 1 {
+        t("persona l'ha già usato", "person has used it")
+    } else {
+        t("persone l'hanno già usato", "people have used it")
+    };
+    let analyses_label = if analyses == 1 {
+        t("profilo analizzato", "profile analyzed")
+    } else {
+        t("profili analizzati", "profiles analyzed")
+    };
+    format!(
+        r#"<div class="usage"><div class="ust"><span class="usi" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span><div><b data-count="{people}">{pv}</b><span>{people_label}</span></div></div><div class="ust"><span class="usi" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2-6 4 12 2-6h6"/></svg></span><div><b data-count="{analyses}">{av}</b><span>{analyses_label}</span></div></div></div>"#,
+        pv = group_thousands(people),
+        av = group_thousands(analyses),
+    )
+}
+
+fn group_thousands(n: u64) -> String {
+    let digits = n.to_string();
+    let sep = if crate::i18n::is_en() { ',' } else { '.' };
+    let mut out = String::with_capacity(digits.len() + digits.len() / 3);
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(sep);
+        }
+        out.push(c);
+    }
+    out
+}
+
 fn messages_js() -> String {
     let t = crate::i18n::t;
     let m = serde_json::json!({
@@ -510,13 +550,17 @@ pub fn local_index(recent: &[Recent]) -> String {
 }
 
 pub fn local_index_with(recent: &[Recent], wasm_query: &str) -> String {
+    local_index_full(recent, wasm_query, None)
+}
+
+pub fn local_index_full(recent: &[Recent], wasm_query: &str, usage: Option<(u64, u64)>) -> String {
     let t = crate::i18n::t;
     let script = format!(
         "var SA_WV={};{LOCAL_JS}",
         serde_json::Value::from(wasm_query)
     );
     let (side, panel) = recent_html(recent);
-    let main = news_banner() + &index_main(&panel);
+    let main = news_banner() + &index_main_with(&panel, usage);
     let switch = format!("/?lang={}", crate::report::html::lang_to());
     shell(&Page {
         crumb: t("Nuova analisi", "New analysis"),
@@ -713,6 +757,7 @@ document.querySelectorAll('.cmds code').forEach(function(c){c.addEventListener('
 "#;
 
 pub const LOCAL_JS: &str = r#"
+(function(){var els=document.querySelectorAll('.usage [data-count]');if(!els.length||!window.requestAnimationFrame||(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches))return;var sep=document.documentElement.lang==='en'?',':'.';function fmt(n){return String(n).replace(/\B(?=(\d{3})+(?!\d))/g,sep)}els.forEach(function(el){var to=+el.dataset.count,t0=null;if(!(to>0))return;el.textContent='0';function step(t){if(t0===null)t0=t;var k=Math.min(1,(t-t0)/1100),e=1-Math.pow(1-k,3);el.textContent=fmt(Math.round(to*e));if(k<1)requestAnimationFrame(step)}requestAnimationFrame(step)})})();
 (function(){
 var LQ=M.lang==='it'?'lang=it':'';
 try{var pref=localStorage.getItem('sa-lang');if(pref&&pref!==M.lang&&!/[?&]lang=/.test(location.search)){location.replace('/?lang='+pref+location.hash);return}}catch(e){}
@@ -890,5 +935,20 @@ mod tests {
         assert!(with.contains(r#"var SA_WV="?v=abc";"#));
         let without = super::local_index(&[]);
         assert!(without.contains(r#"var SA_WV="";"#));
+    }
+}
+
+#[cfg(test)]
+mod usage_tests {
+    #[test]
+    fn usage_counter_shows_grouped_numbers_and_hides_when_empty() {
+        let _guard = crate::i18n::scoped(crate::i18n::Lang::It);
+        let html = super::usage_html((1284, 3912));
+        assert!(html.contains(r#"data-count="1284">1.284</b>"#));
+        assert!(html.contains("3.912"));
+        assert!(html.contains("persone"));
+        assert!(super::usage_html((1, 1)).contains("persona"));
+        assert!(super::usage_html((0, 0)).is_empty());
+        assert!(!super::index_main("").contains("class=\"usage\""));
     }
 }

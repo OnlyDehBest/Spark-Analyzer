@@ -67,6 +67,15 @@ pub const POLISH_CSS: &str = r#"
 [data-theme=light] .news .nb{color:#3f6212}
 [data-theme=light] .or,[data-theme=light] .hero .hint{color:#595959}
 [data-theme=light] .pick .fmt i{color:#854d0e}
+.usage{position:relative;display:flex;flex-wrap:wrap;gap:12px 34px;margin-top:22px;padding-top:20px;border-top:1px solid rgba(255,255,255,.07)}
+[data-theme=light] .usage{border-top-color:var(--line)}
+.ust{display:flex;align-items:center;gap:12px}
+.usi{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;flex:none;color:var(--ok);background:rgba(163,230,53,.10);border:1px solid rgba(163,230,53,.22)}
+.ust+.ust .usi{color:var(--acc);background:rgba(56,189,248,.10);border-color:rgba(56,189,248,.24)}
+.usi svg{width:20px;height:20px}
+.ust b{display:block;font-size:24px;line-height:1.1;font-weight:800;letter-spacing:-.02em;color:var(--hd);font-variant-numeric:tabular-nums}
+.ust span:not(.usi){display:block;font-size:12.5px;color:var(--muted);margin-top:2px}
+@media(max-width:700px){.usage{gap:14px 24px;margin-top:18px;padding-top:16px}.ust b{font-size:20px}.usi{width:36px;height:36px}}
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 a,button,label,summary,.chip,.ghost{-webkit-tap-highlight-color:transparent}
 @media(min-width:701px) and (max-width:1100px){.hcard{padding-bottom:86px}.hcard .wave{width:100%;right:0;top:auto;bottom:10px;height:60px;opacity:.55}.kpis{grid-template-columns:repeat(4,minmax(0,1fr))}}

@@ -1,4 +1,5 @@
 use crate::archive::{Archive, ArchivedReport, now_secs};
+use crate::usage::UsageStats;
 use crate::wasm_bundle::WasmBundle;
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -50,6 +51,7 @@ struct State {
     reports: Mutex<Vec<Stored>>,
     archive: Option<Archive>,
     retention: std::time::Duration,
+    usage: UsageStats,
     staged: Mutex<Vec<Staged>>,
     uploads: Mutex<HashMap<String, Arc<UploadSlot>>>,
     counter: AtomicU64,
@@ -138,12 +140,20 @@ pub fn serve(o: ServeOptions) -> Result<()> {
             })
             .collect()
     });
+    let usage = match &archive {
+        Some(a) => UsageStats::load(
+            a.dir().join("usage.json"),
+            reports.iter().map(|r| r.meta.owner.as_str()),
+        ),
+        None => UsageStats::in_memory(),
+    };
     let state = Arc::new(State {
         bytebin: o.bytebin,
         loopback_only,
         reports: Mutex::new(reports),
         archive,
         retention,
+        usage,
         staged: Mutex::new(Vec::new()),
         uploads: Mutex::new(HashMap::new()),
         // id unici anche dopo un riavvio: le pagine /r/ restano in cache del browser
@@ -1221,6 +1231,7 @@ fn open_archive(
 /// Adds a new report: it is written to disk and the oldest reports in memory give
 /// back their data and pages (they stay listed and are read again from disk).
 fn keep(st: &State, meta: ArchivedReport, payload: Payload, page: Arc<Vec<u8>>) {
+    st.usage.record(&meta.owner);
     let saved = match &st.archive {
         Some(a) => match a.save(
             &meta,
@@ -1322,7 +1333,12 @@ fn index_page(st: &State, owner: &str) -> String {
             bad: r.meta.bad,
         })
         .collect();
-    webui::local_index_with(&recent, WasmBundle::embedded().query())
+    drop(reports);
+    webui::local_index_full(
+        &recent,
+        WasmBundle::embedded().query(),
+        Some(st.usage.snapshot()),
+    )
 }
 
 fn not_found() -> String {
