@@ -11,18 +11,17 @@ pub const POLISH_CSS: &str = r#"
 .sidefoot{border-radius:12px}
 .cmds code{border-radius:8px;transition:border-color .15s ease}
 .cmds code:hover{border-color:var(--acc)}
-.news{border-radius:999px;box-shadow:0 12px 30px -18px rgba(163,230,53,.45)}
+.news{box-shadow:0 12px 30px -18px rgba(163,230,53,.45)}
 [data-theme=dark] .news{background:rgba(19,19,20,.85);border-color:rgba(163,230,53,.22)}
 .news .nb{box-shadow:0 0 14px rgba(163,230,53,.35)}
-.hcard{position:relative;border-radius:22px;padding:42px 40px 34px;border-color:transparent}
+.hcard{position:relative;border-radius:22px;border-color:transparent}
 [data-theme=dark] .hcard{background:radial-gradient(120% 150% at 0% 0%,rgba(163,230,53,.13),transparent 48%),radial-gradient(90% 130% at 100% 100%,rgba(56,189,248,.15),transparent 55%),linear-gradient(180deg,#161618,#111113)!important;box-shadow:0 40px 90px -50px rgba(0,0,0,.95)}
 .hcard::after{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;background:linear-gradient(135deg,rgba(163,230,53,.55),rgba(255,255,255,.06) 38%,rgba(255,255,255,.04) 62%,rgba(56,189,248,.55));-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude}
-.hcard .hlogo{width:68px;height:68px;filter:drop-shadow(0 12px 30px rgba(163,230,53,.28))}
-.hcard h1{font-size:56px;font-weight:800;letter-spacing:-.04em;line-height:1}
+.hcard .hlogo{filter:drop-shadow(0 12px 30px rgba(163,230,53,.28))}
+.hcard h1{font-weight:800;letter-spacing:-.035em;line-height:1.05}
 [data-theme=dark] .hcard h1{background:linear-gradient(180deg,#ffffff 30%,#9a9a9a);-webkit-background-clip:text;background-clip:text;color:transparent}
-.hcard .wave{opacity:.9}
 .hcard .wave polyline{stroke-width:2.6;filter:drop-shadow(0 0 7px rgba(163,230,53,.55))}
-.htag{font-size:17px;line-height:1.6;max-width:700px;margin-top:18px}
+.htag{line-height:1.6;max-width:700px}
 [data-theme=dark] .htag{color:#bcbcbc}
 .chips{gap:10px;margin-top:20px}
 .chips span{padding:6px 13px;font-size:12.5px;font-weight:500;border-radius:999px}
@@ -63,6 +62,8 @@ pub const POLISH_CSS: &str = r#"
 .chart{border-radius:16px}
 .chrono .box{border-radius:14px}
 .btn{border-radius:10px}
+@media(min-width:701px){.news{border-radius:999px}.hcard{padding:42px 40px 34px}.hcard .hlogo{width:68px;height:68px}.hcard h1{font-size:56px;letter-spacing:-.04em;line-height:1}.hcard .wave{opacity:.9}.htag{font-size:17px;margin-top:18px}}
+@media(max-width:700px){#lform .btn,.slinkform .btn{width:100%;justify-content:center}.news{border-radius:14px}.hcard{padding:24px 20px 76px}.hcard .wave{opacity:.45;bottom:10px}.hcard h1{font-size:34px}.hcard .hlogo{width:48px;height:48px}.htag{font-size:15.5px}.chips span{font-size:12px;padding:5px 11px}}
 [data-theme=light] .news .nb{color:#3f6212}
 [data-theme=light] .or,[data-theme=light] .hero .hint{color:#595959}
 [data-theme=light] .pick .fmt i{color:#854d0e}
