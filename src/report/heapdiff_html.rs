@@ -356,7 +356,7 @@ pub fn render(c: &HeapComparison) -> String {
         esc(&page_title),
         CSS,
         PAGE_CSS,
-        super::theme::BRAND_CSS,
+        super::polish::POLISH_CSS,
         b,
         ANIM_JS,
         JS,

@@ -231,7 +231,7 @@ fn write_spike(out: &mut String, s: &Spike, nth: usize, total: usize, base: &Bas
         r#"<li class="ev sp" data-w="{}"><span class="t">{}</span><span class="rail"><i></i></span><div class="b"><div class="box"><div class="bh"><span class="pill">{}</span><span class="nth">{}</span></div><dl class="kv"><div><dt>{}</dt><dd class="bad">{} ms</dd></div><div><dt>{}</dt><dd>{} ms</dd></div><div><dt>TPS</dt><dd>{}</dd></div><div><dt>{}</dt><dd>{}</dd></div></dl>"#,
         w.index,
         esc(&span_label(w, w)),
-        crate::i18n::t("Lag spike", "Lag spike"),
+        crate::i18n::t("LAG SPIKE", "LAG SPIKE"),
         esc(&tf!("{nth} di {total}", "{nth} of {total}")),
         crate::i18n::t("Tick più lento", "Slowest tick"),
         num(w.mspt_max),

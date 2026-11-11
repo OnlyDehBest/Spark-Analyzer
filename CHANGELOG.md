@@ -40,6 +40,10 @@
   id dei report casuali e non indovinabili.
 
 ### Sito
+- Restyling grafico: sfondo con aloni leggeri, riquadro principale con bordo sfumato verde-blu
+  e titolo più grande, area di caricamento in rilievo con pulsante «Analizza» blu, selettore
+  delle modalità e barra laterale rifiniti, riquadri del report più morbidi. Tolta la sezione
+  «Comandi spark» dalla barra laterale. Migliorati i contrasti del tema chiaro.
 - Avviso «New» in home con link alle novità; icona del sito come file veri e logo per Google;
   descrizione sempre in inglese.
 - Grafico senza la scritta «budget 50 ms».

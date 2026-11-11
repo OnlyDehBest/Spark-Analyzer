@@ -6,7 +6,7 @@ pub mod heapdiff_html;
 pub mod html;
 pub mod localize;
 pub mod markdown;
-pub mod theme;
+pub mod polish;
 
 use serde::Serialize;
 
