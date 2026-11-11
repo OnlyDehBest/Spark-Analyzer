@@ -3,7 +3,7 @@
 ## Non ancora rilasciato
 
 ### Home
-- Nell'app sul server la home mostra quante persone hanno già usato il sito e quanti profili
+- Nell'app sul server la home mostra quanti User hanno già usato il sito e quanti profili
   sono stati analizzati. Il conteggio è anonimo e resta dopo i riavvii.
 
 ### Heap dump

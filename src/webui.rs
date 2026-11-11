@@ -484,9 +484,9 @@ fn usage_html((people, analyses): (u64, u64)) -> String {
     }
     let t = crate::i18n::t;
     let people_label = if people == 1 {
-        t("persona l'ha già usato", "person has used it")
+        t("User l'ha già usato", "user has used it")
     } else {
-        t("persone l'hanno già usato", "people have used it")
+        t("User l'hanno già usato", "users have used it")
     };
     let analyses_label = if analyses == 1 {
         t("profilo analizzato", "profile analyzed")
@@ -946,8 +946,8 @@ mod usage_tests {
         let html = super::usage_html((1284, 3912));
         assert!(html.contains(r#"data-count="1284">1.284</b>"#));
         assert!(html.contains("3.912"));
-        assert!(html.contains("persone"));
-        assert!(super::usage_html((1, 1)).contains("persona"));
+        assert!(html.contains("User l'hanno"));
+        assert!(super::usage_html((1, 1)).contains("User l'ha già"));
         assert!(super::usage_html((0, 0)).is_empty());
         assert!(!super::index_main("").contains("class=\"usage\""));
     }
