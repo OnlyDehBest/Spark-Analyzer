@@ -705,10 +705,19 @@ fn social_meta() -> String {
     let title = "Spark Resource Analyzer";
     let description = SITE_DESCRIPTION;
     format!(
-        r##"<meta name="description" content="{d}"><meta name="theme-color" content="#0b0b0c"><meta property="og:type" content="website"><meta property="og:site_name" content="{title}"><meta property="og:title" content="{title}"><meta property="og:description" content="{d}"><meta property="og:url" content="{site}"><meta property="og:image" content="{site}og-image.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="{title}"><meta name="twitter:description" content="{d}"><meta name="twitter:image" content="{site}og-image.png"><script type="application/ld+json">{{"@context":"https://schema.org","@type":"WebSite","name":"{title}","alternateName":"Spark Analyzer","url":"{site}","description":"{d}"}}</script>"##,
-        d = esc(description)
+        r##"<meta name="description" content="{d}"><link rel="canonical" href="{canonical}"><link rel="alternate" hreflang="en" href="{main_site}"><link rel="alternate" hreflang="it" href="{main_site}?lang=it"><meta name="theme-color" content="#0b0b0c"><meta property="og:type" content="website"><meta property="og:site_name" content="{title}"><meta property="og:title" content="{title}"><meta property="og:description" content="{d}"><meta property="og:url" content="{site}"><meta property="og:image" content="{site}og-image.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="{title}"><meta name="twitter:description" content="{d}"><meta name="twitter:image" content="{site}og-image.png"><script type="application/ld+json">{{"@context":"https://schema.org","@type":"WebSite","name":"{title}","alternateName":"Spark Analyzer","url":"{site}","description":"{d}"}}</script>"##,
+        d = esc(description),
+        main_site = MAIN_SITE,
+        canonical = if crate::i18n::is_en() {
+            MAIN_SITE.to_string()
+        } else {
+            format!("{MAIN_SITE}?lang=it")
+        },
     )
 }
+
+/// Main public address: the GitHub Pages copy points search engines here.
+pub const MAIN_SITE: &str = "https://sparkanalyzer.me/";
 
 /// One-line "what's new" notice shown above the home title (always in English).
 pub const SITE_NEWS: &str =

@@ -2,6 +2,11 @@
 
 ## Non ancora rilasciato
 
+### Ricerca su Google
+- Titolo e descrizione della home pensati per la ricerca «spark analyzer», robots.txt, sitemap,
+  anteprima per i link condivisi; i singoli report non vengono indicizzati.
+- Il sito su GitHub Pages indica sparkanalyzer.me come sito principale.
+
 ### Privacy
 - Avviso sui cookie e pagina «Cookie e privacy» con l'elenco di cookie e dati salvati nel browser.
 - I caratteri sono serviti dal sito stesso: nessuna richiesta a Google Fonts.
