@@ -83,4 +83,45 @@ a,button,label,summary,.chip,.ghost{-webkit-tap-highlight-color:transparent}
 @media(pointer:coarse){.ghost{width:44px;height:44px}.chip{min-height:36px}}
 @media(pointer:coarse) and (max-width:900px){.side nav a{min-width:44px;min-height:44px;justify-content:center}}
 @media(max-width:900px){.side{padding-top:max(8px,env(safe-area-inset-top));padding-left:max(12px,env(safe-area-inset-left));padding-right:max(12px,env(safe-area-inset-right))}.content{padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right));padding-bottom:env(safe-area-inset-bottom)}}
+::selection{background:rgba(56,189,248,.32)}
+*{scrollbar-width:thin;scrollbar-color:var(--card3) transparent}
+.hcard::before{content:"";position:absolute;inset:0;pointer-events:none;background-image:radial-gradient(rgba(255,255,255,.13) 1px,transparent 1.5px);background-size:22px 22px;-webkit-mask-image:radial-gradient(70% 120% at 88% 0%,#000,transparent 72%);mask-image:radial-gradient(70% 120% at 88% 0%,#000,transparent 72%)}
+[data-theme=light] .hcard::before{background-image:radial-gradient(rgba(10,10,10,.13) 1px,transparent 1.5px)}
+.hcard>*{position:relative}
+.hcard>.wave{position:absolute}
+.hcard .wave polyline{stroke-dasharray:2400;animation:sa-wave 1.8s cubic-bezier(.3,.7,.2,1) .15s both}
+@keyframes sa-wave{from{stroke-dashoffset:2400}to{stroke-dashoffset:0}}
+.hero .dicon{position:relative}
+.hero .dicon::before,.hero .dicon::after{content:"";position:absolute;inset:-13px;border-radius:28px;border:1px solid rgba(56,189,248,.26);pointer-events:none;transition:inset .25s ease,border-color .25s ease}
+.hero .dicon::after{inset:-28px;border-radius:42px;border-color:rgba(56,189,248,.12)}
+.hero:hover .dicon::before,.hero.over .dicon::before{inset:-16px;border-color:rgba(56,189,248,.45)}
+.hero:hover .dicon::after,.hero.over .dicon::after{inset:-34px;border-color:rgba(56,189,248,.2)}
+.hero h2{margin-top:36px}
+.hero .hint{text-wrap:balance;max-width:560px;margin-left:auto;margin-right:auto;line-height:1.9}
+.recent a{border-radius:9px;padding:8px 10px;transition:background-color .15s ease}
+.recent i{box-shadow:0 0 0 3px color-mix(in srgb,currentColor 0%,transparent)}
+[data-theme=light] body{background:#f6f7f9}
+[data-theme=light] .content{position:relative;isolation:isolate}
+[data-theme=light] .content::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(900px 520px at 78% -12%,rgba(2,132,199,.09),transparent 62%),radial-gradient(760px 460px at 22% -10%,rgba(101,163,13,.08),transparent 62%)}
+[data-theme=light] .side{background:#fff}
+[data-theme=light] .hcard{box-shadow:0 30px 70px -50px rgba(15,23,42,.35)}
+[data-theme=light] .hero{background:#fff;border-color:var(--line);box-shadow:0 30px 70px -50px rgba(15,23,42,.3)}
+[data-theme=light] .lrow input{background:#f7f8fa}
+[data-theme=light] .panel,[data-theme=light] .sumcard,[data-theme=light] .kpis{box-shadow:0 24px 60px -48px rgba(15,23,42,.3)}
+.top h1{font-weight:800;letter-spacing:-.03em}
+[data-theme=dark] .top h1{background:linear-gradient(180deg,#fff 35%,#a3a3a3);-webkit-background-clip:text;background-clip:text;color:transparent}
+.panel>h2{gap:11px;margin-bottom:14px}
+.panel>h2>.hi{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;flex:none;color:var(--acc);background:rgba(56,189,248,.10);border:1px solid rgba(56,189,248,.22)}
+.bar{height:7px}
+[data-theme=dark] .bar{background:rgba(255,255,255,.07)}
+.bar i{background:linear-gradient(90deg,var(--bar),color-mix(in srgb,var(--bar) 55%,#fff));box-shadow:0 0 10px -2px var(--bar)}
+[data-theme=dark] thead th{background:rgba(255,255,255,.025)}
+[data-theme=light] thead th{background:#fafafa}
+[data-theme=dark] tbody tr:hover{background:rgba(255,255,255,.035)}
+.panel>table+table,.panel>div>table+table{margin-top:14px}
+.finding{transition:border-color .2s ease,background-color .2s ease,box-shadow .2s ease}
+[data-theme=dark] .finding:hover{background:#1c1c1f;box-shadow:0 14px 30px -22px rgba(0,0,0,.9)}
+[data-theme=dark] .finding.crit{background:linear-gradient(90deg,rgba(239,68,68,.07),transparent 38%),var(--card2)}
+.sev{letter-spacing:.06em}
+@media(prefers-reduced-motion:reduce){.hcard .wave polyline{animation:none}}
 "#;
