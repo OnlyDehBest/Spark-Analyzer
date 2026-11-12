@@ -2,6 +2,12 @@
 
 ## Non ancora rilasciato
 
+### Grafica
+- Nuovo stile da strumento tecnico: superfici piatte, angoli più squadrati e numeri in monospazio.
+- La home mostra un esempio di report; il campo del link ha un prompt da terminale e l'analisi
+  mostra i passaggi come righe di log.
+- Nel report ogni sezione ha una barra del titolo a finestra.
+
 ### Home
 - Nell'app sul server la home mostra quanti User hanno già usato il sito e quanti profili
   sono stati analizzati. Il conteggio è anonimo e resta dopo i riavvii.

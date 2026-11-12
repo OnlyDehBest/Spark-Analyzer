@@ -258,4 +258,16 @@ th{padding:9px 14px;font-family:"JetBrains Mono",ui-monospace,monospace;font-siz
 .panel>h2>a+*,.panel>h2:has(>a)::after{margin-left:12px}
 @media(max-width:700px){.panel{--pp:12px}}
 @media print{.panel>h2::after{display:none}}
+[data-theme=light] .lrow .lin span{color:#595959}
+[data-theme=light] .panel>h2{background:#fafafa}
+[data-theme=light] .cfgdl,[data-theme=light] .panel>h2>a{color:#0369a1}
+[data-theme=dark] .finding.info .sev{color:#c4c4c4}
+[data-theme=dark] .finding.crit .sev{color:#fca5a5}
+[data-theme=light] .finding.info .sev,[data-theme=light] .finding.info .area{color:#525252}
+[data-theme=light] .finding{background:#fff}
+[data-theme=light] .finding .area,[data-theme=light] .finding .fa{color:#525252}
+[data-theme=light] .finding.crit .sev{color:#b91c1c}
+[data-theme=light] .finding.high .sev{color:#c2410c}
+[data-theme=light] .finding.med .sev{color:#854d0e}
+[data-theme=light] .finding.low .sev{color:#0369a1}
 "#;

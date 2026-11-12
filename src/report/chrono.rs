@@ -324,7 +324,7 @@ fn write_share_bar(out: &mut String, cats: &[Delta], growth_total: f64) {
     if growth_total <= 0.0 {
         return;
     }
-    out.push_str(r#"<div class="share" role="img">"#);
+    out.push_str(r#"<div class="share" aria-hidden="true">"#);
     let mut legend = String::new();
     let mut used = 0.0;
     let mut growing: Vec<&Delta> = cats.iter().filter(|d| d.delta > 0.0).collect();

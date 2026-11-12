@@ -932,7 +932,7 @@ pub fn render(r: &Report) -> String {
         }
         let _ = write!(
             nav,
-            r##"<a href="#{id}">{}<span>{label}</span></a>"##,
+            r##"<a href="#{id}" aria-label="{label}">{}<span>{label}</span></a>"##,
             icon(ic)
         );
     }
@@ -1557,7 +1557,7 @@ pub fn render(r: &Report) -> String {
         if !b.contains(&format!(r#"<section id="{id}""#)) {
             b = b.replacen(
                 &format!(
-                    r##"<a href="#{id}">{}<span>{label}</span></a>"##,
+                    r##"<a href="#{id}" aria-label="{label}">{}<span>{label}</span></a>"##,
                     icon(
                         nav_items
                             .iter()
