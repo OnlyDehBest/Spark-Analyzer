@@ -973,3 +973,196 @@ mod usage_tests {
         assert!(!super::index_main("").contains("class=\"usage\""));
     }
 }
+
+pub fn privacy_page(hosted: bool) -> String {
+    let t = crate::i18n::t;
+    let row = |name: &str, kind: &str, what: &str, life: &str| {
+        format!(
+            "<tr><td><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td></tr>",
+            esc(name),
+            esc(kind),
+            esc(what),
+            esc(life)
+        )
+    };
+    let local = t("memoria del browser", "browser storage");
+    let until = t("finché non la cancelli", "until you clear it");
+    let mut rows = String::new();
+    if hosted {
+        rows.push_str(&row(
+            "sa_vid",
+            t("cookie tecnico", "technical cookie"),
+            t(
+                "collega i report che analizzi al tuo browser, così nell'elenco vedi solo i tuoi",
+                "links the reports you analyze to your browser, so the list only shows yours",
+            ),
+            t("1 anno", "1 year"),
+        ));
+    }
+    for (name, what) in [
+        (
+            "sparkscope-theme",
+            t("tema chiaro o scuro", "light or dark theme"),
+        ),
+        ("sa-lang", t("lingua del sito", "site language")),
+        (
+            "sa-unit",
+            t(
+                "unità dei consumi nel report (% o ms/tick)",
+                "usage unit in reports (% or ms/tick)",
+            ),
+        ),
+        ("sa-noside", t("barra laterale chiusa", "sidebar collapsed")),
+        (
+            "sparkscope-recent",
+            t(
+                "elenco delle tue analisi recenti",
+                "list of your recent analyses",
+            ),
+        ),
+        (
+            "sa-chunk",
+            t(
+                "dimensione dei pezzi di upload più adatta alla tua rete",
+                "upload piece size that suits your network",
+            ),
+        ),
+        (
+            "sa-cookies",
+            t(
+                "ricorda che hai chiuso l'avviso sui cookie",
+                "remembers that you closed the cookie notice",
+            ),
+        ),
+    ] {
+        rows.push_str(&row(name, local, what, until));
+    }
+    let data = if hosted {
+        format!(
+            "<h2>{}</h2><p>{}</p><p>{}</p><p>{}</p>",
+            t("I report sul server", "Reports on the server"),
+            t(
+                "Quando analizzi un profilo su questo sito, il report viene salvato sul server ed eliminato automaticamente dopo 30 giorni. Nell'elenco delle analisi recenti vedi solo i tuoi; chi riceve il link di un report può aprirlo.",
+                "When you analyze a profile on this site, the report is stored on the server and deleted automatically after 30 days. The recent list only shows your own; anyone you send a report link to can open it.",
+            ),
+            t(
+                "Il contatore nella home conta i browser in forma anonima: salviamo solo un'impronta dell'identificativo, mai l'identificativo stesso.",
+                "The counter on the home page counts browsers anonymously: we only store a fingerprint of the ID, never the ID itself.",
+            ),
+            t(
+                "Come ogni server web, il server può registrare indirizzo IP, data e pagina richiesta nei log tecnici, usati solo per sicurezza e diagnosi dei problemi.",
+                "Like any web server, the server may record IP address, time and requested page in technical logs, used only for security and troubleshooting.",
+            ),
+        )
+    } else {
+        format!(
+            "<h2>{}</h2><p>{}</p><p>{}</p>",
+            t("Dove avviene l'analisi", "Where the analysis runs"),
+            t(
+                "Su questo sito l'analisi avviene interamente nel tuo browser: il profilo non viene inviato a noi. Se incolli un link di spark, il browser scarica il profilo direttamente dal servizio di spark (spark.lucko.me).",
+                "On this site the analysis runs entirely in your browser: the profile is never sent to us. If you paste a spark link, the browser downloads the profile directly from spark's service (spark.lucko.me).",
+            ),
+            t(
+                "Il sito è ospitato da GitHub Pages, che può registrare l'indirizzo IP dei visitatori secondo l'informativa privacy di GitHub.",
+                "The site is hosted on GitHub Pages, which may log visitors' IP addresses under GitHub's privacy statement.",
+            ),
+        )
+    };
+    let repo = "https://github.com/OnlyDehBest/Spark-Analyzer";
+    let who = format!(
+        "{} <a href=\"{repo}/issues\">{}</a>.",
+        t(
+            "Spark Resource Analyzer è un progetto open source di onlynelchilling. Per domande sulla privacy apri una segnalazione sul",
+            "Spark Resource Analyzer is an open-source project by onlynelchilling. For privacy questions, open an issue on the",
+        ),
+        t("repository GitHub", "GitHub repository"),
+    );
+    let main = format!(
+        r#"<article class="legal"><h1>{title}</h1><p class="sub">{updated}</p>
+<h2>{who_t}</h2><p>{who}</p>
+<h2>{ck_t}</h2><p>{ck}</p>
+<div class="tblwrap" tabindex="0" role="region" aria-label="{c_reg}"><table><thead><tr><th>{c_name}</th><th>{c_kind}</th><th>{c_what}</th><th>{c_life}</th></tr></thead><tbody>{rows}</tbody></table></div>
+<p>{none}</p>
+{data}
+<h2>{font_t}</h2><p>{font}</p>
+<h2>{del_t}</h2><p>{del}</p>
+<p><a class="btn sec" href="{home}">{back}</a></p></article>"#,
+        title = t("Cookie e privacy", "Cookies & privacy"),
+        updated = t(
+            "Ultimo aggiornamento: 12 novembre 2026",
+            "Last updated: 12 November 2026"
+        ),
+        who_t = t("Chi gestisce il sito", "Who runs the site"),
+        ck_t = t(
+            "Cookie e memoria del browser",
+            "Cookies and browser storage"
+        ),
+        ck = t(
+            "Il sito usa solo strumenti tecnici, necessari a farlo funzionare o a ricordare le tue scelte:",
+            "The site only uses technical storage it needs to work or to remember your choices:",
+        ),
+        c_reg = t(
+            "Elenco di cookie e memoria del browser",
+            "List of cookies and browser storage"
+        ),
+        c_name = t("Nome", "Name"),
+        c_kind = t("Tipo", "Type"),
+        c_what = t("A cosa serve", "Purpose"),
+        c_life = t("Durata", "Duration"),
+        none = t(
+            "Non usiamo cookie di profilazione, pubblicità o statistiche di terze parti.",
+            "We don't use profiling, advertising or third-party analytics cookies.",
+        ),
+        font_t = t("Caratteri", "Fonts"),
+        font = t(
+            "I caratteri del sito (Inter e JetBrains Mono) sono serviti dal sito stesso: nessuna richiesta a Google Fonts o ad altri servizi esterni.",
+            "The site's fonts (Inter and JetBrains Mono) are served by the site itself: no requests to Google Fonts or other external services.",
+        ),
+        del_t = t("Come cancellare i dati", "How to delete your data"),
+        del = t(
+            "Puoi cancellare cookie e memoria del sito dalle impostazioni del browser. I report sul server si eliminano da soli dopo 30 giorni.",
+            "You can delete the site's cookies and storage from your browser settings. Reports on the server delete themselves after 30 days.",
+        ),
+        back = t("Torna all'analisi", "Back to analysis"),
+        home = if hosted {
+            if crate::i18n::is_en() {
+                "/"
+            } else {
+                "/?lang=it"
+            }
+        } else if crate::i18n::is_en() {
+            "./"
+        } else {
+            "./it.html"
+        },
+    );
+    let other = if crate::i18n::is_en() {
+        "privacy-it.html"
+    } else {
+        "privacy.html"
+    };
+    shell(&Page {
+        crumb: t("Cookie e privacy", "Cookies & privacy"),
+        lang_switch: other,
+        title: t(
+            "Cookie e privacy · Spark Resource Analyzer",
+            "Cookies & privacy · Spark Resource Analyzer",
+        ),
+        side_extra: "",
+        main: &main,
+        script: "",
+        module_script: "",
+        home: if hosted {
+            if crate::i18n::is_en() {
+                "/"
+            } else {
+                "/?lang=it"
+            }
+        } else if crate::i18n::is_en() {
+            "./"
+        } else {
+            "./it.html"
+        },
+        footer: "",
+    })
+}

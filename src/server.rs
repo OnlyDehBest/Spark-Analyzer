@@ -270,6 +270,32 @@ fn page_resp(cached: &[u8], gz: bool) -> Resp {
     text_resp(if gz { cached.to_vec() } else { plain }, gz)
 }
 
+fn static_resp(path: &str, gz: bool) -> Option<Resp> {
+    let (dir, file) = path.rsplit_once('/')?;
+    if dir.ends_with("/fonts") || dir == "/fonts" {
+        let body = crate::fonts::font(file)?.to_vec();
+        let len = body.len();
+        return Some(Response::new(
+            tiny_http::StatusCode(200),
+            vec![
+                header("Content-Type", "font/woff2"),
+                header("Cache-Control", "public, max-age=31536000, immutable"),
+            ],
+            std::io::Cursor::new(body),
+            Some(len),
+            None,
+        ));
+    }
+    let lang = match file {
+        "privacy.html" => Lang::En,
+        "privacy-it.html" => Lang::It,
+        _ => return None,
+    };
+    let _guard = i18n::scoped(lang);
+    let html = crate::webui::privacy_page(true);
+    Some(html_resp(html, gz).with_header(header("Cache-Control", "public, max-age=3600")))
+}
+
 fn wasm_asset_resp(path: &str, gz: bool) -> Option<Response<std::io::Cursor<&'static [u8]>>> {
     let bundle = WasmBundle::embedded();
     let compressed = if gz { bundle.asset_gzip(path) } else { None };
@@ -369,6 +395,12 @@ fn handle(mut req: Request, st: &State) {
                     "request blocked: it comes from another site"
                 ) }),
         ));
+        return;
+    }
+    if method == Method::Get
+        && let Some(resp) = static_resp(&path, gz)
+    {
+        let _ = req.respond(resp);
         return;
     }
     if method == Method::Get

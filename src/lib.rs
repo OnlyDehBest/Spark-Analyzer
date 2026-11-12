@@ -13,6 +13,7 @@ pub mod archive;
 pub mod config;
 pub mod diff;
 pub mod flame;
+pub mod fonts;
 pub mod heap;
 pub mod heapdiff;
 pub mod hprof;

@@ -2,6 +2,10 @@
 
 ## Non ancora rilasciato
 
+### Privacy
+- Avviso sui cookie e pagina «Cookie e privacy» con l'elenco di cookie e dati salvati nel browser.
+- I caratteri sono serviti dal sito stesso: nessuna richiesta a Google Fonts.
+
 ### Grafica
 - Nuovo stile da strumento tecnico: superfici piatte, angoli più squadrati e numeri in monospazio.
 - La home mostra un esempio di report; il campo del link ha un prompt da terminale e l'analisi

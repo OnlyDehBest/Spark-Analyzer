@@ -27,6 +27,22 @@ fn main() {
     )
     .expect("scrittura fallita");
     std::fs::write(format!("{dir}/.nojekyll"), "").expect("scrittura fallita");
+    for lang in [Lang::It, Lang::En] {
+        let _guard = i18n::scoped(lang);
+        let name = match lang {
+            Lang::It => "privacy-it.html",
+            Lang::En => "privacy.html",
+        };
+        std::fs::write(
+            format!("{dir}/{name}"),
+            sparkscope::webui::privacy_page(false),
+        )
+        .expect("scrittura fallita");
+    }
+    std::fs::create_dir_all(format!("{dir}/fonts")).expect("cartella non creabile");
+    for (name, bytes) in sparkscope::fonts::FONTS {
+        std::fs::write(format!("{dir}/fonts/{name}"), bytes).expect("scrittura fallita");
+    }
     let assets = concat!(env!("CARGO_MANIFEST_DIR"), "/static");
     if let Ok(entries) = std::fs::read_dir(assets) {
         for entry in entries.flatten() {

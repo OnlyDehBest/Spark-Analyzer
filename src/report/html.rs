@@ -478,7 +478,7 @@ pub(crate) const LOGO_SVG_LAG: &str = r##"<svg viewBox="0 0 32 32" width="32" he
 pub(crate) fn logo_svg(lag: bool) -> &'static str {
     if lag { LOGO_SVG_LAG } else { LOGO_SVG }
 }
-pub(crate) const FAVICON: &str = r##"<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='.5' y='.5' width='31' height='31' rx='9' fill='%231a1a1a' stroke='%23333'/%3E%3Ccircle cx='14' cy='14' r='7.2' fill='none' stroke='%23fafafa' stroke-width='2.2'/%3E%3Cpath d='M19.4 19.4L24.6 24.6' stroke='%23fafafa' stroke-width='2.8' stroke-linecap='round'/%3E%3Cpath d='M9 14.4h2.1l1.4-3.2l2.2 5.9l1.6-3.8H19' fill='none' stroke='%23a3e635' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">"##;
+pub(crate) const FAVICON: &str = r##"<link rel="preload" href="fonts/inter-400.woff2" as="font" type="font/woff2" crossorigin><style>@font-face{font-family:Inter;font-style:normal;font-weight:400;font-display:swap;src:url(fonts/inter-400.woff2) format('woff2')}@font-face{font-family:Inter;font-style:normal;font-weight:500;font-display:swap;src:url(fonts/inter-500.woff2) format('woff2')}@font-face{font-family:Inter;font-style:normal;font-weight:600;font-display:swap;src:url(fonts/inter-600.woff2) format('woff2')}@font-face{font-family:Inter;font-style:normal;font-weight:700;font-display:swap;src:url(fonts/inter-700.woff2) format('woff2')}@font-face{font-family:Inter;font-style:normal;font-weight:800;font-display:swap;src:url(fonts/inter-800.woff2) format('woff2')}@font-face{font-family:"JetBrains Mono";font-style:normal;font-weight:400;font-display:swap;src:url(fonts/mono-400.woff2) format('woff2')}@font-face{font-family:"JetBrains Mono";font-style:normal;font-weight:500;font-display:swap;src:url(fonts/mono-500.woff2) format('woff2')}@font-face{font-family:"JetBrains Mono";font-style:normal;font-weight:600;font-display:swap;src:url(fonts/mono-600.woff2) format('woff2')}@font-face{font-family:"JetBrains Mono";font-style:normal;font-weight:700;font-display:swap;src:url(fonts/mono-700.woff2) format('woff2')}</style><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='.5' y='.5' width='31' height='31' rx='9' fill='%231a1a1a' stroke='%23333'/%3E%3Ccircle cx='14' cy='14' r='7.2' fill='none' stroke='%23fafafa' stroke-width='2.2'/%3E%3Cpath d='M19.4 19.4L24.6 24.6' stroke='%23fafafa' stroke-width='2.8' stroke-linecap='round'/%3E%3Cpath d='M9 14.4h2.1l1.4-3.2l2.2 5.9l1.6-3.8H19' fill='none' stroke='%23a3e635' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">"##;
 
 pub(crate) fn topbar(page: &str) -> String {
     format!(
@@ -528,7 +528,46 @@ pub const COPYRIGHT_YEAR: u16 = 2026;
 
 pub(crate) fn copyright_footer() -> String {
     format!(
-        r#"<footer class="copy">© {COPYRIGHT_YEAR} <b>{COPYRIGHT_OWNER}</b> · Spark Resource Analyzer</footer>"#
+        r#"<footer class="copy">© {COPYRIGHT_YEAR} <b>{COPYRIGHT_OWNER}</b> · Spark Resource Analyzer · <a href="{privacy}">{privacy_t}</a> · <button type="button" class="cklink" data-ck-open>{prefs_t}</button></footer>{notice}"#,
+        privacy = privacy_href(),
+        privacy_t = crate::i18n::t("Cookie e privacy", "Cookies & privacy"),
+        prefs_t = crate::i18n::t("Avviso cookie", "Cookie notice"),
+        notice = cookie_notice(),
+    )
+}
+
+pub fn privacy_href() -> &'static str {
+    if crate::i18n::is_en() {
+        "privacy.html"
+    } else {
+        "privacy-it.html"
+    }
+}
+
+fn cookie_notice() -> String {
+    let t = crate::i18n::t;
+    format!(
+        r#"<div class="cknote" id="cknote" role="region" aria-label="{label}" hidden><div class="ckh"><span>cookies.txt</span><div class="pvw" aria-hidden="true"><svg viewBox="0 0 10 10"><path d="M2 5h6"/></svg><svg viewBox="0 0 10 10"><rect x="2.2" y="2.2" width="5.6" height="5.6" rx=".8"/></svg><svg viewBox="0 0 10 10"><path d="M2.4 2.4l5.2 5.2M7.6 2.4L2.4 7.6"/></svg></div></div><div class="ckb"><p class="ckp"><b>$</b> cat cookies.txt</p><p>{text}</p><ul><li><b>[ok]</b> {ok1}</li><li><b>[ok]</b> {ok2}</li><li><i>[no]</i> {no1}</li></ul><div class="cka"><button type="button" class="btn" data-ck-ok>{ok}</button><a class="btn sec" href="{href}">{more}</a></div></div></div><script>(function(){{if(window.__saCk)return;window.__saCk=1;if(location.protocol==='file:'){{document.querySelectorAll('footer.copy a[href^="privacy"],[data-ck-open]').forEach(function(e){{e.hidden=true}});return}}var n=document.getElementById('cknote');if(!n)return;function seen(){{try{{return localStorage.getItem('sa-cookies')==='1'}}catch(e){{return false}}}}function show(){{n.hidden=false;var b=n.querySelector('[data-ck-ok]');if(b)b.focus({{preventScroll:true}})}}document.addEventListener('click',function(e){{var t=e.target.closest&&e.target.closest('[data-ck-ok],[data-ck-open]');if(!t)return;if(t.hasAttribute('data-ck-open')){{show();return}}n.hidden=true;try{{localStorage.setItem('sa-cookies','1')}}catch(e){{}}}});if(!seen())setTimeout(show,600)}})();</script>"#,
+        label = t("Avviso sui cookie", "Cookie notice"),
+        text = t(
+            "Spark Analyzer usa solo strumenti tecnici, necessari al funzionamento del sito.",
+            "Spark Analyzer only uses technical storage the site needs to work.",
+        ),
+        ok1 = t(
+            "un identificativo anonimo per ritrovare i tuoi report",
+            "an anonymous ID to find your reports again",
+        ),
+        ok2 = t(
+            "le tue preferenze: tema, lingua, unità di misura",
+            "your preferences: theme, language, units",
+        ),
+        no1 = t(
+            "nessuna profilazione, pubblicità o tracciamento di terze parti",
+            "no profiling, advertising or third-party tracking",
+        ),
+        ok = t("Ho capito", "Got it"),
+        more = t("Dettagli", "Details"),
+        href = privacy_href(),
     )
 }
 
