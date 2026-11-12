@@ -575,6 +575,15 @@ pub fn local_index_with(recent: &[Recent], wasm_query: &str) -> String {
 }
 
 pub fn local_index_full(recent: &[Recent], wasm_query: &str, usage: Option<(u64, u64)>) -> String {
+    local_index_public(recent, wasm_query, usage, None)
+}
+
+pub fn local_index_public(
+    recent: &[Recent],
+    wasm_query: &str,
+    usage: Option<(u64, u64)>,
+    public_base: Option<&str>,
+) -> String {
     let t = crate::i18n::t;
     let script = format!(
         "var SA_WV={};{LOCAL_JS}",
@@ -583,10 +592,10 @@ pub fn local_index_full(recent: &[Recent], wasm_query: &str, usage: Option<(u64,
     let (side, panel) = recent_html(recent);
     let main = news_banner() + &index_main_with(&panel, usage);
     let switch = format!("/?lang={}", crate::report::html::lang_to());
-    shell(&Page {
+    let page = shell(&Page {
         crumb: t("Nuova analisi", "New analysis"),
         lang_switch: &switch,
-        title: t("Spark Resource Analyzer", "Spark Resource Analyzer"),
+        title: home_title(),
         side_extra: &side,
         main: &main,
         script: &script,
@@ -597,7 +606,15 @@ pub fn local_index_full(recent: &[Recent], wasm_query: &str, usage: Option<(u64,
             "/?lang=it"
         },
         footer: t("in esecuzione sul tuo computer", "running on your computer"),
-    })
+    });
+    match public_base {
+        Some(base) => page.replacen(data_uri_icon(), "", 1).replacen(
+            "</head>",
+            &(seo_head(base) + "</head>"),
+            1,
+        ),
+        None => page,
+    }
 }
 
 pub fn local_not_found() -> String {
@@ -640,6 +657,37 @@ pub fn static_index() -> String {
 
 pub fn static_index_versioned(version: &str) -> String {
     static_index_page().replace("__SA_V__", &version_suffix(version))
+}
+
+pub fn home_title() -> &'static str {
+    crate::i18n::t(
+        "Spark Analyzer · Analisi dei profili spark per server Minecraft",
+        "Spark Analyzer · Spark profile analysis for Minecraft servers",
+    )
+}
+
+pub fn home_description() -> &'static str {
+    crate::i18n::t(
+        "Analizza i profili spark del tuo server Minecraft: trova il plugin, la classe e il metodo che causano il lag, i lag spike e i memory leak, con le correzioni consigliate. Gratis e open source.",
+        "Analyze your Minecraft server's spark profiles: find the plugin, class and method causing lag, lag spikes and memory leaks, with recommended fixes. Free and open source.",
+    )
+}
+
+/// Search-engine tags for the hosted home page, built from the public address the request came in on.
+pub fn seo_head(base: &str) -> String {
+    let it = !crate::i18n::is_en();
+    let canonical = if it {
+        format!("{base}?lang=it")
+    } else {
+        base.to_string()
+    };
+    let title = home_title();
+    let d = esc(home_description());
+    format!(
+        r##"<meta name="description" content="{d}"><link rel="canonical" href="{canonical}"><link rel="alternate" hreflang="en" href="{base}"><link rel="alternate" hreflang="it" href="{base}?lang=it"><link rel="alternate" hreflang="x-default" href="{base}"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><meta property="og:type" content="website"><meta property="og:site_name" content="Spark Analyzer"><meta property="og:title" content="{t}"><meta property="og:description" content="{d}"><meta property="og:url" content="{canonical}"><meta property="og:image" content="{base}og-image.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:locale" content="{loc}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="{t}"><meta name="twitter:description" content="{d}"><meta name="twitter:image" content="{base}og-image.png"><script type="application/ld+json">{{"@context":"https://schema.org","@type":"WebApplication","name":"Spark Analyzer","alternateName":["Spark Resource Analyzer","SparkAnalyzer"],"url":"{base}","description":"{d}","applicationCategory":"DeveloperApplication","operatingSystem":"Web","inLanguage":["it","en"],"offers":{{"@type":"Offer","price":"0","priceCurrency":"EUR"}},"isAccessibleForFree":true}}</script>"##,
+        t = esc(title),
+        loc = if it { "it_IT" } else { "en_US" },
+    )
 }
 
 pub const SITE_DESCRIPTION: &str = "Analyze spark profiles: find what makes your Minecraft server lag, which plugin and method, and how to fix it.";
@@ -695,7 +743,7 @@ fn static_index_page() -> String {
     let page = shell(&Page {
         crumb: t("Nuova analisi", "New analysis"),
         lang_switch: other,
-        title: t("Spark Resource Analyzer", "Spark Resource Analyzer"),
+        title: home_title(),
         side_extra: r#"<div id="recentside"></div>"#,
         main: &main,
         script: "",

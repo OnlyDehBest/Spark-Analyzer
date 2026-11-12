@@ -270,6 +270,89 @@ fn page_resp(cached: &[u8], gz: bool) -> Resp {
     text_resp(if gz { cached.to_vec() } else { plain }, gz)
 }
 
+fn site_asset(file: &str) -> Option<(&'static str, &'static [u8])> {
+    Some(match file {
+        "favicon.svg" => (
+            "image/svg+xml",
+            include_bytes!("../web/static/favicon.svg").as_slice(),
+        ),
+        "favicon.ico" => (
+            "image/x-icon",
+            include_bytes!("../web/static/favicon.ico").as_slice(),
+        ),
+        "apple-touch-icon.png" => (
+            "image/png",
+            include_bytes!("../web/static/apple-touch-icon.png").as_slice(),
+        ),
+        "og-image.png" => (
+            "image/png",
+            include_bytes!("../web/static/og-image.png").as_slice(),
+        ),
+        _ => return None,
+    })
+}
+
+/// Public address of the site (`https://host/`), or `None` when it runs on this computer.
+fn public_base(host: Option<&str>) -> Option<String> {
+    let host = host?.trim();
+    let name = host.rsplit_once(':').map_or(host, |(h, p)| {
+        if p.bytes().all(|b| b.is_ascii_digit()) {
+            h
+        } else {
+            host
+        }
+    });
+    let local = name.is_empty()
+        || name == "localhost"
+        || name.ends_with(".localhost")
+        || name.starts_with("127.")
+        || name.starts_with('[')
+        || name == "0.0.0.0"
+        || name.parse::<std::net::IpAddr>().is_ok();
+    let valid = host
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-' || b == b':');
+    (!local && valid).then(|| format!("https://{}/", host.to_ascii_lowercase()))
+}
+
+fn plain_resp(body: String, ctype: &str) -> Resp {
+    let len = body.len();
+    Response::new(
+        tiny_http::StatusCode(200),
+        vec![
+            header("Content-Type", ctype),
+            header("Cache-Control", "public, max-age=3600"),
+        ],
+        std::io::Cursor::new(body.into_bytes()),
+        Some(len),
+        None,
+    )
+}
+
+fn robots_txt(base: Option<&str>) -> String {
+    match base {
+        Some(b) => format!(
+            "User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /r/\n\nSitemap: {b}sitemap.xml\n"
+        ),
+        None => "User-agent: *\nDisallow: /\n".to_string(),
+    }
+}
+
+fn sitemap_xml(base: &str) -> String {
+    let url = |loc: &str, alt_en: &str, alt_it: &str, prio: &str| {
+        format!(
+            "<url><loc>{base}{loc}</loc><xhtml:link rel=\"alternate\" hreflang=\"en\" href=\"{base}{alt_en}\"/><xhtml:link rel=\"alternate\" hreflang=\"it\" href=\"{base}{alt_it}\"/><changefreq>weekly</changefreq><priority>{prio}</priority></url>"
+        )
+    };
+    format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\" xmlns:xhtml=\"http://www.w3.org/1999/xhtml\">{}{}{}{}</urlset>\n",
+        url("", "", "?lang=it", "1.0"),
+        url("?lang=it", "", "?lang=it", "0.9"),
+        url("privacy.html", "privacy.html", "privacy-it.html", "0.3"),
+        url("privacy-it.html", "privacy.html", "privacy-it.html", "0.3"),
+    )
+}
+
 fn static_resp(path: &str, gz: bool) -> Option<Resp> {
     let (dir, file) = path.rsplit_once('/')?;
     if dir.ends_with("/fonts") || dir == "/fonts" {
@@ -283,6 +366,20 @@ fn static_resp(path: &str, gz: bool) -> Option<Resp> {
             ],
             std::io::Cursor::new(body),
             Some(len),
+            None,
+        ));
+    }
+    if dir.is_empty()
+        && let Some((ctype, body)) = site_asset(file)
+    {
+        return Some(Response::new(
+            tiny_http::StatusCode(200),
+            vec![
+                header("Content-Type", ctype),
+                header("Cache-Control", "public, max-age=86400"),
+            ],
+            std::io::Cursor::new(body.to_vec()),
+            Some(body.len()),
             None,
         ));
     }
@@ -397,6 +494,18 @@ fn handle(mut req: Request, st: &State) {
         ));
         return;
     }
+    let base = public_base(header_value(&req, "Host").as_deref());
+    if method == Method::Get && (path == "/robots.txt" || path == "/sitemap.xml") {
+        let resp = if path == "/robots.txt" {
+            plain_resp(robots_txt(base.as_deref()), "text/plain; charset=utf-8")
+        } else if let Some(b) = base.as_deref() {
+            plain_resp(sitemap_xml(b), "application/xml; charset=utf-8")
+        } else {
+            html_resp(not_found(), gz).with_status_code(404)
+        };
+        let _ = req.respond(resp);
+        return;
+    }
     if method == Method::Get
         && let Some(resp) = static_resp(&path, gz)
     {
@@ -415,7 +524,7 @@ fn handle(mut req: Request, st: &State) {
     let owner = owner.as_str();
     let resp = match (method, path.as_str()) {
         (Method::Get, "/") => match open_shared(st, owner, &url) {
-            None => html_resp(index_page(st, owner), gz)
+            None => html_resp(index_page(st, owner, base.as_deref()), gz)
                 .with_header(header("Cache-Control", "no-cache")),
             Some(Ok(id)) => {
                 let w: String = query_param(&url, "w")
@@ -521,9 +630,9 @@ fn handle(mut req: Request, st: &State) {
         (Method::Get, p) if p.starts_with("/r/") => {
             let id = p[3..].trim_end_matches('/').to_string();
             match report_html(st, &id, lang, &query_param(&url, "w").unwrap_or_default()) {
-                Some(Ok(h)) => {
-                    page_resp(&h, gz).with_header(header("Cache-Control", "private, max-age=3600"))
-                }
+                Some(Ok(h)) => page_resp(&h, gz)
+                    .with_header(header("Cache-Control", "private, max-age=3600"))
+                    .with_header(header("X-Robots-Tag", "noindex")),
                 Some(Err(e)) => html_resp(
                     format!("<pre>{}</pre>", crate::report::html::esc(&format!("{e:#}"))),
                     gz,
@@ -1349,7 +1458,7 @@ fn drop_expired(st: &State) {
         .retain(|r| now.saturating_sub(r.meta.created) <= limit);
 }
 
-fn index_page(st: &State, owner: &str) -> String {
+fn index_page(st: &State, owner: &str, base: Option<&str>) -> String {
     let reports = st.reports.lock().unwrap_or_else(|e| e.into_inner());
     let recent: Vec<webui::Recent> = reports
         .iter()
@@ -1366,10 +1475,11 @@ fn index_page(st: &State, owner: &str) -> String {
         })
         .collect();
     drop(reports);
-    webui::local_index_full(
+    webui::local_index_public(
         &recent,
         WasmBundle::embedded().query(),
         Some(st.usage.snapshot()),
+        base,
     )
 }
 
