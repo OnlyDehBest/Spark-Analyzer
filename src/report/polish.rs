@@ -233,4 +233,29 @@ th{padding:9px 14px;font-family:"JetBrains Mono",ui-monospace,monospace;font-siz
 .pvh em{padding-left:8px;border-left:1px solid var(--line)}
 .pvw{margin-left:auto;display:flex;gap:6px}
 .pvw svg{width:20px;height:20px;padding:5px;border-radius:50%;background:var(--card3);fill:none;stroke:var(--fg);stroke-width:1.2;stroke-linecap:round;stroke-linejoin:round}
+.lrow .lin{flex:1;min-width:0;display:flex;align-items:center;height:42px;border:1px solid var(--line);border-radius:8px;background:var(--bg);font-family:"JetBrains Mono",ui-monospace,monospace;font-size:14px;cursor:text;transition:border-color .15s ease,box-shadow .15s ease}
+[data-theme=light] .lrow .lin{background:#f7f8fa}
+.lrow .lin:focus-within{border-color:var(--acc);box-shadow:0 0 0 3px rgba(56,189,248,.14)}
+.lrow .lin span{flex:none;padding:0 0 0 14px;color:var(--muted);white-space:nowrap}
+.lrow .lin span b{color:var(--ok);font-weight:600}
+.lrow .lin span i{font-style:normal}
+.lrow .lin input{flex:1;min-width:0;height:100%;border:0!important;background:none!important;box-shadow:none!important;padding:0 14px 0 10px;caret-color:var(--ok);outline:0}
+@media(max-width:700px){.lrow .lin span i{display:none}}
+.busy{flex-wrap:wrap;gap:8px 10px;padding:0 0 14px;border-left-width:1px;border-left-color:var(--line);border-radius:10px;overflow:hidden;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:13px}
+[data-theme=dark] .busy{background:var(--bg)}
+.twh{flex:0 0 100%;display:flex;align-items:center;gap:8px;padding:8px 10px 8px 14px;background:var(--card2);border-bottom:1px solid var(--line);color:var(--muted);font-size:12px}
+.tlog{flex:0 0 100%;padding:6px 14px 0;color:var(--fg);line-height:1.75}
+.tlog::before{content:"$ spark-analyzer analyze";display:block;color:var(--muted)}
+.tlog b{color:var(--ok);font-weight:600}
+.busy>.spin,.busy>.pring{margin-left:14px}
+.busy #busytext::before{content:"[..] ";color:var(--acc);font-weight:600}
+.busy>.pmeta{margin-right:14px}
+.panel{--pp:20px;padding:0 var(--pp) 18px}
+.panel:not(:has(>h2)){padding-top:18px}
+.panel>h2{margin:0 calc(var(--pp)*-1) 16px;padding:9px 10px 9px 16px;border-bottom:1px solid var(--line);border-radius:9px 9px 0 0;background:var(--card2);font-size:13.5px;min-height:40px}
+.panel>h2::after{content:"";flex:none;margin-left:auto;width:72px;height:20px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 72 20' fill='none' stroke='%238a8a8a' stroke-width='1.2' stroke-linecap='round'%3E%3Cg fill='%238a8a8a' fill-opacity='.18' stroke='none'%3E%3Ccircle cx='10' cy='10' r='10'/%3E%3Ccircle cx='36' cy='10' r='10'/%3E%3Ccircle cx='62' cy='10' r='10'/%3E%3C/g%3E%3Cpath d='M7 10h6M33.2 7.2h5.6v5.6h-5.6zM59.4 7.4l5.2 5.2M64.6 7.4l-5.2 5.2'/%3E%3C/svg%3E") center/contain no-repeat}
+.panel>h2>a,.panel>h2>.btn{margin-left:auto}
+.panel>h2>a+*,.panel>h2:has(>a)::after{margin-left:12px}
+@media(max-width:700px){.panel{--pp:12px}}
+@media print{.panel>h2::after{display:none}}
 "#;

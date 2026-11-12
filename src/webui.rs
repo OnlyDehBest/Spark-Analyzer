@@ -429,15 +429,16 @@ pub fn index_main_with(recent_panel: &str, usage: Option<(u64, u64)>) -> String 
 <div class="modesel"><div class="seg big" id="modesel"><button type="button" class="on" data-mode="one">{mode_one}</button><button type="button" data-mode="cmp">{mode_cmp}</button></div><span id="modehint" hidden></span></div>
 <div id="mode-one">
 <section id="drop" class="hero"><span class="dicon">{upload}</span><h2>{hero_t}</h2>
-<form id="lform" class="lrow"><input id="link" autocomplete="off" placeholder="{ph}"><button class="btn" type="submit">{bolt}{go}</button></form>
+<form id="lform" class="lrow"><label class="lin"><span aria-hidden="true"><b>$</b> <i>spark-analyzer</i></span><input id="link" autocomplete="off" spellcheck="false" placeholder="{ph}"></label><button class="btn" type="submit">{bolt}{go}</button></form>
 <div class="or">{or}</div>
 <label class="btn sec pick"><input id="file" type="file" hidden>{upload}<span>{pick}</span><span class="fmt">.sparkprofile · .sparkheap · .hprof <i title="{beta_t}">BETA</i></span></label>
 <p class="hint">{note1} <code>/spark profiler stop</code> · {saved} <code>--save-to-file</code> {in_dir} <code>plugins/spark/</code></p></section>
 </div>
 <div id="mode-cmp" hidden>{compare}</div>
-<div id="busy" class="busy" hidden><span class="spin"></span><span class="pring" id="pring" hidden><svg viewBox="0 0 34 34" aria-hidden="true"><circle class="bg" cx="17" cy="17" r="14"/><circle class="fg" id="pfg" cx="17" cy="17" r="14"/></svg><b id="ppct"></b></span><span id="busytext">{busy}</span><span class="pmeta" id="pmeta" hidden></span></div>
+<div id="busy" class="busy" hidden><div class="twh" aria-hidden="true"><span>spark-analyzer</span><div class="pvw"><svg viewBox="0 0 10 10"><path d="M2 5h6"/></svg><svg viewBox="0 0 10 10"><rect x="2.2" y="2.2" width="5.6" height="5.6" rx=".8"/></svg><svg viewBox="0 0 10 10"><path d="M2.4 2.4l5.2 5.2M7.6 2.4L2.4 7.6"/></svg></div></div><div class="tlog" id="tlog" aria-hidden="true"></div><span class="spin"></span><span class="pring" id="pring" hidden><svg viewBox="0 0 34 34" aria-hidden="true"><circle class="bg" cx="17" cy="17" r="14"/><circle class="fg" id="pfg" cx="17" cy="17" r="14"/></svg><b id="ppct"></b></span><span id="busytext">{busy}</span><span class="pmeta" id="pmeta" hidden></span></div>
 <div id="err" class="errbox" hidden></div>
-<div id="recentbox">{recent_panel}</div>"#,
+<div id="recentbox">{recent_panel}</div>
+<script>(function(){{var bt=document.getElementById('busytext'),lg=document.getElementById('tlog'),b=document.getElementById('busy');if(!bt||!lg||!b||!window.MutationObserver)return;var cur=bt.textContent;function key(x){{return x.replace(/[0-9.,]+ *(%|[KMG]?B)?/g,'#')}}new MutationObserver(function(){{var n=bt.textContent;if(n===cur)return;if(!b.hidden&&cur&&key(n)!==key(cur)){{var d=document.createElement('div'),k=document.createElement('b');k.textContent='[ok]';d.appendChild(k);d.appendChild(document.createTextNode(' '+cur));lg.appendChild(d)}}cur=n}}).observe(bt,{{childList:true,characterData:true,subtree:true}});new MutationObserver(function(){{if(b.hidden)lg.textContent=''}}).observe(b,{{attributes:true,attributeFilter:['hidden']}})}})();</script>"#,
         wave = HERO_WAVE,
         preview = hero_preview(),
         logo = LOGO_SVG,
