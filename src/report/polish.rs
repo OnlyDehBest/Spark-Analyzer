@@ -310,4 +310,15 @@ th{padding:9px 14px;font-family:"JetBrains Mono",ui-monospace,monospace;font-siz
 .legal a:not(.btn){text-decoration:underline;text-underline-offset:3px}
 [data-theme=light] .ckh{color:#525252}
 [data-theme=light] .ckb li b,[data-theme=light] .ckb .ckp b{color:#3f6212}
+.hero .hint{text-wrap:wrap;max-width:none}
+.hero .hint span{display:block}
+@media(max-width:700px){.panel>h2{flex-wrap:wrap;row-gap:6px}.panel>h2:has(>a)::after{display:none}.panel>h2>a{margin-left:0;flex-basis:100%}}
+.panel table tr:last-child>th,.panel table tr:last-child>td{border-bottom:0}
+@media(min-width:701px){.panel table td{overflow-wrap:anywhere}.panel table td code{white-space:normal;overflow-wrap:anywhere}}
+@media(min-width:701px) and (max-width:1279px){.hcard{padding-bottom:92px}.hcard .wave{width:100%;right:0;top:auto;bottom:12px;height:56px;opacity:.5}}
+footer.copy a,footer.copy .cklink{white-space:nowrap}
+.drop{border-width:1px;border-radius:8px}
+.drop .dicon{width:40px;height:40px;border-radius:8px;background:var(--card3);border:1px solid var(--line);color:var(--acc)!important;box-shadow:none}
+.drop .dicon svg{width:18px;height:18px}
+.top .sub a{text-decoration:underline;text-underline-offset:3px}
 "#;

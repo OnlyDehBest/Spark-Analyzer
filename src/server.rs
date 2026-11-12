@@ -243,7 +243,18 @@ fn gzip(b: &[u8]) -> Vec<u8> {
 fn text_resp(data: Vec<u8>, gz: bool) -> Resp {
     let r = Response::from_data(data)
         .with_header(header("Content-Type", "text/html; charset=utf-8"))
-        .with_header(header("Vary", "Accept-Encoding"));
+        .with_header(header("Vary", "Accept-Encoding"))
+        .with_header(header("X-Content-Type-Options", "nosniff"))
+        .with_header(header("Referrer-Policy", "strict-origin-when-cross-origin"))
+        .with_header(header("X-Frame-Options", "SAMEORIGIN"))
+        .with_header(header(
+            "Permissions-Policy",
+            "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+        ))
+        .with_header(header(
+            "Content-Security-Policy",
+            "frame-ancestors 'self'; base-uri 'self'; object-src 'none'; form-action 'self'",
+        ));
     if gz {
         r.with_header(header("Content-Encoding", "gzip"))
     } else {
@@ -353,7 +364,7 @@ fn sitemap_xml(base: &str) -> String {
     )
 }
 
-fn static_resp(path: &str, gz: bool) -> Option<Resp> {
+fn static_resp(path: &str, gz: bool, base: Option<&str>) -> Option<Resp> {
     let (dir, file) = path.rsplit_once('/')?;
     if dir.ends_with("/fonts") || dir == "/fonts" {
         let body = crate::fonts::font(file)?.to_vec();
@@ -389,7 +400,7 @@ fn static_resp(path: &str, gz: bool) -> Option<Resp> {
         _ => return None,
     };
     let _guard = i18n::scoped(lang);
-    let html = crate::webui::privacy_page(true);
+    let html = crate::webui::privacy_page_public(base);
     Some(html_resp(html, gz).with_header(header("Cache-Control", "public, max-age=3600")))
 }
 
@@ -507,7 +518,7 @@ fn handle(mut req: Request, st: &State) {
         return;
     }
     if method == Method::Get
-        && let Some(resp) = static_resp(&path, gz)
+        && let Some(resp) = static_resp(&path, gz, base.as_deref())
     {
         let _ = req.respond(resp);
         return;

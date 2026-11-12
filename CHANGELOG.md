@@ -2,6 +2,17 @@
 
 ## Non ancora rilasciato
 
+### Rifinitura
+- Corretto un blocco del server: con più richieste insieme (pagina e caratteri) alcune restavano in
+  attesa e la pagina non finiva di caricarsi. Risposte più rapide sulle connessioni riutilizzate.
+- Caratteri in due file invece di nove (meno della metà del peso).
+- Su tablet e portatili piccoli le tabelle del report non fanno più scorrere la pagina di lato e
+  l'onda della home non copre più il contatore.
+- Su telefono: titolo della Diagnosi ordinato, comando di teletrasporto nella sezione Mondo leggibile.
+- Pagina «Report non trovato» con il testo giusto (i report durano 30 giorni), icone del confronto
+  heap nello stesso stile del resto del sito.
+- Intestazioni di sicurezza sulle pagine e descrizione per i motori di ricerca nella pagina privacy.
+
 ### Ricerca su Google
 - Titolo e descrizione della home pensati per la ricerca «spark analyzer», robots.txt, sitemap,
   anteprima per i link condivisi; i singoli report non vengono indicizzati.

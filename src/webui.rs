@@ -432,7 +432,7 @@ pub fn index_main_with(recent_panel: &str, usage: Option<(u64, u64)>) -> String 
 <form id="lform" class="lrow"><label class="lin"><span aria-hidden="true"><b>$</b> <i>spark-analyzer</i></span><input id="link" autocomplete="off" spellcheck="false" placeholder="{ph}"></label><button class="btn" type="submit">{bolt}{go}</button></form>
 <div class="or">{or}</div>
 <label class="btn sec pick"><input id="file" type="file" hidden>{upload}<span>{pick}</span><span class="fmt">.sparkprofile · .sparkheap · .hprof <i title="{beta_t}">BETA</i></span></label>
-<p class="hint">{note1} <code>/spark profiler stop</code> · {saved} <code>--save-to-file</code> {in_dir} <code>plugins/spark/</code></p></section>
+<p class="hint"><span>{note1} <code>/spark profiler stop</code></span> <span>{saved} <code>--save-to-file</code> {in_dir} <code>plugins/spark/</code></span></p></section>
 </div>
 <div id="mode-cmp" hidden>{compare}</div>
 <div id="busy" class="busy" hidden><div class="twh" aria-hidden="true"><span>spark-analyzer</span><div class="pvw"><svg viewBox="0 0 10 10"><path d="M2 5h6"/></svg><svg viewBox="0 0 10 10"><rect x="2.2" y="2.2" width="5.6" height="5.6" rx=".8"/></svg><svg viewBox="0 0 10 10"><path d="M2.4 2.4l5.2 5.2M7.6 2.4L2.4 7.6"/></svg></div></div><div class="tlog" id="tlog" aria-hidden="true"></div><span class="spin"></span><span class="pring" id="pring" hidden><svg viewBox="0 0 34 34" aria-hidden="true"><circle class="bg" cx="17" cy="17" r="14"/><circle class="fg" id="pfg" cx="17" cy="17" r="14"/></svg><b id="ppct"></b></span><span id="busytext">{busy}</span><span class="pmeta" id="pmeta" hidden></span></div>
@@ -623,8 +623,8 @@ pub fn local_not_found() -> String {
         r#"<div class="top"><div><h1>{}</h1><p class="sub">{} <a href="/">{}</a>.</p></div></div>"#,
         t("Report non trovato", "Report not found"),
         t(
-            "I report restano disponibili finché Spark Resource Analyzer è aperto.",
-            "Reports stay available while Spark Resource Analyzer is running."
+            "Il link è sbagliato oppure il report è stato eliminato: i report vengono cancellati dopo 30 giorni.",
+            "The link is wrong or the report was deleted: reports are removed after 30 days."
         ),
         t("Torna alla pagina iniziale", "Back to the home page")
     );
@@ -1031,6 +1031,32 @@ mod usage_tests {
     }
 }
 
+/// Privacy page of the hosted site, with search-engine tags when the public address is known.
+pub fn privacy_page_public(base: Option<&str>) -> String {
+    let page = privacy_page(true);
+    let Some(base) = base else {
+        return page;
+    };
+    let (own, d) = if crate::i18n::is_en() {
+        (
+            "privacy.html",
+            "Which cookies and browser storage Spark Analyzer uses, how reports are stored and how to delete your data.",
+        )
+    } else {
+        (
+            "privacy-it.html",
+            "Quali cookie e dati nel browser usa Spark Analyzer, come vengono conservati i report e come cancellare i tuoi dati.",
+        )
+    };
+    page.replacen(
+        "</head>",
+        &format!(
+            r#"<meta name="description" content="{d}"><link rel="canonical" href="{base}{own}"><link rel="alternate" hreflang="en" href="{base}privacy.html"><link rel="alternate" hreflang="it" href="{base}privacy-it.html"></head>"#
+        ),
+        1,
+    )
+}
+
 pub fn privacy_page(hosted: bool) -> String {
     let t = crate::i18n::t;
     let row = |name: &str, kind: &str, what: &str, life: &str| {
@@ -1094,6 +1120,15 @@ pub fn privacy_page(hosted: bool) -> String {
     ] {
         rows.push_str(&row(name, local, what, until));
     }
+    rows.push_str(&row(
+        "sa-news",
+        t("memoria della sessione", "session storage"),
+        t(
+            "ricorda che hai chiuso l'avviso delle novità",
+            "remembers that you closed the news notice",
+        ),
+        t("finché chiudi la scheda", "until you close the tab"),
+    ));
     let data = if hosted {
         format!(
             "<h2>{}</h2><p>{}</p><p>{}</p><p>{}</p>",
