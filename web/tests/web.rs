@@ -128,15 +128,11 @@ fn static_index_has_compare_mode() {
 }
 
 #[test]
-fn home_title_is_spark_resource_analyzer() {
+fn home_title_starts_with_spark_analyzer() {
     for lang in [sparkscope::i18n::Lang::It, sparkscope::i18n::Lang::En] {
         let _g = sparkscope::i18n::scoped(lang);
-        assert!(
-            sparkscope::webui::static_index().contains("<title>Spark Resource Analyzer</title>")
-        );
-        assert!(
-            sparkscope::webui::local_index(&[]).contains("<title>Spark Resource Analyzer</title>")
-        );
+        assert!(sparkscope::webui::static_index().contains("<title>Spark Analyzer · "));
+        assert!(sparkscope::webui::local_index(&[]).contains("<title>Spark Analyzer · "));
     }
 }
 
