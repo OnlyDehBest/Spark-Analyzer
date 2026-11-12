@@ -201,7 +201,7 @@ th{padding:9px 14px;font-family:"JetBrains Mono",ui-monospace,monospace;font-siz
 .pvh{display:flex;align-items:center;gap:8px;padding-bottom:11px;margin-bottom:12px;border-bottom:1px solid var(--line);color:var(--muted);font-size:11.5px}
 .pvh i{width:7px;height:7px;border-radius:50%;background:var(--crit);box-shadow:0 0 0 3px color-mix(in srgb,var(--crit) 22%,transparent)}
 .pvh span{color:var(--hd);font-weight:600}
-.pvh em{margin-left:auto;font-style:normal;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11px}
+.pvh em{font-style:normal;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11px}
 .pvk{display:grid;grid-template-columns:52px repeat(3,1fr);gap:0;align-items:center;margin-bottom:10px}
 .pvk>div+div{padding-left:14px;border-left:1px solid var(--line)}
 .pvk>div:nth-child(2){margin-left:14px}
@@ -229,4 +229,8 @@ th{padding:9px 14px;font-family:"JetBrains Mono",ui-monospace,monospace;font-siz
 .pvf b{font-family:"JetBrains Mono",ui-monospace,monospace;font-weight:600;color:var(--hd)}
 @media(min-width:1280px){.hcard h1{font-size:42px;letter-spacing:-.03em}.hcard .hlogo{width:54px;height:54px}.htag{font-size:16px;margin-top:18px}.chips{margin-top:22px}.usage{margin-top:26px;padding-top:22px}}
 .hero .dicon{color:var(--acc)!important}
+.pvh{background:var(--card2);margin:-14px -16px 12px;padding:9px 10px 9px 14px;border-radius:9px 9px 0 0}
+.pvh em{padding-left:8px;border-left:1px solid var(--line)}
+.pvw{margin-left:auto;display:flex;gap:6px}
+.pvw svg{width:20px;height:20px;padding:5px;border-radius:50%;background:var(--card3);fill:none;stroke:var(--fg);stroke-width:1.2;stroke-linecap:round;stroke-linejoin:round}
 "#;
