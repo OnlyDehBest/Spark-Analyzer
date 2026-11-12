@@ -196,4 +196,37 @@ th{padding:9px 14px;font-family:"JetBrains Mono",ui-monospace,monospace;font-siz
 .btn{border-radius:8px}
 @media(min-width:701px){.hcard{padding:30px 32px 26px}.hcard .hlogo{width:44px;height:44px}.hcard h1{font-size:34px;letter-spacing:-.025em}.hcard .wave{opacity:.75}.htag{font-size:15px;margin-top:14px;max-width:620px}}
 @media(max-width:700px){.news{border-radius:8px}.hcard h1{font-size:28px}.ust{padding-right:18px;margin-right:18px}.ust b{font-size:18px}.hero{padding:22px 16px 18px}}
+.hprev{display:none}
+@media(min-width:1280px){.hcard{display:grid;grid-template-columns:minmax(0,1fr) 448px;gap:0 44px;align-items:center;padding:34px 34px 34px 36px}.hcard>.wave{display:none}.hcard::before{-webkit-mask-image:linear-gradient(90deg,transparent 30%,#000 70%);mask-image:linear-gradient(90deg,transparent 30%,#000 70%)}.hprev{display:block;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:14px 16px 12px;font-size:12px;box-shadow:0 30px 60px -34px rgba(0,0,0,.85)}[data-theme=light] .hprev{background:#fff;box-shadow:0 30px 60px -40px rgba(15,23,42,.35)}}
+.pvh{display:flex;align-items:center;gap:8px;padding-bottom:11px;margin-bottom:12px;border-bottom:1px solid var(--line);color:var(--muted);font-size:11.5px}
+.pvh i{width:7px;height:7px;border-radius:50%;background:var(--crit);box-shadow:0 0 0 3px color-mix(in srgb,var(--crit) 22%,transparent)}
+.pvh span{color:var(--hd);font-weight:600}
+.pvh em{margin-left:auto;font-style:normal;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11px}
+.pvk{display:grid;grid-template-columns:52px repeat(3,1fr);gap:0;align-items:center;margin-bottom:10px}
+.pvk>div+div{padding-left:14px;border-left:1px solid var(--line)}
+.pvk>div:nth-child(2){margin-left:14px}
+.pvk small{display:block;color:var(--muted);font-size:11px;margin-bottom:2px}
+.pvk b{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:19px;font-weight:600;color:var(--hd);letter-spacing:-.03em}
+.pvk b.c{color:var(--crit)}.pvk b.h{color:var(--high)}
+.pvk u{text-decoration:none;font-size:11px;color:var(--muted);margin-left:4px;font-weight:400}
+.pvr{position:relative;width:52px;height:52px}
+.pvr svg{width:52px;height:52px;transform:rotate(-90deg)}
+.pvr circle{fill:none;stroke:var(--card3);stroke-width:4}
+.pvr circle.v{stroke:var(--crit);stroke-linecap:round}
+.pvr b{position:absolute;inset:0;display:grid;place-items:center;font-size:15px}
+.pvc{display:block;width:100%;height:104px;margin:0 0 10px;border:1px solid var(--line);border-radius:8px;background:var(--card)}
+.pvc path{fill:none;vector-effect:non-scaling-stroke}
+.pvc .g{stroke:var(--line2);stroke-width:1}
+.pvc .lim{stroke:var(--crit);stroke-width:1;stroke-dasharray:4 4;opacity:.6}
+.pvc .ar{fill:url(#pvg)}
+.pvc .l1{stroke:var(--high);stroke-width:1.8}
+.pvc .l2{stroke:var(--acc);stroke-width:1.4}
+.pvf{display:flex;align-items:center;gap:10px;padding:7px 10px;margin-top:6px;border:1px solid var(--line);border-left:2px solid var(--crit);border-radius:6px;background:var(--card2)}
+.pvf.h{border-left-color:var(--high)}
+.pvf span{flex:none;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:9.5px;font-weight:700;letter-spacing:.05em;padding:2px 6px;border-radius:4px;color:var(--crit);background:color-mix(in srgb,var(--crit) 14%,transparent)}
+.pvf.h span{color:var(--high);background:color-mix(in srgb,var(--high) 14%,transparent)}
+.pvf p{margin:0;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--hd);font-weight:500}
+.pvf b{font-family:"JetBrains Mono",ui-monospace,monospace;font-weight:600;color:var(--hd)}
+@media(min-width:1280px){.hcard h1{font-size:42px;letter-spacing:-.03em}.hcard .hlogo{width:54px;height:54px}.htag{font-size:16px;margin-top:18px}.chips{margin-top:22px}.usage{margin-top:26px;padding-top:22px}}
+.hero .dicon{color:var(--acc)!important}
 "#;
