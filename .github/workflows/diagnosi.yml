@@ -1,0 +1,58 @@
+name: diagnosi
+
+# Controllo a mano (Actions → diagnosi → Run workflow): come risponde il sito pubblico
+# ai crawler e cosa c'è davanti al servizio sulla VPS. Non modifica niente.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Risposta del sito dall'esterno
+        run: |
+          for ua in "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/130.0 Safari/537.36" \
+                    "Mozilla/5.0 (Linux; Android 6.0.1; Nexus 5X Build/MMB29P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)" \
+                    "Googlebot/2.1 (+http://www.google.com/bot.html)"; do
+            for u in https://sparkanalyzer.me/ https://sparkanalyzer.me/robots.txt https://www.sparkanalyzer.me/; do
+              echo "== $u  [$ua]"
+              curl -s -o /tmp/body -D - -A "$ua" --max-time 20 "$u" | grep -iE "^HTTP/|^server:|^cf-|^location:|^x-robots|^content-type" || true
+              head -c 300 /tmp/body; echo
+            done
+          done
+          echo "== DNS"; getent ahosts sparkanalyzer.me | head -3 || true
+      - name: Cosa c'è davanti al servizio sulla VPS
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+          USER: ${{ secrets.VPS_USER }}
+          KEY: ${{ secrets.VPS_SSH_KEY }}
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+          PORT: ${{ secrets.VPS_PORT }}
+        run: |
+          set -uo pipefail
+          [ -z "$HOST" ] && { echo "VPS_HOST non impostato"; exit 0; }
+          install -m 700 -d ~/.ssh
+          PORT="${PORT:-22}"
+          if [ -n "$KEY" ]; then printf '%s\n' "$KEY" > ~/.ssh/id; chmod 600 ~/.ssh/id; SSH=(ssh -i ~/.ssh/id)
+          else sudo apt-get install -y -qq sshpass >/dev/null; SSH=(sshpass -e ssh -o PubkeyAuthentication=no); fi
+          "${SSH[@]}" -o StrictHostKeyChecking=accept-new -p "$PORT" "$USER@$HOST" 'bash -s' <<'SCRIPT'
+          echo "== servizi in ascolto su 80/443"; ss -ltnp 2>/dev/null | grep -E ":(80|443) " || true
+          for s in nginx apache2 caddy haproxy traefik; do systemctl is-active --quiet "$s" 2>/dev/null && echo "attivo: $s"; done
+          if command -v nginx >/dev/null; then
+            echo "== nginx: blocchi che riguardano sparkanalyzer"
+            nginx -T 2>/dev/null | grep -nE "server_name|listen|proxy_pass|deny|allow|return +403|user_agent|limit_req|limit_conn|auth_basic|valid_referers|geo |map |if \(" | head -80
+          fi
+          if command -v caddy >/dev/null && [ -f /etc/caddy/Caddyfile ]; then echo "== Caddyfile"; grep -vE "^\s*#" /etc/caddy/Caddyfile | head -60; fi
+          echo "== firewall"; (ufw status 2>/dev/null || true) | head -20
+          echo "== fail2ban"; (fail2ban-client status 2>/dev/null || true) | head -10
+          echo "== richieste dal servizio con Host pubblico"
+          curl -s -o /dev/null -w "servizio diretto: %{http_code}\n" -H "Host: sparkanalyzer.me" -A "Googlebot/2.1" http://127.0.0.2:8085/ || true
+          if command -v nginx >/dev/null; then
+            echo "== ultime richieste di Googlebot nei log"
+            grep -h "Googlebot\|Google-InspectionTool" /var/log/nginx/*access*.log 2>/dev/null | tail -5 | awk '{print $1, $4, $6, $7, $9}'
+          fi
+          SCRIPT
