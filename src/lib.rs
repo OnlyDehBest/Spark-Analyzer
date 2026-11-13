@@ -12,6 +12,7 @@ pub mod analysis;
 pub mod archive;
 pub mod config;
 pub mod diff;
+pub mod discord;
 pub mod flame;
 pub mod fonts;
 pub mod heap;

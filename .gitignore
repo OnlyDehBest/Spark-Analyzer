@@ -8,3 +8,4 @@ report*.json
 flame*.svg
 site/
 web/pkg/
+/dist

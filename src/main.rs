@@ -105,6 +105,32 @@ enum Cmd {
         #[arg(long, value_name = "FILE", help = "Scrive il confronto heap in HTML")]
         html: Option<PathBuf>,
     },
+    #[command(
+        about = "Prepara il riassunto per Discord (Components V2) e, con --webhook, lo invia a un canale"
+    )]
+    Discord {
+        input: String,
+        #[command(flatten)]
+        common: Common,
+        #[arg(
+            long,
+            value_name = "URL",
+            env = "SPARK_RESOURCE_ANALYZER_WEBHOOK",
+            hide_env_values = true,
+            help = "Webhook del canale (Impostazioni canale → Integrazioni → Webhook). Si può passare anche con la variabile SPARK_RESOURCE_ANALYZER_WEBHOOK"
+        )]
+        webhook: Option<String>,
+        #[arg(long, default_value = sparkscope::discord::DEFAULT_SITE, help = "Indirizzo del sito per il bottone «Apri il report»")]
+        site: String,
+        #[arg(
+            long,
+            value_name = "FILE",
+            help = "Scrive il JSON del messaggio in un file"
+        )]
+        json: Option<PathBuf>,
+        #[arg(long, default_value = "it", help = "Lingua del messaggio (it o en)")]
+        lang: String,
+    },
     #[command(about = "Stampa l'albero delle chiamate del main thread, potato sotto una soglia")]
     Tree {
         input: String,
@@ -144,6 +170,34 @@ fn write_file(path: &PathBuf, content: &str, what: &str) -> Result<()> {
         .with_context(|| format!("impossibile scrivere {}", path.display()))?;
     eprintln!("✔ {what} scritto in {}", path.display());
     Ok(())
+}
+
+fn send_webhook(url: &str, msg: &serde_json::Value) -> Result<()> {
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_global(Some(std::time::Duration::from_secs(30)))
+        .http_status_as_error(false)
+        .user_agent(concat!("sparkscope/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .into();
+    let mut resp = agent
+        .post(&sparkscope::discord::webhook_send_url(url))
+        .header("Content-Type", "application/json")
+        .send(serde_json::to_vec(msg)?.as_slice())
+        .context("invio a Discord fallito: controlla la connessione")?;
+    let status = resp.status().as_u16();
+    if (200..300).contains(&status) {
+        return Ok(());
+    }
+    let text = resp.body_mut().read_to_string().unwrap_or_default();
+    let hint = match status {
+        401 | 404 => " (webhook eliminato o indirizzo sbagliato)",
+        429 => " (troppi invii: riprova tra poco)",
+        _ => "",
+    };
+    bail!(
+        "Discord ha risposto {status}{hint}: {}",
+        text.chars().take(400).collect::<String>()
+    )
 }
 
 fn main() -> Result<()> {
@@ -263,6 +317,36 @@ fn main() -> Result<()> {
             print!("{}", diff::render_text(&d));
             if let Some(p) = json {
                 write_file(&p, &serde_json::to_string_pretty(&d)?, "JSON")?;
+            }
+        }
+        Cmd::Discord {
+            input,
+            common,
+            webhook,
+            site,
+            json,
+            lang,
+        } => {
+            let _lang = sparkscope::i18n::scoped(sparkscope::i18n::Lang::parse(&lang));
+            eprintln!("Carico {input} …");
+            let (r, _, _) = load_report(&input, &common)?;
+            let msg = sparkscope::discord::message(&r, &site);
+            let body = serde_json::to_string_pretty(&msg)?;
+            if let Some(p) = &json {
+                write_file(p, &body, "Messaggio Discord")?;
+            }
+            match webhook.as_deref().map(str::trim).filter(|w| !w.is_empty()) {
+                Some(url) => {
+                    if !sparkscope::discord::is_webhook_url(url) {
+                        bail!(
+                            "l'indirizzo non sembra un webhook Discord (deve iniziare con https://discord.com/api/webhooks/)"
+                        );
+                    }
+                    send_webhook(url, &msg)?;
+                    eprintln!("✔ Messaggio inviato al canale Discord");
+                }
+                None if json.is_none() => println!("{body}"),
+                None => {}
             }
         }
         Cmd::Tree {

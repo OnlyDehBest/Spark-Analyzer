@@ -141,6 +141,30 @@ sparkscope analyze AbCd1234 --thread "Craft Scheduler"
 Opzioni utili: `--top N` (righe per tabella), `--all` (mostra anche le note informative),
 `--no-color`, `--quiet`, `--bytebin URL` (server bytebin personalizzato).
 
+## Bot Discord
+
+Il bot (cartella `bot/`) risponde ai link spark incollati nei canali con un messaggio in formato
+Components V2 e offre i comandi:
+
+- `/analyze` (`/analizza` in italiano): analizza un link o un file `.sparkprofile` allegato;
+- `/language` (`/lingua`): ogni utente sceglie se il bot gli risponde in italiano o in inglese. Vale solo
+  per chi lo usa ed è salvata in `data/lingue-utenti.json`.
+
+Nel [Discord Developer Portal](https://discord.com/developers/applications) crea l'applicazione, copia il
+token del bot e attiva **Message Content Intent**. Invita il bot con gli scope `bot` e
+`applications.commands`.
+
+Installazione su un server Linux con un solo comando (scarica il codice, compila, chiede il token e avvia
+il bot nello screen `sra-bot`):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/OnlyDehBest/Spark-Analyzer/main/bot/deploy/setup.sh | BRANCH=main bash
+```
+
+Dal terminale si può anche inviare il riassunto a un canale tramite webhook:
+`sparkscope discord AbCd1234 --webhook "https://discord.com/api/webhooks/…"`
+(oppure la variabile `SPARK_RESOURCE_ANALYZER_WEBHOOK`).
+
 ## Consigli per registrare un buon profilo
 
 - Profilo normale durante il lag: `/spark profiler start --timeout 300` (almeno 5 minuti per avere

@@ -708,6 +708,25 @@ pub fn findings(r: &AllocReport, p: &Profile) -> Vec<Finding> {
             });
         }
         let mut sol = Vec::new();
+        if let Some(site) = r
+            .sites
+            .iter()
+            .find(|x| x.source.as_deref() == Some(&s.name))
+        {
+            let via = site
+                .via
+                .as_deref()
+                .map(|v| tf!(" tramite {v}", " via {v}"))
+                .unwrap_or_default();
+            sol.push(tf!(
+                "{} ({}) crea il {}% di tutti gli oggetti{}: va corretto lì, riusando gli oggetti invece di crearne di nuovi a ogni chiamata",
+                "{} ({}) creates {}% of all objects{}: fix it there, reusing objects instead of creating new ones on every call",
+                s.name,
+                short(&site.method),
+                fmt_num(site.pct),
+                via
+            ));
+        }
         for h in r
             .habits
             .iter()

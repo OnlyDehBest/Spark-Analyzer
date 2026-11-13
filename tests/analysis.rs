@@ -737,3 +737,54 @@ fn spike_chronology_names_the_recurring_culprit() {
     let end = html.find(r#"class="ev end""#).expect("riepilogo finale");
     assert!(html[end..].contains(top.as_str()));
 }
+
+#[test]
+fn discord_components_v2_message() {
+    let bytes = fixture::sample().encode_to_vec();
+    let mut l = sparkscope::loader::load_bytes(&bytes, "AbCd1234").unwrap();
+    l.viewer_url = Some("https://spark.lucko.me/AbCd1234".into());
+    let (r, _, _) = sparkscope::pipeline::build(l, None).unwrap();
+    let m = sparkscope::discord::message(&r, "https://sparkanalyzer.me");
+    assert_eq!(m["flags"], 32768);
+    assert!(m.get("content").is_none() && m.get("embeds").is_none());
+    let c = &m["components"][0];
+    assert_eq!(c["type"], 17);
+    assert!(c["accent_color"].as_u64().is_some());
+    let parts = c["components"].as_array().unwrap();
+    let texts: Vec<&str> = parts
+        .iter()
+        .filter(|p| p["type"] == 10)
+        .map(|p| p["content"].as_str().unwrap())
+        .collect();
+    assert!(texts[0].starts_with(&format!("### Salute del server: {}/100", r.summary.score)));
+    assert!(
+        texts
+            .iter()
+            .any(|t| t.contains("**EconomyShop 2.4.1** → `ShopRepository.saveBalances`")),
+        "{texts:?}"
+    );
+    assert!(texts.iter().all(|t| !t.contains('⟪')));
+    let row = parts.last().unwrap();
+    assert_eq!(row["type"], 1);
+    assert_eq!(
+        row["components"][0]["url"],
+        "https://sparkanalyzer.me/?p=AbCd1234"
+    );
+    assert_eq!(
+        row["components"][1]["url"],
+        "https://spark.lucko.me/AbCd1234"
+    );
+    let total: usize = texts.iter().map(|t| t.chars().count()).sum();
+    assert!(total < 4000);
+    assert!(sparkscope::discord::is_webhook_url(
+        "https://discord.com/api/webhooks/123456789/abcdefgh"
+    ));
+    assert!(!sparkscope::discord::is_webhook_url(
+        "https://example.com/api/webhooks/1/2"
+    ));
+    assert_eq!(
+        sparkscope::discord::webhook_send_url("https://discord.com/api/webhooks/1/abc?thread_id=9"),
+        "https://discord.com/api/webhooks/1/abc?wait=true&with_components=true&thread_id=9"
+    );
+    assert_eq!(sparkscope::discord::escape("a_b*c"), "a\\_b\\*c");
+}
