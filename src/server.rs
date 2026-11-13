@@ -19,8 +19,6 @@ use crate::report::html::icon;
 use crate::webui;
 
 const MAX_UPLOAD: usize = 512 * 1024 * 1024;
-/// Reports kept with their data and rendered pages in memory; older ones are read
-/// from disk when opened again.
 const MAX_HOT: usize = 30;
 const SWEEP_EVERY: std::time::Duration = std::time::Duration::from_secs(3600);
 const MAX_STAGED: usize = 12;
@@ -57,10 +55,6 @@ struct State {
     counter: AtomicU64,
 }
 
-/// A file sent in pieces (so it passes reverse proxies with a request size limit).
-/// Heap dumps are parsed while the pieces arrive and never kept whole in memory.
-/// Pieces may travel in parallel: each one names its byte range in the original file
-/// and the ones that arrive early wait in `early` until the gap before them is filled.
 struct UploadSlot {
     owner: String,
     up: Mutex<Upload>,
@@ -69,7 +63,6 @@ struct UploadSlot {
 struct Upload {
     name: String,
     data: UploadData,
-    /// End of the contiguous prefix of the original file received so far.
     next: u64,
     early: std::collections::BTreeMap<u64, (u64, Vec<u8>)>,
     early_bytes: usize,
@@ -83,7 +76,6 @@ enum UploadData {
 }
 
 const MAX_CHUNK: usize = 64 * 1024 * 1024;
-/// Pieces held while waiting for an earlier one (a few in flight per upload).
 const MAX_EARLY: usize = 256 * 1024 * 1024;
 const MAX_UPLOADS_PER_VISITOR: usize = 4;
 const UPLOAD_IDLE: std::time::Duration = std::time::Duration::from_secs(15 * 60);
@@ -156,7 +148,6 @@ pub fn serve(o: ServeOptions) -> Result<()> {
         usage,
         staged: Mutex::new(Vec::new()),
         uploads: Mutex::new(HashMap::new()),
-        // id unici anche dopo un riavvio: le pagine /r/ restano in cache del browser
         counter: AtomicU64::new(
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -303,7 +294,6 @@ fn site_asset(file: &str) -> Option<(&'static str, &'static [u8])> {
     })
 }
 
-/// Public address of the site (`https://host/`), or `None` when it runs on this computer.
 fn public_base(host: Option<&str>) -> Option<String> {
     let host = host?.trim();
     let name = host.rsplit_once(':').map_or(host, |(h, p)| {
@@ -866,8 +856,6 @@ fn upload_payload(st: &State, bytes: &[u8], name: &str) -> Result<String> {
     )
 }
 
-/// Links point back to the public host serving this page (e.g. sparkanalyzer.me behind nginx);
-/// loopback or LAN `serve` instances fall back to the static site, which others can reach.
 fn share_site(host: Option<&str>) -> String {
     match host {
         Some(h)
@@ -883,7 +871,6 @@ fn share_site(host: Option<&str>) -> String {
     }
 }
 
-/// Opens `/?p=KEY` or `/?a=KEY&b=KEY` share links (the same format the static site reads).
 fn open_shared(st: &State, owner: &str, url: &str) -> Option<Result<String>> {
     let fetch = |k: &str| loader::fetch_link(k, &st.bytebin);
     if let Some(p) = query_param(url, "p") {
@@ -1147,8 +1134,6 @@ fn upload_slot(st: &State, owner: &str, id: &str) -> Result<Arc<UploadSlot>> {
         .ok_or_else(upload_gone)
 }
 
-/// Adds one piece. `range` is its position in the original file (absent for clients
-/// that send the pieces one after the other).
 fn upload_chunk(
     st: &State,
     owner: &str,
@@ -1195,14 +1180,12 @@ fn upload_chunk(
 
 fn accept_piece(up: &mut Upload, off: u64, end: u64, chunk: Vec<u8>) -> Result<()> {
     if end <= up.next {
-        // piece sent again after a lost reply: already counted
         Ok(())
     } else if off > up.next {
         up.early_bytes += chunk.len();
         if up.early_bytes > MAX_EARLY {
             Err(anyhow!("too many pieces out of order"))
         } else {
-            // a piece sent again replaces the copy already waiting
             if let Some((_, old)) = up.early.insert(off, (end, chunk)) {
                 up.early_bytes -= old.len();
             }
@@ -1214,7 +1197,6 @@ fn accept_piece(up: &mut Upload, off: u64, end: u64, chunk: Vec<u8>) -> Result<(
         let mut r = append(up, &chunk);
         up.next = end;
         while r.is_ok() {
-            // copies of pieces that were also sent again and already added
             while let Some((&k, _)) = up.early.first_key_value() {
                 if k >= up.next {
                     break;
@@ -1391,8 +1373,6 @@ fn open_archive(
     None
 }
 
-/// Adds a new report: it is written to disk and the oldest reports in memory give
-/// back their data and pages (they stay listed and are read again from disk).
 fn keep(st: &State, meta: ArchivedReport, payload: Payload, page: Arc<Vec<u8>>) {
     st.usage.record(&meta.owner);
     let saved = match &st.archive {

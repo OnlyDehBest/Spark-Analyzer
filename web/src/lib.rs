@@ -6,8 +6,6 @@ thread_local! {
     static LAST_PANIC: RefCell<String> = const { RefCell::new(String::new()) };
 }
 
-/// Keeps the message of a Rust panic so the page can show it instead of a bare
-/// "unreachable" WebAssembly error.
 #[wasm_bindgen(start)]
 pub fn start() {
     std::panic::set_hook(Box::new(|info| {
@@ -141,8 +139,6 @@ pub fn compare_heaps(
     compare_heaps_json(a, name_a, b, name_b, &home, &lang).map_err(|e| JsValue::from_str(&e))
 }
 
-/// Streaming heap dump (.hprof) reader: feed the file in chunks, then `finish`
-/// returns the class histogram encoded as a spark heap summary.
 #[wasm_bindgen]
 pub struct HprofReader {
     inner: Option<sparkscope::hprof::HprofStream>,

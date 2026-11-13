@@ -47,7 +47,6 @@ pub struct MetaInfo {
     pub resources: Vec<Resource>,
 }
 
-/// Riga di risorsa: `pct` (0..100) disegna la barra.
 #[derive(Clone, Debug, Serialize, Default)]
 pub struct Resource {
     pub label: String,
@@ -225,7 +224,6 @@ pub struct Report {
     pub config_changes: Vec<ConfigChange>,
 }
 
-/// Riassunto in cima al report: punteggio, causa principale e primo intervento.
 #[derive(Clone, Debug, Serialize, Default)]
 pub struct Summary {
     pub score: u32,
@@ -537,7 +535,6 @@ pub fn fmt_utc(ms: i64) -> String {
     )
 }
 
-/// "2:05 PM, 08/11/2026" (UTC; the report page rewrites it in the viewer's local time).
 pub fn fmt_ampm(ms: i64) -> String {
     let secs = ms / 1000;
     let (y, mo, d) = civil_from_days(secs.div_euclid(86_400));

@@ -1,10 +1,3 @@
-//! Streaming reader for HotSpot heap dumps (`.hprof`, also gzip-compressed).
-//!
-//! The dump is read in chunks and never kept in memory: only class names and a
-//! per-class histogram (instances and shallow size) are collected, which is what a
-//! spark heap summary contains. The result is a `HeapData` that the heap analysis
-//! and the heap comparison already understand.
-
 use std::io::Write;
 
 use anyhow::{Result, anyhow, bail};
@@ -38,8 +31,6 @@ struct ClassInfo {
     own_refs: u32,
 }
 
-/// Incremental HPROF parser: call [`HprofParser::feed`] with consecutive chunks,
-/// then [`HprofParser::finish`].
 pub struct HprofParser {
     buf: Vec<u8>,
     pos: usize,
@@ -92,7 +83,6 @@ impl HprofParser {
         }
     }
 
-    /// Bytes of the (uncompressed) dump processed so far.
     pub fn consumed(&self) -> u64 {
         self.consumed
     }
@@ -539,9 +529,6 @@ impl HprofParser {
         false
     }
 
-    /// Plugins found from their class loaders: every Bukkit/Paper plugin has its own
-    /// loader, so its classes (shaded libraries included) are grouped exactly. The name
-    /// comes from the known-plugin table or from the plugin's main package.
     fn plugins(
         &self,
     ) -> (
@@ -614,8 +601,6 @@ impl HprofParser {
     }
 }
 
-/// Key of the (non-JSON) server configuration entry that carries the exact
-/// package → plugin map found in a heap dump.
 pub const PACKAGES_KEY: &str = "sparkscope:hprof-packages";
 
 const PLATFORM_WORDS: &[&str] = &[
@@ -729,8 +714,6 @@ fn prim_name(t: u8) -> &'static str {
     }
 }
 
-/// `java/lang/String` → `java.lang.String`, `[Ljava/lang/Object;` → `java.lang.Object[]`,
-/// `[[I` → `int[][]`.
 pub fn java_name(raw: &str) -> String {
     let dims = raw.chars().take_while(|c| *c == '[').count();
     let rest = &raw[dims..];
@@ -759,7 +742,6 @@ pub fn java_name(raw: &str) -> String {
     out
 }
 
-/// Plain or gzip-compressed dump, detected from the first bytes.
 pub struct HprofStream {
     inner: Option<Inner>,
     pending: Vec<u8>,
@@ -826,7 +808,6 @@ impl HprofStream {
     }
 }
 
-/// Converts a whole dump held in memory (small files, tests, the CLI).
 pub fn parse_bytes(bytes: &[u8]) -> Result<HeapData> {
     let mut s = HprofStream::new();
     for c in bytes.chunks(8 << 20) {
@@ -835,8 +816,6 @@ pub fn parse_bytes(bytes: &[u8]) -> Result<HeapData> {
     s.finish()
 }
 
-/// Converts a dump read from any reader (a file on disk, an HTTP upload) without
-/// keeping it in memory.
 pub fn parse_reader(r: &mut dyn std::io::Read, mut progress: impl FnMut(u64)) -> Result<HeapData> {
     let mut s = HprofStream::new();
     let mut buf = vec![0u8; 8 << 20];

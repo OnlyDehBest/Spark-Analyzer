@@ -547,8 +547,6 @@ fn plugin_memory(h: &HeapData, total_size: i64, players: i64) -> Vec<PluginMem> 
     out
 }
 
-/// The `k` largest entries by size (then instances when `by_instances`), ties kept in
-/// file order: the same result as a stable sort followed by truncate.
 fn top_entries<'a>(
     list: &[&'a crate::proto::HeapEntry],
     k: usize,

@@ -15,7 +15,6 @@ fn histogram_from_heap_dump() {
     let h = hprof::parse_bytes(&hprof_gen::sample(10)).unwrap();
     let s = entry(&h, "java.lang.String");
     assert_eq!(s.instances, 500);
-    // 16 bytes of fields with 1 reference: 12 header + 16 - 4 = 24
     assert_eq!(s.size, 500 * 24);
     let d = entry(&h, "com.example.crates.data.PlayerCrateData");
     assert_eq!(d.instances, 400);

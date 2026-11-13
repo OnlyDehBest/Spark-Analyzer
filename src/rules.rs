@@ -238,7 +238,6 @@ impl<'a> Ctx<'a> {
             .collect()
     }
 
-    /// Plugin responsabili di una categoria con il loro metodo, es. «EconomyShop 2.4.1 (ShopRepository.saveBalances)».
     fn who(&self, c: &CatStat) -> Option<String> {
         let mut names: Vec<String> = Vec::new();
         for o in c.top_owners.iter().filter(|o| o.pct >= 0.5).take(3) {
@@ -270,7 +269,6 @@ impl<'a> Ctx<'a> {
         }
     }
 
-    /// Codice in un pacchetto non associato a nessun plugin (classi non riconosciute da spark).
     fn unknown_code(&self, c: &CatStat) -> Option<String> {
         let m = c.unknown_sites.iter().find(|m| m.pct >= 0.1)?;
         let class = m.name.rsplit_once('.').map(|(c, _)| c).unwrap_or(&m.name);
@@ -279,7 +277,6 @@ impl<'a> Ctx<'a> {
         Some(format!("{pkg} ({})", short(&m.name)))
     }
 
-    /// Sostituisce «il plugin responsabile» con il nome del plugin e il metodo, così il consiglio è applicabile.
     fn name_culprit(&self, text: &str, c: &CatStat) -> String {
         const SUBS: &[(&str, &str)] = &[
             ("Se un plugin compare tra i responsabili, deve", "{W} deve"),
@@ -624,7 +621,6 @@ fn round10(v: f64) -> i64 {
     ((v / 10.0).round() * 10.0) as i64
 }
 
-/// Suggerisce il comando /spark più adatto quando il profilo registrato non basta a trovare la causa.
 fn profile_advice(c: &Ctx, out: &mut Vec<Finding>) {
     let t = crate::i18n::t;
     let p = c.p;
@@ -2298,7 +2294,6 @@ fn spike_rules(c: &Ctx, out: &mut Vec<Finding>) {
     });
 }
 
-/// Spike causato da pochi tick lenti: le medie per minuto non cambiano e i delta restano vuoti.
 pub fn spike_unattributed(s: &crate::analysis::Spike) -> bool {
     s.cat_deltas.is_empty() && s.owner_deltas.is_empty() && s.method_deltas.is_empty()
 }
@@ -2686,7 +2681,6 @@ fn jvm_rules(
             f(pct)
         ));
     }
-    // senza problemi i valori sono gia' nella sezione "Macchina e risorse"
     if sol.is_empty() {
         return;
     }

@@ -30,7 +30,6 @@ fn sev_class(s: Severity) -> &'static str {
     }
 }
 
-/// Highlighted notice shown on reports made from a full heap dump (.hprof).
 pub(crate) fn hprof_beta_banner() -> String {
     format!(
         r#"<div class="betabar"><span class="beta">BETA</span><span>{}</span></div>"#,
@@ -94,7 +93,6 @@ pub(crate) fn x_label(w: &crate::analysis::WindowStat) -> String {
     }
 }
 
-/// Monotone cubic (Fritsch–Carlson) path through points with increasing x.
 fn smooth_path(p: &[(f64, f64)]) -> String {
     let mut d = String::new();
     if p.is_empty() {
@@ -489,8 +487,6 @@ pub(crate) fn topbar(page: &str) -> String {
     )
 }
 
-/// `"{prefix} @ 2:05 PM, 08/11/2026"` (UTC) plus a script that rewrites it in the viewer's local time.
-/// `prefix` is a fixed i18n string (no quotes), so embedding it in JS is safe.
 fn page_heading(m: &super::MetaInfo) -> String {
     let brand = m.platform.split_whitespace().next().unwrap_or("");
     let server = match (brand.is_empty(), m.minecraft_version.is_empty()) {
@@ -1106,7 +1102,6 @@ pub fn render(r: &Report) -> String {
         f.severity == Severity::Info && f.area != crate::i18n::t("Panoramica", "Overview")
     };
     let mut notes_open = false;
-    // le note informative stanno tutte in fondo, in un gruppo con titolo: mostrarle si vede subito
     for f in r
         .findings
         .iter()

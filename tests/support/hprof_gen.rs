@@ -1,4 +1,3 @@
-//! Writes small but valid HotSpot heap dumps for tests and benchmarks.
 #![allow(dead_code)]
 
 pub struct Gen {
@@ -34,13 +33,10 @@ impl Gen {
         self.out.extend_from_slice(body);
     }
 
-    /// Declares a class (name in JVM form) with `refs` reference fields and
-    /// `prims` int fields; returns its class object id.
     pub fn class(&mut self, name: &str, super_id: u64, refs: u16, prims: u16) -> u64 {
         self.class_in(name, super_id, 0, refs, prims)
     }
 
-    /// Like [`Gen::class`], with the class loader object that defined the class.
     pub fn class_in(
         &mut self,
         name: &str,
@@ -138,7 +134,6 @@ impl Gen {
         self.seg.extend_from_slice(&oid.to_be_bytes());
     }
 
-    /// Closes the current heap dump segment.
     pub fn segment(&mut self) {
         let seg = std::mem::take(&mut self.seg);
         self.record(0x1C, &seg);
@@ -153,7 +148,6 @@ impl Gen {
     }
 }
 
-/// A dump with a leaking plugin class, JDK objects, arrays and two segments.
 pub fn sample(players: usize) -> Vec<u8> {
     let mut g = Gen::new();
     let object = g.class("java/lang/Object", 0, 0, 0);

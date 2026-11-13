@@ -8,7 +8,6 @@ use crate::patterns::{self, Cat};
 use crate::report::{fmt_num, fmt_time};
 use crate::rules::{Finding, Severity, short};
 
-/// Abitudini di codice riconoscibili dallo stack che creano molti oggetti.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize)]
 pub enum Habit {
     Strings,
@@ -262,7 +261,6 @@ pub struct AllocReport {
     pub threads: Vec<Stat>,
     pub sources: Vec<Stat>,
     pub categories: Vec<Stat>,
-    /// Plugin che allocano dentro ogni fase (chiave: etichetta della fase).
     pub category_owners: std::collections::BTreeMap<String, Vec<Stat>>,
     pub sites: Vec<AllocSite>,
     pub habits: Vec<HabitStat>,

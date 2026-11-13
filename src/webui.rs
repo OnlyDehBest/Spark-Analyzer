@@ -675,7 +675,6 @@ pub fn home_description() -> &'static str {
     )
 }
 
-/// Search-engine tags for the hosted home page, built from the public address the request came in on.
 pub fn seo_head(base: &str) -> String {
     let it = !crate::i18n::is_en();
     let canonical = if it {
@@ -718,10 +717,8 @@ fn social_meta() -> String {
     )
 }
 
-/// Main public address: the GitHub Pages copy points search engines here.
 pub const MAIN_SITE: &str = "https://sparkanalyzer.me/";
 
-/// One-line "what's new" notice shown above the home title (always in English).
 pub const SITE_NEWS: &str =
     "Beta: open full heap dumps (.hprof), even several GB, right in your browser";
 pub const SITE_NEWS_URL: &str =
@@ -927,7 +924,6 @@ self.onmessage = async (e) => {
 };
 "#;
 
-/// Web Worker that runs the WebAssembly analysis off the page's main thread.
 pub fn static_worker_versioned(version: &str) -> String {
     WORKER_JS.replace("__SA_V__", &version_suffix(version))
 }
@@ -1038,7 +1034,6 @@ mod usage_tests {
     }
 }
 
-/// Privacy page of the hosted site, with search-engine tags when the public address is known.
 pub fn privacy_page_public(base: Option<&str>) -> String {
     let page = privacy_page(true);
     let Some(base) = base else {

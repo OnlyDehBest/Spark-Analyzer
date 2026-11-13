@@ -22,9 +22,7 @@ pub struct CatStat {
     pub top_owners: Vec<Stat>,
     pub top_methods: Vec<Stat>,
     pub example_stack: Vec<String>,
-    /// Plugin e suo metodo più interno da cui parte il lavoro di questa categoria.
     pub culprit_sites: Vec<CulpritSite>,
-    /// Primo metodo (dal basso dello stack) in un pacchetto che spark non associa a nessun plugin.
     pub unknown_sites: Vec<Stat>,
 }
 

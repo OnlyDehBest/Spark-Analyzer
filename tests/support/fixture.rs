@@ -863,8 +863,6 @@ pub fn sample_alloc() -> SamplerData {
     d
 }
 
-/// Heap summary realistico: 42 giocatori online, un plugin che tiene i dati dei giocatori usciti
-/// (CrateRewards), uno che registra listener anonimi di continuo (HoloLines) e plugin normali.
 #[allow(dead_code)]
 pub fn sample_heap() -> HeapData {
     let base = sample().metadata.unwrap_or_default();
