@@ -436,6 +436,11 @@ fn json_resp(code: u16, v: serde_json::Value) -> Response<std::io::Cursor<Vec<u8
         .with_header(header("Content-Type", "application/json"))
 }
 
+fn spark_key_param(url: &str) -> Option<String> {
+    query_param(url, "key")
+        .filter(|k| (4..=64).contains(&k.len()) && k.chars().all(|c| c.is_ascii_alphanumeric()))
+}
+
 fn query_param(url: &str, key: &str) -> Option<String> {
     let q = url.split_once('?')?.1;
     for pair in q.split('&') {
@@ -573,7 +578,8 @@ fn handle(mut req: Request, st: &State) {
             } else {
                 read_upload(&mut req, &name)
             };
-            let result = body.and_then(|bytes| store(st, owner, bytes, name, None));
+            let result =
+                body.and_then(|bytes| store(st, owner, bytes, name, spark_key_param(&url)));
             api_result(result)
         }
         (Method::Post, "/api/heap/link") => {
@@ -590,7 +596,8 @@ fn handle(mut req: Request, st: &State) {
             } else {
                 read_upload(&mut req, &name)
             };
-            let result = body.and_then(|bytes| stage(st, owner, bytes, name, None));
+            let result =
+                body.and_then(|bytes| stage(st, owner, bytes, name, spark_key_param(&url)));
             staged_result(result)
         }
         (Method::Post, "/api/upload/start") => {
@@ -618,8 +625,12 @@ fn handle(mut req: Request, st: &State) {
             let heap = query_param(&url, "to").as_deref() == Some("heap");
             let size = query_param(&url, "size").and_then(|v| v.parse::<u64>().ok());
             match upload_finish(st, owner, &id, size) {
-                Ok((bytes, name)) if heap => staged_result(stage(st, owner, bytes, name, None)),
-                Ok((bytes, name)) => api_result(store(st, owner, bytes, name, None)),
+                Ok((bytes, name)) if heap => {
+                    staged_result(stage(st, owner, bytes, name, spark_key_param(&url)))
+                }
+                Ok((bytes, name)) => {
+                    api_result(store(st, owner, bytes, name, spark_key_param(&url)))
+                }
                 Err(e) => json_resp(400, serde_json::json!({ "error": format!("{e:#}") })),
             }
         }

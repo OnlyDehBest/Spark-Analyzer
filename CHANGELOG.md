@@ -2,6 +2,13 @@
 
 ## Non ancora rilasciato
 
+### Correzioni
+- Analisi da link bloccata con «HTTP 403» quando il sito è dietro Cloudflare: il browser invia solo il
+  codice del profilo invece del link completo (un URL nel corpo di una richiesta viene scambiato per un
+  attacco dai filtri di sicurezza). Se un proxy blocca comunque la richiesta, il profilo viene scaricato
+  dal browser e caricato come file, e il report mantiene il link al viewer di spark.
+- I messaggi d'errore dicono chi ha bloccato la richiesta (Cloudflare, nginx, Caddy).
+
 ### Rifinitura
 - Corretto un blocco del server: con più richieste insieme (pagina e caratteri) alcune restavano in
   attesa e la pagina non finiva di caricarsi. Risposte più rapide sulle connessioni riutilizzate.

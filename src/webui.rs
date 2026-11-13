@@ -549,6 +549,8 @@ fn messages_js() -> String {
         "tooBig": t("File troppo grande ({s} GB) per essere letto nel browser e non è un heap dump .hprof.", "File too large ({s} GB) to be read in the browser and it is not an .hprof heap dump."),
         "proxyLimit": t("Il file è stato rifiutato dal server web davanti a Spark Resource Analyzer (HTTP {s}, limite di dimensione di nginx o Cloudflare). Aumenta client_max_body_size in nginx oppure usa il sito, che legge il file nel browser.", "The file was rejected by the web server in front of Spark Resource Analyzer (HTTP {s}, nginx or Cloudflare size limit). Raise client_max_body_size in nginx or use the website, which reads the file in the browser."),
         "badReply": t("Risposta non valida dal server (HTTP {s}): probabilmente un proxy (nginx, Cloudflare) davanti a Spark Resource Analyzer ha interrotto la richiesta.", "Invalid reply from the server (HTTP {s}): probably a proxy (nginx, Cloudflare) in front of Spark Resource Analyzer cut the request."),
+        "blockedBy": t("La richiesta è stata bloccata da {w} (HTTP {s}) prima di arrivare a Spark Resource Analyzer.", "The request was blocked by {w} (HTTP {s}) before reaching Spark Resource Analyzer."),
+        "viaBrowser": t("Il server web ha bloccato la richiesta: scarico il profilo dal browser…", "The web server blocked the request: downloading the profile from the browser…"),
         "lost": t("Connessione a Spark Resource Analyzer persa: ", "Lost connection to Spark Resource Analyzer: "),
         "wasm": t("Impossibile caricare il modulo di analisi: ", "Could not load the analysis module: "),
         "notFound": t("Profilo non trovato: il link potrebbe essere scaduto (spark conserva i profili per un periodo limitato).", "Profile not found: the link may have expired (spark keeps profiles for a limited time)."),
@@ -843,7 +845,11 @@ var lb=document.getElementById('langbtn');if(lb)lb.addEventListener('click',func
 var busy=document.getElementById('busy'),bt=document.getElementById('busytext'),err=document.getElementById('err');
 function start(t){err.hidden=true;bt.textContent=t;busy.hidden=false;document.documentElement.classList.add('sa-busy')}
 function fail(m){busy.hidden=true;err.textContent=m;err.hidden=false;document.documentElement.classList.remove('sa-busy')}
-function body(r){return r.text().then(function(t){try{return JSON.parse(t)}catch(e){throw new Error(r.status===413?M.proxyLimit.replace('{s}',r.status):M.badReply.replace('{s}',r.status))}})}
+function who(r){var s=(r.headers.get('server')||'').toLowerCase();if(r.headers.get('cf-ray')||s.indexOf('cloudflare')>=0)return 'Cloudflare';if(s.indexOf('nginx')>=0)return 'nginx';if(s.indexOf('caddy')>=0)return 'Caddy';return ''}
+function replyError(r){if(r.status===413)return M.proxyLimit.replace('{s}',r.status);var w=who(r);return w?M.blockedBy.replace('{w}',w).replace('{s}',r.status):M.badReply.replace('{s}',r.status)}
+function body(r){return r.text().then(function(t){try{return JSON.parse(t)}catch(e){var x=new Error(replyError(r));x.proxy=true;throw x}})}
+function sparkKey(v){v=(v||'').trim();var m=v.match(/^(?:https?:\/\/)?[^\/\s]+\/([A-Za-z0-9]+)/);if(m)return m[1];return /^[A-Za-z0-9]{4,64}$/.test(v)?v:null}
+function browserFile(k){return fetch('https://spark-usercontent.lucko.me/'+encodeURIComponent(k)).then(function(r){if(r.status===404)throw new Error(M.notFound);if(!r.ok)throw new Error(M.httpFail.replace('{s}',r.status));return r.blob()}).then(function(b){return new File([b],k)})}
 function done(r){return body(r).then(function(j){if(j.id){location.href='/r/'+j.id+(LQ?'?'+LQ:'')}else{fail(j.error||M.unknown)}})}
 var PR={ring:document.getElementById('pring'),fg:document.getElementById('pfg'),pct:document.getElementById('ppct'),meta:document.getElementById('pmeta'),spin:busy.querySelector('.spin')};
 function mb(n){var s=(n/1048576).toFixed(1);return M.lang==='it'?s.replace('.',','):s}
@@ -851,7 +857,7 @@ function prog(got,total,rate){if(!PR.ring)return;PR.spin.hidden=true;PR.ring.hid
 function progOff(){if(!PR.ring)return;PR.ring.hidden=true;PR.meta.hidden=true;PR.spin.hidden=false}
 function json(u,b){return fetch(u,{method:'POST',body:b}).then(function(r){if(r.status===413)return {tooBig:true};return body(r)})}
 function direct(f,to,x){return fetch((to==='heap'?'/api/heap/file':'/api/file')+'?name='+encodeURIComponent(f.name)+(x||'')+'&'+LQ,{method:'POST',body:f})}
-function upload(f,to){if(f.size<=786432)return direct(f,to);return dumpHead(f).then(function(d){if(!d||!dumpWorker())return chunked(f,to);return readDumpHere(f).then(function(b){return packSummary(b,f.name)}).then(function(s){var sx='&summary=1';return (s.size<=786432?direct(s,to,sx).then(function(r){return r.status===413?chunked(s,to,sx):r}):chunked(s,to,sx)).then(function(r){return r.ok?r:chunked(f,to)},function(){return chunked(f,to)})},function(){return chunked(f,to)})})}
+function upload(f,to,kx){kx=kx||'';if(f.size<=786432)return direct(f,to,kx);return dumpHead(f).then(function(d){if(!d||!dumpWorker())return chunked(f,to,kx);return readDumpHere(f).then(function(b){return packSummary(b,f.name)}).then(function(s){var sx='&summary=1';return (s.size<=786432?direct(s,to,sx).then(function(r){return r.status===413?chunked(s,to,sx):r}):chunked(s,to,sx)).then(function(r){return r.ok?r:chunked(f,to)},function(){return chunked(f,to)})},function(){return chunked(f,to)})})}
 function packSummary(b,name){var blob=new Blob([b]);if(typeof CompressionStream!=='function')return Promise.resolve(new File([blob],name));return new Response(blob.stream().pipeThrough(new CompressionStream('gzip'))).blob().then(function(z){return new File([z],name)})}
 function dumpHead(f){return f.slice(0,12).arrayBuffer().then(function(b){var u=new Uint8Array(b);return String.fromCharCode.apply(null,u)==='JAVA PROFILE'||(u[0]===0x1f&&u[1]===0x8b&&/hprof/i.test(f.name))})}
 var DW=null,DN=0,DQ={};
@@ -871,8 +877,9 @@ if(k>=5)throw r?new Error(M.badReply.replace('{s}',r.status)):x;CH=Math.max(MINC
 function moved(n){sent+=n;prog(sent,f.size,sent/Math.max(.001,(Date.now()-t0)/1000))}
 var off=Math.min(CH,f.size);await put(0,off);moved(off);var stop=false;
 async function lane(){while(!stop&&off<f.size){var a=off,b=Math.min(f.size,a+CH);off=b;try{await put(a,b)}catch(e){stop=true;throw e}moved(b-a)}}
-await Promise.all([lane(),lane(),lane()]);progOff();bt.textContent=M.analyzing;return fetch('/api/upload/finish?id='+id+'&to='+(to||'file')+'&size='+f.size+'&'+LQ,{method:'POST'})}
-document.getElementById('lform').addEventListener('submit',function(e){e.preventDefault();var v=document.getElementById('link').value.trim();if(!v){fail(M.pasteFirst);return}start(M.downloading);fetch('/api/link?'+LQ,{method:'POST',body:v}).then(done).catch(function(x){fail(M.lost+x)})});
+await Promise.all([lane(),lane(),lane()]);progOff();bt.textContent=M.analyzing;return fetch('/api/upload/finish?id='+id+'&to='+(to||'file')+'&size='+f.size+(x&&x.indexOf('&key=')>=0?x.slice(x.indexOf('&key=')):'')+'&'+LQ,{method:'POST'})}
+document.getElementById('lform').addEventListener('submit',function(e){e.preventDefault();var v=document.getElementById('link').value.trim();if(!v){fail(M.pasteFirst);return}var k=sparkKey(v);if(!k){fail(M.badLink);return}start(M.downloading);
+fetch('/api/link?'+LQ,{method:'POST',body:k}).then(done).catch(function(x){if(!(x&&x.proxy)){fail(M.lost+x);return}bt.textContent=M.viaBrowser;browserFile(k).then(function(f){bt.textContent=M.analyzing;return upload(f,'file','&key='+k)}).then(done).catch(function(y){progOff();fail(y&&y.message?y.message:M.lost+y)})})});
 function send(f){if(!f)return;start(M.analyzingFile.replace('{f}',f.name).replace('{s}',(f.size/1048576).toFixed(1)));upload(f,'file').then(done).catch(function(x){progOff();fail(x&&x.message&&!/fetch|network|load failed/i.test(x.message)?x.message:M.lost+x)})}
 var drop=document.getElementById('drop'),file=document.getElementById('file');
 file.addEventListener('change',function(){send(file.files[0])});
@@ -884,7 +891,7 @@ document.getElementById('link').addEventListener('paste',function(){var i=this;s
 function staged(r){return body(r).then(function(j){if(j.error)throw new Error(j.error);return j})}
 window.saSetupCompare({
 fromFile:function(f){return upload(f,'heap').then(staged)},
-fromLink:function(v){return fetch('/api/heap/link?'+LQ,{method:'POST',body:v}).then(staged)},
+fromLink:function(v){var k=sparkKey(v);if(!k)return Promise.reject(new Error(M.badLink));return fetch('/api/heap/link?'+LQ,{method:'POST',body:k}).then(staged).catch(function(x){if(!(x&&x.proxy))throw x;return browserFile(k).then(function(f){return upload(f,'heap','&key='+k)}).then(staged)})},
 run:function(a,b){start(M.cmpRunning);return fetch('/api/heap/compare?a='+encodeURIComponent(a.stage)+'&b='+encodeURIComponent(b.stage)+'&'+LQ,{method:'POST'}).then(done)}
 });
 })();
