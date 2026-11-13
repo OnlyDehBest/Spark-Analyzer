@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO="${REPO:-https://github.com/OnlyDehBest/Spark-Analyzer.git}"
-BRANCH="${BRANCH:-claude/gallant-bohr-6mtzdb}"
+BRANCH="${BRANCH:-main}"
 SRC=/opt/spark-resource-analyzer-src
 DIR=/opt/spark-resource-analyzer-bot
 
@@ -15,11 +15,11 @@ echo "==> Pacchetti di sistema"
 if command -v apt-get >/dev/null; then
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -q
-  apt-get install -y -q git curl screen build-essential pkg-config ca-certificates
+  apt-get install -y -q git curl screen build-essential pkg-config libssl-dev ca-certificates
 elif command -v dnf >/dev/null; then
-  dnf install -y -q git curl screen gcc gcc-c++ make pkgconf-pkg-config ca-certificates
+  dnf install -y -q git curl screen gcc gcc-c++ make pkgconf-pkg-config openssl-devel ca-certificates
 elif command -v yum >/dev/null; then
-  yum install -y -q git curl screen gcc gcc-c++ make pkgconfig ca-certificates
+  yum install -y -q git curl screen gcc gcc-c++ make pkgconfig openssl-devel ca-certificates
 else
   echo "Sistema non riconosciuto: installa git, curl, screen e gcc a mano"
   exit 1
